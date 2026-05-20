@@ -25,6 +25,14 @@ pub struct App {
     pub version: String,
     pub git_branch: Option<String>,
     pub show_welcome: bool,
+    // Token usage tracking (oh-my-pi style)
+    pub tokens_input: u64,
+    pub tokens_output: u64,
+    pub tokens_cache_read: u64,
+    // Git status counts
+    pub git_staged: u32,
+    pub git_unstaged: u32,
+    pub git_untracked: u32,
 }
 
 /// Todo item for task tracking.
@@ -53,6 +61,12 @@ impl App {
             version: env!("CARGO_PKG_VERSION").to_string(),
             git_branch: None,
             show_welcome: true,
+            tokens_input: 0,
+            tokens_output: 0,
+            tokens_cache_read: 0,
+            git_staged: 0,
+            git_unstaged: 0,
+            git_untracked: 0,
         }
     }
 

@@ -232,47 +232,56 @@ fn render_input(container: &mut Container, app: &App) {
     box_widget.add_child(Box::new(content));
     container.push(box_widget);
 }
-
 /// Render status line at the very bottom (oh-my-pi style).
 fn render_status_line(container: &mut Container, app: &App) {
     let theme = Theme::default();
 
-    // Build segmented status line
-    let mut segments = Vec::new();
-    
-    // Mode indicator
+    let mut left_segments = Vec::new();
+    let mut right_segments = Vec::new();
+
+    // Left: mode, model, git branch, workspace, token usage
     let mode_text = match app.mode {
         AppMode::Normal => "NORMAL",
         AppMode::Input => "INPUT",
         AppMode::Processing => "BUSY",
     };
-    segments.push(Style::new().fg(Colors::BRIGHT_GREEN).apply(mode_text));
-    
-    // Separator
-    segments.push(" │ ".to_string());
-    
-    // Model
-    segments.push(theme.info.apply(&app.model));
-    
-    // Separator
-    segments.push(" │ ".to_string());
-    
-    // Git branch (if available)
+    left_segments.push(Style::new().fg(Colors::BRIGHT_GREEN).apply(mode_text));
+    left_segments.push(" ┆ ".to_string());
+    left_segments.push(theme.info.apply(&app.model));
+
     if let Some(branch) = &app.git_branch {
-        segments.push(theme.dim.apply(&format!("git:{}", branch)));
-        segments.push(" │ ".to_string());
+        left_segments.push(" ┆ ".to_string());
+        left_segments.push(theme.dim.apply(&format!("git:{}", branch)));
+        if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
+            let mut parts = Vec::new();
+            if app.git_staged > 0 { parts.push(format!("+{}", app.git_staged)); }
+            if app.git_unstaged > 0 { parts.push(format!("!{}", app.git_unstaged)); }
+            if app.git_untracked > 0 { parts.push(format!("?{}", app.git_untracked)); }
+            left_segments.push(theme.warning.apply(&format!(" ({})", parts.join(" "))));
+        }
     }
-    
-    // Workspace
+
     let workspace_name = app.workspace.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("workspace");
-    segments.push(theme.dim.apply(workspace_name));
-    
-    // Right-aligned help
-    segments.push(" │ Ctrl+D: quit ".to_string());
+    left_segments.push(" ┆ ".to_string());
+    left_segments.push(theme.dim.apply(workspace_name));
 
-    let status = format!(" {} ", segments.join(""));
+    if app.tokens_input > 0 || app.tokens_output > 0 {
+        let total_input = app.tokens_input + app.tokens_cache_read;
+        if total_input > 0 || app.tokens_output > 0 {
+            left_segments.push(" ┆ ".to_string());
+            let usage = format!("in:{} out:{}", total_input, app.tokens_output);
+            left_segments.push(theme.dim.apply(&usage));
+        }
+    }
+
+    // Right: help
+    right_segments.push("Ctrl+D: quit".to_string());
+
+    let left = left_segments.join("");
+    let right = right_segments.join(" ");
+    let status = format!(" {} {}", left, right);
     container.push(Text::styled(&status, theme.dim));
 }
 
