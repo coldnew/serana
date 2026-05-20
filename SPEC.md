@@ -16,6 +16,7 @@ Build a personal coding agent in Rust that:
 - **LLM Backend**: Pluggable (start with OpenAI-compatible API)
 - **Serialization**: serde, serde_json
 - **Frontend**: TUI via ratatui (web frontend planned for future)
+- **Code Intelligence**: Built-in LSP client + tree-sitter for AST parsing
 - **Error Handling**: anyhow/thiserror
 
 ## Commands
@@ -66,8 +67,16 @@ serana/
 │   │   ├── mod.rs        # Tool trait and registry
 │   │   ├── fs.rs         # File operations (read, write, edit)
 │   │   ├── shell.rs      # Command execution
-│   │   ├── search.rs     # Code search (grep, ast)
-│   │   └── lsp.rs        # LSP integration
+│   │   └── search.rs     # Code search (grep, ast)
+│   ├── lsp/              # Built-in LSP client
+│   │   ├── mod.rs        # LSP manager and types
+│   │   ├── client.rs     # LSP client implementation
+│   │   ├── transport.rs  # stdio/socket transport
+│   │   └── handlers.rs   # Request/response handlers
+│   ├── tree_sitter/      # Built-in tree-sitter integration
+│   │   ├── mod.rs        # Parser manager
+│   │   ├── queries/      # Language-specific queries
+│   │   └── languages/    # Language bindings (Rust, TS, etc.)
 │   ├── llm/
 │   │   ├── mod.rs        # LLM trait and types
 │   │   ├── openai.rs     # OpenAI-compatible client
@@ -82,6 +91,61 @@ serana/
 └── docs/
     └── architecture.md   # Architecture documentation
 ```
+
+## Code Intelligence Architecture
+
+### LSP Integration
+
+Serana includes a built-in LSP client that supports:
+- **Definition navigation**: Go to definition, type definition, implementation
+- **References**: Find all references to a symbol
+- **Diagnostics**: Real-time errors, warnings, hints
+- **Hover**: Type information and documentation
+- **Rename**: Rename symbols across the codebase
+- **Code actions**: Quick fixes, refactorings
+
+```
+┌────────────────────────────────────────────────────┐
+│                 LSP Manager                         │
+│  Manages multiple language servers per workspace    │
+└────────────────────────────────────────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ rust-analyzer   │  │ typescript-ls   │  │ Other LSPs...   │
+│ (Rust)          │  │ (TypeScript)    │  │                 │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+### Tree-sitter Integration
+
+For fast, accurate code parsing without external processes:
+- **AST parsing**: Parse code into syntax trees
+- **Syntax queries**: Query patterns via S-expressions
+- **Incremental parsing**: Efficient re-parsing on edits
+- **Multi-language**: Rust, TypeScript, Python, Go, etc.
+
+```rust
+// Example: Find all function definitions
+let query = Query::new(language, "(function_item name: (identifier) @name)")?;
+let matches = cursor.matches(&query, tree.root_node(), source);
+
+// Use in agent for:
+// - "Find all functions named X"
+// - "Where is struct Y defined?"
+// - "List all imports in this file"
+```
+
+### Combined Use Cases
+
+| Task | Primary Tool | Fallback |
+|------|--------------|----------|
+| Go to definition | LSP | tree-sitter search |
+| Find references | LSP | tree-sitter + grep |
+| Rename symbol | LSP | tree-sitter + edit |
+| List functions | tree-sitter | LSP document symbols |
+| Parse error locations | tree-sitter | LSP diagnostics |
+| Type information | LSP hover | N/A |
 
 ## Code Style
 
@@ -123,6 +187,8 @@ pub struct Config {
   - Tool execution (mocked LLM responses)
   - Agent planning logic
   - TUI component rendering
+  - LSP client behavior (with mock language server)
+  - Tree-sitter parsing and queries
   - End-to-end task completion (with recorded LLM interactions)
 
 ## Boundaries
@@ -148,8 +214,11 @@ pub struct Config {
 ### MVP (Coding Agent Phase)
 
 - [ ] TUI launches and displays chat interface
-- [ ] Can read and understand a Rust project structure
-- [ ] Can answer questions about codebase ("where is X implemented?")
+- [ ] Built-in LSP client can connect to rust-analyzer
+- [ ] Tree-sitter can parse Rust/TypeScript files
+- [ ] Can answer "where is X defined?" using LSP/tree-sitter
+- [ ] Can find references via LSP
+- [ ] Can rename symbols via LSP
 - [ ] Can edit files with natural language instructions
 - [ ] Can run shell commands and capture output
 - [ ] Shows streaming LLM responses in TUI
@@ -168,3 +237,4 @@ pub struct Config {
 2. **Context Strategy**: Sliding window? Summary-based? RAG?
 3. **Hermes Architecture**: What specific capabilities define "hermes agent"?
 4. **Permissions**: Should agent ask before destructive operations (rm, git push)?
+5. **LSP Strategy**: Which LSPs to bundle vs. require user to install?
