@@ -2,7 +2,7 @@
 
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Padding, Paragraph, Wrap},
     Frame,
@@ -58,7 +58,6 @@ fn draw_chat(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 MessageRole::User => {
                     lines.push(Line::from(""));
                     lines.push(Line::from(vec![
-                        Span::styled("▌ ", Style::default().fg(theme.success)),
                         Span::styled("You", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
                     ]));
                     
@@ -69,7 +68,6 @@ fn draw_chat(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 MessageRole::Agent => {
                     lines.push(Line::from(""));
                     lines.push(Line::from(vec![
-                        Span::styled("▌ ", Style::default().fg(theme.accent)),
                         Span::styled("Serana", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
                     ]));
                     
@@ -91,15 +89,9 @@ fn draw_chat(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
                 MessageRole::System => {
                     lines.push(Line::from(""));
                     lines.push(Line::from(vec![
-                        Span::styled("▌ ", Style::default().fg(theme.warning)),
-                        Span::styled("System", Style::default().fg(theme.warning).add_modifier(Modifier::BOLD)),
+                        Span::styled("System: ", Style::default().fg(theme.warning)),
+                        Span::styled(&msg.content, Style::default().fg(theme.dim)),
                     ]));
-                    
-                    for line in msg.content.lines() {
-                        lines.push(Line::from(vec![
-                            Span::styled(line, Style::default().fg(theme.dim)),
-                        ]));
-                    }
                 }
             }
         }
@@ -120,7 +112,7 @@ fn draw_input(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
     let title = match app.mode {
         AppMode::Input => " Input ",
         AppMode::Processing => " Working ",
-        _ => " Input ",
+        AppMode::Normal => " Input ",
     };
     
     let block = Block::default()
@@ -133,7 +125,7 @@ fn draw_input(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
         if app.mode == AppMode::Processing {
             Span::styled("Processing...", Style::default().fg(theme.dim))
         } else {
-            Span::styled("Type your message...", Style::default().fg(theme.dim))
+            Span::styled("Type your message...", Style::default().fg(Color::DarkGray))
         }
     } else {
         Span::raw(&app.input)
