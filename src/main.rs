@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
+use serana::agent::{Agent, coding::CodingAgent};
 use serana::config::Config;
+use serana::llm::{LlmClient, openai::OpenAiClient};
+use serana::tools::ToolRegistry;
 
 #[derive(Parser)]
 #[command(name = "serana")]
@@ -57,9 +60,19 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_once(_config: Config, instruction: &str) -> anyhow::Result<()> {
-    println!("Running instruction: {}", instruction);
-    // TODO: Instantiate agent and execute
+async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
+    let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config.llm.clone()));
+    let tools = ToolRegistry::new();
+    let agent = CodingAgent::new(llm, tools);
+
+    println!("Running: {}", instruction);
+    let result = agent.execute(instruction).await?;
+    println!("\n{}", result.response);
+
+    if !result.tool_calls.is_empty() {
+        println!("\n[Tool calls: {}]", result.tool_calls.len());
+    }
+
     Ok(())
 }
 

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::agent::coding::CodingAgent;
+use crate::agent::{Agent, coding::CodingAgent};
 use crate::config::Config;
 use crate::llm::openai::OpenAiClient;
 use crate::llm::LlmClient;
@@ -195,16 +195,35 @@ impl App {
         self.mode = AppMode::Processing;
         self.status = "Processing...".to_string();
 
-        // TODO: Actually call the agent (async in sync context requires refactoring)
-        // For now, just echo back
-        self.messages.push(ChatMessage {
-            role: MessageRole::Agent,
-            content: format!("Received: {}", content),
-            tool_calls: Vec::new(),
+        // Execute agent in blocking context
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.agent.execute(&content).await
+            })
         });
 
+        match result {
+            Ok(output) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::Agent,
+                    content: output.response,
+                    tool_calls: output.tool_calls.iter().map(|tc| {
+                        format!("{}({})", tc.name, serde_json::to_string(&tc.arguments).unwrap_or_default())
+                    }).collect(),
+                });
+                self.status = if output.success { "Ready".to_string() } else { "Error".to_string() };
+            }
+            Err(e) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Error: {}", e),
+                    tool_calls: Vec::new(),
+                });
+                self.status = "Error".to_string();
+            }
+        }
+
         self.mode = AppMode::Normal;
-        self.status = "Ready".to_string();
 
         Ok(())
     }
