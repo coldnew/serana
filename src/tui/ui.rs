@@ -14,6 +14,7 @@ pub struct Theme {
     pub warning: Style,
     pub error: Style,
     pub dim: Style,
+    pub muted: Style,
     pub info: Style,
     pub user_fg: Style,
     pub agent_fg: Style,
@@ -23,11 +24,12 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            accent: Style::new().fg(Colors::BRIGHT_BLUE).bold(),
+            accent: Style::new().fg(Colors::BRIGHT_MAGENTA).bold(),
             success: Style::new().fg(Colors::BRIGHT_GREEN).bold(),
             warning: Style::new().fg(Colors::BRIGHT_YELLOW).bold(),
             error: Style::new().fg(Colors::BRIGHT_RED).bold(),
             dim: Style::new().fg(Colors::GRAY).dim(),
+            muted: Style::new().fg(Colors::GRAY),
             info: Style::new().fg(Colors::BRIGHT_CYAN),
             user_fg: Style::new().fg(Colors::BRIGHT_GREEN),
             agent_fg: Style::new().fg(Colors::BRIGHT_BLUE),
@@ -36,58 +38,99 @@ impl Default for Theme {
     }
 }
 
+/// PI logo block characters (oh-my-pi style)
+const PI_LOGO: &[&str] = &[
+    "▀██████████▀",
+    " ╘██    ██  ",
+    "  ██    ██  ",
+    "  ██    ██  ",
+    " ▄██▄  ▄██▄ ",
+];
+
+/// Apply magenta→cyan gradient to logo (simplified - just uses magenta)
+fn gradient_logo(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(|l| {
+        let magenta = "\x1b[35m";
+        let reset = "\x1b[0m";
+        format!("{}{}{}", magenta, l, reset)
+    }).collect()
+}
+
 /// Render welcome screen with true two-column layout (oh-my-pi style).
 fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let theme = Theme::default();
+    
+    // Get terminal width (assume 80 minimum)
     let width = 80;
+    let max_width = 100;
+    let box_width = width.min(max_width).max(4);
+    
+    // Column layout
+    let dual_content_width = box_width - 3; // │ + │ + │
+    let preferred_left_col = 26;
+    let min_left_col = 12; // logo width
+    let min_right_col = 20;
+    
+    let left_min_content_width = min_left_col.max(visible_width("Welcome back!")).max(visible_width(model));
+    let desired_left_col = preferred_left_col.min((dual_content_width as f64 * 0.35) as usize).max(min_left_col);
+    
+    let dual_left_col = if dual_content_width >= min_right_col + 1 {
+        desired_left_col.min(dual_content_width - min_right_col)
+    } else {
+        (dual_content_width - 1).max(1)
+    };
+    let dual_right_col = (dual_content_width - dual_left_col).max(1);
+    
+    let show_right_column = dual_left_col >= left_min_content_width && dual_right_col >= min_right_col;
+    let left_col = if show_right_column { dual_left_col } else { box_width - 2 };
+    let right_col = if show_right_column { dual_right_col } else { 0 };
 
-    container.push(Spacer::new(1));
+    // Logo with gradient
+    let logo_colored = gradient_logo(PI_LOGO);
 
-    let left_col_width = (width as f64 * 0.5) as usize;
-    let right_col_width = width - left_col_width - 3;
-
-    // Left column: centered logo and welcome
-    // Left column: centered logo and welcome
-    let left_lines: Vec<String> = vec![
+    // Left column - centered content
+    let mut left_lines: Vec<String> = vec![
         "".to_string(),
-        center_text(&theme.accent.apply("Welcome back!"), left_col_width),
-        "".to_string(),
-        center_text(&theme.accent.apply("███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗"), left_col_width),
-        center_text(&theme.accent.apply("██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝"), left_col_width),
-        center_text(&theme.accent.apply("███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  "), left_col_width),
-        center_text(&theme.accent.apply("╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  "), left_col_width),
-        center_text(&theme.accent.apply("███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗"), left_col_width),
-        center_text(&theme.accent.apply("╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝"), left_col_width),
-        "".to_string(),
-        center_text(&theme.dim.apply(model), left_col_width),
+        center_text(&theme.accent.apply("Welcome back!"), left_col),
         "".to_string(),
     ];
+    
+    for line in &logo_colored {
+        left_lines.push(center_text(line, left_col));
+    }
+    
+    left_lines.push("".to_string());
+    left_lines.push(center_text(&theme.muted.apply(model), left_col));
+    left_lines.push("".to_string());
 
-    // Right column: tips, LSP, sessions
-    let right_lines: Vec<String> = vec![
-        format!(" {}", theme.accent.apply("Tips")),
-        format!(" {} {}", theme.dim.apply("?"), theme.dim.apply("for keyboard shortcuts")),
-        format!(" {} {}", theme.dim.apply("/"), theme.dim.apply("for commands")),
-        format!(" {} {}", theme.dim.apply("!"), theme.dim.apply("to run bash")),
-        format!(" {} {}", theme.dim.apply("$"), theme.dim.apply("to run python")),
-        format!(" {}", theme.dim.apply(&"─".repeat(right_col_width.saturating_sub(2)))),
-        format!(" {}", theme.accent.apply("LSP Servers")),
-        format!("  {}", theme.dim.apply("○ No LSP servers")),
-        format!(" {}", theme.dim.apply(&"─".repeat(right_col_width.saturating_sub(2)))),
-        format!(" {}", theme.accent.apply("Recent sessions")),
-        format!("  {}", theme.dim.apply("• No recent sessions")),
-    ];
-
-    let max_rows = left_lines.len().max(right_lines.len());
-    let mut padded_left = Vec::new();
-    let mut padded_right = Vec::new();
-    for i in 0..max_rows {
-        let left = left_lines.get(i).cloned().unwrap_or_default();
-        let right = right_lines.get(i).cloned().unwrap_or_default();
-        padded_left.push(pad_to_width(&left, left_col_width));
-        padded_right.push(pad_to_width(&right, right_col_width));
+    // Right column content
+    let mut right_lines: Vec<String> = Vec::new();
+    
+    if show_right_column {
+        let separator_width = (right_col - 2).max(0);
+        let separator = format!(" {}", theme.dim.apply(&"─".repeat(separator_width)));
+        
+        // Tips section
+        right_lines.push(format!(" {}", theme.accent.apply("Tips")));
+        right_lines.push(format!(" {}{}", theme.dim.apply("?"), theme.muted.apply(" for keyboard shortcuts")));
+        right_lines.push(format!(" {}{}", theme.dim.apply("#"), theme.muted.apply(" for prompt actions")));
+        right_lines.push(format!(" {}{}", theme.dim.apply("/"), theme.muted.apply(" for commands")));
+        right_lines.push(format!(" {}{}", theme.dim.apply("!"), theme.muted.apply(" to run bash")));
+        right_lines.push(format!(" {}{}", theme.dim.apply("$"), theme.muted.apply(" to run python")));
+        right_lines.push(separator);
+        
+        // LSP Servers section
+        right_lines.push(format!(" {}", theme.accent.apply("LSP Servers")));
+        right_lines.push(format!("  {}", theme.dim.apply("○ No LSP servers")));
+        right_lines.push(separator);
+        
+        // Recent sessions section
+        right_lines.push(format!(" {}", theme.accent.apply("Recent sessions")));
+        right_lines.push(format!(" {}", theme.dim.apply(" • No recent sessions")));
+        right_lines.push("".to_string());
     }
 
+    // Border characters
     let h = theme.dim.apply("─");
     let v = theme.dim.apply("│");
     let tl = theme.dim.apply("┌");
@@ -95,51 +138,113 @@ fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let bl = theme.dim.apply("└");
     let br = theme.dim.apply("┘");
     let tee = theme.dim.apply("┬");
-    let tee_bottom = theme.dim.apply("┴");
+    let tee_up = theme.dim.apply("┴");
 
-    let mut lines = Vec::new();
+    let mut lines: Vec<String> = Vec::new();
+
+    // Top border with embedded title
     let title = format!(" Serana v{} ", version);
-    let title_styled = theme.dim.apply(&title);
-    let title_len = title.chars().count();
-    let top_line = format!("{}{}{}{}{}{}",
-        tl,
-        title_styled,
-        h.repeat(left_col_width.saturating_sub(title_len + 1)),
-        tee,
-        h.repeat(right_col_width),
-        tr
-    );
-    lines.push(top_line);
-    for i in 0..max_rows {
-        lines.push(format!("{}{}{}{}{}", v, padded_left[i], v, padded_right[i], v));
+    let title_prefix = "───";
+    let title_styled = format!("{}{}", theme.dim.apply(title_prefix), theme.muted.apply(&title));
+    let title_vis_len = title_prefix.chars().count() + title.chars().count();
+    let title_space = box_width - 2;
+    
+    if title_vis_len >= title_space {
+        lines.push(format!("{}{}{}", tl, truncate_to_width(&title_styled, title_space), tr));
+    } else {
+        let after_title = title_space - title_vis_len;
+        lines.push(format!("{}{}{}{}", tl, title_styled, theme.dim.apply(&"─".repeat(after_title)), tr));
     }
 
-    let bottom_line = format!("{}{}{}{}{}", bl, h.repeat(left_col_width), tee_bottom, h.repeat(right_col_width), br);
-    lines.push(bottom_line);
+    // Content rows
+    let max_rows = if show_right_column {
+        left_lines.len().max(right_lines.len())
+    } else {
+        left_lines.len()
+    };
+    
+    for i in 0..max_rows {
+        let left = fit_to_width(left_lines.get(i).cloned().unwrap_or_default(), left_col);
+        if show_right_column {
+            let right = fit_to_width(right_lines.get(i).cloned().unwrap_or_default(), right_col);
+            lines.push(format!("{}{}{}{}{}", v, left, v, right, v));
+        } else {
+            lines.push(format!("{}{}{}", v, left, v));
+        }
+    }
 
-    for line in lines {
-        container.push(Text::styled(line, Style::default()));
+    // Bottom border
+    if show_right_column {
+        lines.push(format!("{}{}{}{}{}", bl, h.repeat(left_col), tee_up, h.repeat(right_col), br));
+    } else {
+        lines.push(format!("{}{}{}", bl, h.repeat(left_col), br));
     }
 
     container.push(Spacer::new(1));
+    for line in lines {
+        container.push(Text::styled(line, Style::default()));
+    }
+    container.push(Spacer::new(1));
 }
 
+/// Calculate visible width (strips ANSI escapes)
+fn visible_width(text: &str) -> usize {
+    strip_ansi_escapes::strip_str(text).chars().count()
+}
+
+/// Center text within a given width
 fn center_text(text: &str, width: usize) -> String {
-    let vis_len = strip_ansi_escapes::strip_str(text).chars().count();
+    let vis_len = visible_width(text);
     if vis_len >= width {
-        return text.to_string();
+        return truncate_to_width(text, width);
     }
     let left_pad = (width - vis_len) / 2;
     let right_pad = width - vis_len - left_pad;
     format!("{}{}{}", " ".repeat(left_pad), text, " ".repeat(right_pad))
 }
 
-fn pad_to_width(text: &str, width: usize) -> String {
-    let vis_len = strip_ansi_escapes::strip_str(text).chars().count();
-    if vis_len >= width {
+/// Fit string to exact width with ANSI-aware truncation/padding
+fn fit_to_width(text: String, width: usize) -> String {
+    let vis_len = visible_width(&text);
+    if vis_len > width {
+        truncate_to_width(&text, width)
+    } else if vis_len < width {
+        format!("{}{}", text, " ".repeat(width - vis_len))
+    } else {
+        text
+    }
+}
+
+/// Truncate string to width, preserving ANSI codes
+fn truncate_to_width(text: &str, width: usize) -> String {
+    let vis_len = visible_width(text);
+    if vis_len <= width {
         return text.to_string();
     }
-    format!("{}{}", text, " ".repeat(width - vis_len))
+    
+    let ellipsis = "…";
+    let max_width = width.saturating_sub(1);
+    let mut result = String::new();
+    let mut current_width = 0;
+    let mut in_escape = false;
+    
+    for char in text.chars() {
+        if char == '\x1b' {
+            in_escape = true;
+        }
+        
+        if in_escape {
+            result.push(char);
+            if char == 'm' {
+                in_escape = false;
+            }
+        } else if current_width < max_width {
+            result.push(char);
+            current_width += 1;
+        }
+    }
+    
+    format!("{}{}", result, ellipsis)
 }
 
 /// Render chat messages with oh-my-pi styling.
@@ -301,6 +406,7 @@ fn render_input(container: &mut Container, app: &App) {
     box_widget.add_child(Box::new(content));
     container.push(box_widget);
 }
+
 /// Render status line at the very bottom (oh-my-pi style).
 fn render_status_line(container: &mut Container, app: &App) {
     let theme = Theme::default();
@@ -388,22 +494,16 @@ pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
 
     // 2. Pending messages (streaming)
     render_pending(root, &app.pending_messages);
-
     // 3. Status messages
     render_status(root, &app.status_messages);
-
     // 4. Todo list
     render_todo(root, &app.todo_items);
-
     // 5. BTW notes
     render_btw(root, &app.btw_notes);
-
     // 6. Spacer
     root.push(Spacer::new(1));
-
     // 7. Input area
     render_input(root, app);
-
     // 8. Status line at bottom
     render_status_line(root, app);
 
