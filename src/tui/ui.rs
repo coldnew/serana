@@ -36,47 +36,110 @@ impl Default for Theme {
     }
 }
 
-/// Render welcome screen with two-column bordered box layout (oh-my-pi style).
+/// Render welcome screen with true two-column layout (oh-my-pi style).
 fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let theme = Theme::default();
+    let width = 80;
 
     container.push(Spacer::new(1));
 
-    // Two-column welcome box matching oh-my-pi structure
-    let mut welcome_box = BoxWidget::new()
-        .with_title(&format!(" Serana v{} ", version))
-        .with_border_style(Style::new().fg(Colors::GRAY));
+    let left_col_width = (width as f64 * 0.5) as usize;
+    let right_col_width = width - left_col_width - 3;
 
-    // Left column: centered logo and model
-    welcome_box.add_child(Box::new(Spacer::new(1)));
-    welcome_box.add_child(Box::new(Text::styled_centered("Welcome back!", theme.accent.bold())));
-    welcome_box.add_child(Box::new(Spacer::new(1)));
-    // Logo (centered)
-    welcome_box.add_child(Box::new(Text::styled_centered("███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled_centered("██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled_centered("███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  ", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled_centered("╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  ", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled_centered("███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled_centered("╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝", theme.accent)));
-    welcome_box.add_child(Box::new(Spacer::new(1)));
-    welcome_box.add_child(Box::new(Text::styled_centered(model, theme.dim)));
-    welcome_box.add_child(Box::new(Spacer::new(1)));
+    // Left column: centered logo and welcome
+    // Left column: centered logo and welcome
+    let left_lines: Vec<String> = vec![
+        "".to_string(),
+        center_text(&theme.accent.apply("Welcome back!"), left_col_width),
+        "".to_string(),
+        center_text(&theme.accent.apply("███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗"), left_col_width),
+        center_text(&theme.accent.apply("██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝"), left_col_width),
+        center_text(&theme.accent.apply("███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  "), left_col_width),
+        center_text(&theme.accent.apply("╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  "), left_col_width),
+        center_text(&theme.accent.apply("███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗"), left_col_width),
+        center_text(&theme.accent.apply("╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝"), left_col_width),
+        "".to_string(),
+        center_text(&theme.dim.apply(model), left_col_width),
+        "".to_string(),
+    ];
 
-    // Right column: Tips, LSP Servers, Recent Sessions
-    welcome_box.add_child(Box::new(Text::styled("  Tips", theme.accent.bold())));
-    welcome_box.add_child(Box::new(Text::styled("  ? for keyboard shortcuts", theme.dim)));
-    welcome_box.add_child(Box::new(Text::styled("  / for commands", theme.dim)));
-    welcome_box.add_child(Box::new(Text::styled("  ! to run bash", theme.dim)));
-    welcome_box.add_child(Box::new(Text::styled("  $ to run python", theme.dim)));
-    welcome_box.add_child(Box::new(Spacer::new(1)));
-    welcome_box.add_child(Box::new(Text::styled("  LSP Servers", theme.accent.bold())));
-    welcome_box.add_child(Box::new(Text::styled("  ○ No LSP servers", theme.dim)));
-    welcome_box.add_child(Box::new(Spacer::new(1)));
-    welcome_box.add_child(Box::new(Text::styled("  Recent sessions", theme.accent.bold())));
-    welcome_box.add_child(Box::new(Text::styled("  • No recent sessions", theme.dim)));
+    // Right column: tips, LSP, sessions
+    let right_lines: Vec<String> = vec![
+        format!(" {}", theme.accent.apply("Tips")),
+        format!(" {} {}", theme.dim.apply("?"), theme.dim.apply("for keyboard shortcuts")),
+        format!(" {} {}", theme.dim.apply("/"), theme.dim.apply("for commands")),
+        format!(" {} {}", theme.dim.apply("!"), theme.dim.apply("to run bash")),
+        format!(" {} {}", theme.dim.apply("$"), theme.dim.apply("to run python")),
+        format!(" {}", theme.dim.apply(&"─".repeat(right_col_width.saturating_sub(2)))),
+        format!(" {}", theme.accent.apply("LSP Servers")),
+        format!("  {}", theme.dim.apply("○ No LSP servers")),
+        format!(" {}", theme.dim.apply(&"─".repeat(right_col_width.saturating_sub(2)))),
+        format!(" {}", theme.accent.apply("Recent sessions")),
+        format!("  {}", theme.dim.apply("• No recent sessions")),
+    ];
 
-    container.push(welcome_box);
+    let max_rows = left_lines.len().max(right_lines.len());
+    let mut padded_left = Vec::new();
+    let mut padded_right = Vec::new();
+    for i in 0..max_rows {
+        let left = left_lines.get(i).cloned().unwrap_or_default();
+        let right = right_lines.get(i).cloned().unwrap_or_default();
+        padded_left.push(pad_to_width(&left, left_col_width));
+        padded_right.push(pad_to_width(&right, right_col_width));
+    }
+
+    let h = theme.dim.apply("─");
+    let v = theme.dim.apply("│");
+    let tl = theme.dim.apply("┌");
+    let tr = theme.dim.apply("┐");
+    let bl = theme.dim.apply("└");
+    let br = theme.dim.apply("┘");
+    let tee = theme.dim.apply("┬");
+    let tee_bottom = theme.dim.apply("┴");
+
+    let mut lines = Vec::new();
+    let title = format!(" Serana v{} ", version);
+    let title_styled = theme.dim.apply(&title);
+    let title_len = title.chars().count();
+    let top_line = format!("{}{}{}{}{}{}",
+        tl,
+        title_styled,
+        h.repeat(left_col_width.saturating_sub(title_len + 1)),
+        tee,
+        h.repeat(right_col_width),
+        tr
+    );
+    lines.push(top_line);
+    for i in 0..max_rows {
+        lines.push(format!("{}{}{}{}{}", v, padded_left[i], v, padded_right[i], v));
+    }
+
+    let bottom_line = format!("{}{}{}{}{}", bl, h.repeat(left_col_width), tee_bottom, h.repeat(right_col_width), br);
+    lines.push(bottom_line);
+
+    for line in lines {
+        container.push(Text::styled(line, Style::default()));
+    }
+
     container.push(Spacer::new(1));
+}
+
+fn center_text(text: &str, width: usize) -> String {
+    let vis_len = strip_ansi_escapes::strip_str(text).chars().count();
+    if vis_len >= width {
+        return text.to_string();
+    }
+    let left_pad = (width - vis_len) / 2;
+    let right_pad = width - vis_len - left_pad;
+    format!("{}{}{}", " ".repeat(left_pad), text, " ".repeat(right_pad))
+}
+
+fn pad_to_width(text: &str, width: usize) -> String {
+    let vis_len = strip_ansi_escapes::strip_str(text).chars().count();
+    if vis_len >= width {
+        return text.to_string();
+    }
+    format!("{}{}", text, " ".repeat(width - vis_len))
 }
 
 /// Render chat messages with oh-my-pi styling.
