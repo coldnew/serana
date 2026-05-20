@@ -1,10 +1,9 @@
 //! UI components
 
-pub mod chat;
-pub mod sidebar;
-pub mod status;
+pub mod box_widget;
+pub mod spacer;
+pub mod text;
 
-// Re-export component types
-pub use chat::ChatPanel;
-pub use sidebar::SidebarPanel;
-pub use status::StatusBar;
+pub use box_widget::BoxWidget;
+pub use spacer::Spacer;
+pub use text::Text;

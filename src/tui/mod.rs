@@ -1,107 +1,60 @@
 //! TUI frontend for serana
-//! 
-//! Provides a terminal user interface using ratatui for interactive
-//! coding agent sessions.
+//!
+//! Custom inline TUI inspired by oh-my-pi, with vertical flow rendering and no
+//! alternate-screen takeover.
 
 pub mod app;
-pub mod event;
-pub mod ui;
+pub mod component;
 pub mod components;
-pub mod theme;
+pub mod event;
+pub mod style;
+pub mod terminal;
+pub mod tui;
+pub mod ui;
 
-use std::io::{self, Stdout};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::{backend::CrosstermBackend, Terminal};
-
 use self::app::App;
-use self::event::{Event, EventHandler};
+use self::event::Event;
+use self::tui::Tui;
 use crate::Result;
 
-/// RAII guard to ensure terminal is restored on drop
-struct TerminalGuard {
-    restored: bool,
-}
-
-impl TerminalGuard {
-    fn new() -> Result<Self> {
-        enable_raw_mode()?;
-        Ok(Self { restored: false })
-    }
-    
-    fn restore(&mut self) -> Result<()> {
-        if self.restored {
-            return Ok(());
-        }
-        self.restored = true;
-        
-        // Try to restore terminal state, ignore errors
-        let _ = disable_raw_mode();
-        let mut stdout = io::stdout();
-        let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
-        let _ = Terminal::new(CrosstermBackend::new(stdout)).and_then(|mut t| t.show_cursor());
-        
-        Ok(())
-    }
-}
-
-impl Drop for TerminalGuard {
-    fn drop(&mut self) {
-        let _ = self.restore();
-    }
-}
-
-/// Run the TUI application
-pub fn run(workspace: std::path::PathBuf) -> Result<()> {
-    // Create guard that will restore terminal on drop (even on panic)
-    let mut guard = TerminalGuard::new()?;
-    
-    // Setup terminal
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    // Create app and event handler
+/// Run the TUI application.
+pub fn run(workspace: PathBuf) -> Result<()> {
+    let mut tui = Tui::new()?;
     let mut app = App::new(workspace);
-    let events = EventHandler::new(Duration::from_millis(250));
+    let events = event::EventHandler::new(Duration::from_millis(16));
 
-    // Main loop
-    let res = run_app(&mut terminal, &mut app, events);
+    tui.clear_screen()?;
+    tui.hide_cursor()?;
 
-    // Explicitly restore terminal before returning
-    guard.restore()?;
-    
-    // Show cursor again after guard restoration
-    terminal.show_cursor()?;
+    let result = run_app(&mut tui, &mut app, events);
 
-    res
+    tui.show_cursor()?;
+    tui.restore()?;
+    result
 }
 
-fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    app: &mut App,
-    mut events: EventHandler,
-) -> Result<()> {
+fn run_app(tui: &mut Tui, app: &mut App, mut events: event::EventHandler) -> Result<()> {
     loop {
-        terminal.draw(|f| ui::draw(f, app))?;
+        ui::draw(tui, app)?;
+        tui.render()?;
 
         match events.next()? {
             Event::Key(key_event) => {
                 if !app.handle_key_event(key_event)? {
                     return Ok(());
                 }
+                tui.request_render();
             }
             Event::Resize(width, height) => {
                 app.handle_resize(width, height);
+                tui.request_render();
             }
             Event::Tick => {
                 app.tick();
+                tui.request_render();
             }
         }
     }

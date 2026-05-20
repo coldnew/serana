@@ -1,92 +1,40 @@
-//! Application state machine for the TUI
+//! Application state machine.
 
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::agent::{Agent, coding::CodingAgent};
-use crate::config::Config;
-use crate::llm::openai::OpenAiClient;
-use crate::llm::LlmClient;
-use crate::tools::ToolRegistry;
 use crate::Result;
 
-/// Application state
+/// Application state.
+#[derive(Debug)]
 pub struct App {
-    /// Current mode
-    pub mode: AppMode,
-    /// Chat message history
-    pub messages: Vec<ChatMessage>,
-    /// Current input buffer
-    pub input: String,
-    /// Cursor position in input
-    pub input_cursor: usize,
-    /// Workspace path
     pub workspace: PathBuf,
-    /// Files in context
-    pub context_files: Vec<PathBuf>,
-    /// Status message
-    pub status: String,
-    /// Current model name
+    pub messages: Vec<ChatMessage>,
+    pub input: String,
+    pub cursor: usize,
+    pub scroll: usize,
+    pub mode: AppMode,
     pub model: String,
-    /// Token count (approximate)
-    pub token_count: usize,
-    /// Agent instance
-    #[allow(dead_code)]
-    agent: CodingAgent,
-    /// Should quit
     pub should_quit: bool,
-}
-
-/// Application mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppMode {
-    /// Normal mode - browsing
-    Normal,
-    /// Input mode - typing message
-    Input,
-    /// Processing - waiting for LLM
-    Processing,
-}
-
-/// Chat message
-#[derive(Debug, Clone)]
-pub struct ChatMessage {
-    pub role: MessageRole,
-    pub content: String,
-    pub tool_calls: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MessageRole {
-    User,
-    Agent,
-    System,
+    pub tick_count: u64,
 }
 
 impl App {
     pub fn new(workspace: PathBuf) -> Self {
-        let config = Config::load().unwrap_or_default();
-        let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config.clone()));
-        let tools = ToolRegistry::new();
-        let agent = CodingAgent::new(llm, tools);
-
         Self {
-            mode: AppMode::Normal,
+            workspace,
             messages: Vec::new(),
             input: String::new(),
-            input_cursor: 0,
-            workspace: workspace.clone(),
-            context_files: Vec::new(),
-            status: "Ready".to_string(),
-            model: config.llm.model,
-            token_count: 0,
-            agent,
+            cursor: 0,
+            scroll: 0,
+            mode: AppMode::Normal,
+            model: "gpt-4o".to_string(),
             should_quit: false,
+            tick_count: 0,
         }
     }
 
-    /// Handle keyboard event. Returns false if should quit.
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
         match self.mode {
             AppMode::Normal => self.handle_normal_mode(key),
@@ -97,144 +45,131 @@ impl App {
 
     fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
-            KeyCode::Char('q') => {
-                self.should_quit = true;
-                Ok(false)
-            }
-            KeyCode::Char('i') | KeyCode::Enter => {
+            KeyCode::Char('i') => {
                 self.mode = AppMode::Input;
-                Ok(true)
             }
-            KeyCode::Char(':') => {
-                // Command mode (future)
-                Ok(true)
+            KeyCode::Char('q') | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.should_quit = true;
+                return Ok(false);
             }
-            _ => Ok(true),
-        }
-    }
-
-    fn handle_input_mode(&mut self, key: KeyEvent) -> Result<bool> {
-        match key.code {
-            KeyCode::Esc => {
-                self.mode = AppMode::Normal;
-                Ok(true)
-            }
-            KeyCode::Enter => {
-                if !self.input.is_empty() {
-                    self.submit_input()?;
-                }
-                Ok(true)
-            }
-            KeyCode::Char(c) => {
-                if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                    self.mode = AppMode::Normal;
-                    return Ok(true);
-                }
-                self.input.insert(self.input_cursor, c);
-                self.input_cursor += c.len_utf8();
-                Ok(true)
-            }
-            KeyCode::Backspace => {
-                if self.input_cursor > 0 {
-                    self.input_cursor -= 1;
-                    self.input.remove(self.input_cursor);
-                }
-                Ok(true)
-            }
-            KeyCode::Delete => {
-                if self.input_cursor < self.input.len() {
-                    self.input.remove(self.input_cursor);
-                }
-                Ok(true)
-            }
-            KeyCode::Left => {
-                if self.input_cursor > 0 {
-                    self.input_cursor -= 1;
-                }
-                Ok(true)
-            }
-            KeyCode::Right => {
-                if self.input_cursor < self.input.len() {
-                    self.input_cursor += 1;
-                }
-                Ok(true)
-            }
-            KeyCode::Home => {
-                self.input_cursor = 0;
-                Ok(true)
-            }
-            KeyCode::End => {
-                self.input_cursor = self.input.len();
-                Ok(true)
-            }
-            _ => Ok(true),
-        }
-    }
-
-    fn handle_processing_mode(&mut self, key: KeyEvent) -> Result<bool> {
-        // Allow escape to cancel processing
-        if key.code == KeyCode::Esc {
-            self.mode = AppMode::Normal;
-            self.status = "Cancelled".to_string();
+            _ => {}
         }
         Ok(true)
     }
 
-    fn submit_input(&mut self) -> Result<()> {
-        let content = std::mem::take(&mut self.input);
-        self.input_cursor = 0;
+    fn handle_input_mode(&mut self, key: KeyEvent) -> Result<bool> {
+        match key.code {
+            KeyCode::Enter => {
+                if !self.input.is_empty() {
+                    self.submit_message();
+                }
+            }
+            KeyCode::Esc => {
+                if self.input.is_empty() {
+                    self.mode = AppMode::Normal;
+                } else {
+                    self.input.clear();
+                    self.cursor = 0;
+                }
+            }
+            KeyCode::Backspace => {
+                if self.cursor > 0 {
+                    self.input.remove(self.cursor - 1);
+                    self.cursor -= 1;
+                }
+            }
+            KeyCode::Delete => {
+                if self.cursor < self.input.len() {
+                    self.input.remove(self.cursor);
+                }
+            }
+            KeyCode::Left => {
+                if self.cursor > 0 {
+                    self.cursor -= 1;
+                }
+            }
+            KeyCode::Right => {
+                if self.cursor < self.input.len() {
+                    self.cursor += 1;
+                }
+            }
+            KeyCode::Home => {
+                self.cursor = 0;
+            }
+            KeyCode::End => {
+                self.cursor = self.input.len();
+            }
+            KeyCode::Char(c) => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'd' {
+                    self.should_quit = true;
+                    return Ok(false);
+                }
+                self.input.insert(self.cursor, c);
+                self.cursor += 1;
+            }
+            _ => {}
+        }
+        Ok(true)
+    }
 
-        // Add user message
+    fn handle_processing_mode(&mut self, key: KeyEvent) -> Result<bool> {
+        if let KeyCode::Esc = key.code {
+            // Cancel processing
+            self.mode = AppMode::Normal;
+        }
+        Ok(true)
+    }
+
+    fn submit_message(&mut self) {
+        let content = std::mem::take(&mut self.input);
+        self.cursor = 0;
+
         self.messages.push(ChatMessage {
             role: MessageRole::User,
-            content: content.clone(),
+            content,
             tool_calls: Vec::new(),
         });
 
-        // Switch to processing mode
-        self.mode = AppMode::Processing;
-        self.status = "Processing...".to_string();
-
-        // Execute agent in blocking context
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                self.agent.execute(&content).await
-            })
+        // For now, add a placeholder response
+        // TODO: integrate with actual LLM
+        self.messages.push(ChatMessage {
+            role: MessageRole::Agent,
+            content: "I received your message. LLM integration pending.".to_string(),
+            tool_calls: Vec::new(),
         });
 
-        match result {
-            Ok(output) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::Agent,
-                    content: output.response,
-                    tool_calls: output.tool_calls.iter().map(|tc| {
-                        format!("{}({})", tc.name, serde_json::to_string(&tc.arguments).unwrap_or_default())
-                    }).collect(),
-                });
-                self.status = if output.success { "Ready".to_string() } else { "Error".to_string() };
-            }
-            Err(e) => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    content: format!("Error: {}", e),
-                    tool_calls: Vec::new(),
-                });
-                self.status = "Error".to_string();
-            }
-        }
-
         self.mode = AppMode::Normal;
-
-        Ok(())
     }
 
-    /// Handle terminal resize
     pub fn handle_resize(&mut self, _width: u16, _height: u16) {
-        // No special handling needed - ratatui handles it
+        // Handle terminal resize
     }
 
-    /// Called on tick interval
     pub fn tick(&mut self) {
-        // Update animations, check for async events, etc.
+        self.tick_count += 1;
     }
+}
+
+/// Application mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    Normal,
+    Input,
+    Processing,
+}
+
+/// Chat message.
+#[derive(Debug, Clone)]
+pub struct ChatMessage {
+    pub role: MessageRole,
+    pub content: String,
+    pub tool_calls: Vec<String>,
+}
+
+/// Message role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageRole {
+    User,
+    Agent,
+    System,
 }

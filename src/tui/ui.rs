@@ -1,136 +1,187 @@
-//! Simple vertical layout matching oh-my-pi style
+//! UI rendering — vertical flow like oh-my-pi.
 
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph, Wrap},
-    Frame,
-};
+use super::app::{App, AppMode, ChatMessage, MessageRole};
+use super::component::Container;
+use super::components::{BoxWidget, Spacer, Text};
+use super::style::{Color, Colors, Style};
+use super::tui::Tui;
 
-use super::app::{App, AppMode, MessageRole};
-use super::theme::Theme;
-
-/// Draw the main UI - simple vertical layout like oh-my-pi
-pub fn draw(f: &mut Frame, app: &App) {
-    let theme = Theme::default();
-    
-    // Simple vertical layout: chat area + input area
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(10),     // Chat area (flexible)
-            Constraint::Length(3),   // Input area (compact)
-        ])
-        .split(f.area());
-
-    draw_chat(f, app, theme, chunks[0]);
-    draw_input(f, app, theme, chunks[1]);
+/// Theme colors matching oh-my-pi dark theme.
+pub struct Theme {
+    pub accent: Style,
+    pub success: Style,
+    pub warning: Style,
+    pub error: Style,
+    pub dim: Style,
+    pub info: Style,
+    pub user_bg: Style,
+    pub agent_bg: Style,
 }
 
-/// Draw chat area with messages (scrolling vertically)
-fn draw_chat(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
-    let mut lines: Vec<Line> = Vec::new();
-    
-    if app.messages.is_empty() {
-        // Welcome screen - simple and clean like oh-my-pi
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("serana", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
-        ]));
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("Your AI coding companion", Style::default().fg(theme.dim)),
-        ]));
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("Model: ", Style::default().fg(theme.dim)),
-            Span::styled(&app.model, Style::default().fg(theme.info)),
-        ]));
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::styled("Type a message and press Enter to start", Style::default().fg(theme.dim)),
-        ]));
-    } else {
-        // Render messages
-        for msg in &app.messages {
-            match msg.role {
-                MessageRole::User => {
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(vec![
-                        Span::styled("You", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-                    ]));
-                    
-                    for line in msg.content.lines() {
-                        lines.push(Line::from(line.to_string()));
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            accent: Style::new().fg(Colors::BRIGHT_BLUE).bold(),
+            success: Style::new().fg(Colors::BRIGHT_GREEN).bold(),
+            warning: Style::new().fg(Colors::BRIGHT_YELLOW).bold(),
+            error: Style::new().fg(Colors::BRIGHT_RED).bold(),
+            dim: Style::new().fg(Colors::GRAY).dim(),
+            info: Style::new().fg(Colors::BRIGHT_CYAN),
+            user_bg: Style::new().bg(Color::Rgb(35, 35, 45)),
+            agent_bg: Style::new().bg(Color::Rgb(25, 25, 35)),
+        }
+    }
+}
+
+/// Render welcome screen with ASCII art logo.
+fn render_welcome(container: &mut Container, model: &str) {
+    let theme = Theme::default();
+
+    // ASCII logo
+    container.push(Spacer::new(1));
+    container.push(Text::styled(
+        "  ____                  _       ",
+        theme.accent,
+    ));
+    container.push(Text::styled(
+        " / ___|  ___ _ ____   _| | ___  ",
+        theme.accent,
+    ));
+    container.push(Text::styled(
+        " \\___ \\ / _ \\ '__\\ \\ / / |/ _ \\ ",
+        theme.accent,
+    ));
+    container.push(Text::styled(
+        "  ___) |  __/ |   \\ V /| |  __/ ",
+        theme.accent,
+    ));
+    container.push(Text::styled(
+        " |____/ \\___|_|    \\_/ |_|\\___| ",
+        theme.accent,
+    ));
+    container.push(Spacer::new(2));
+
+    container.push(Text::styled("Your AI coding companion", theme.dim));
+    container.push(Spacer::new(1));
+
+    let model_info = format!("Model: {}", model);
+    container.push(Text::styled(&model_info, theme.info));
+    container.push(Spacer::new(2));
+
+    container.push(Text::styled(
+        "Type a message and press Enter to start",
+        theme.dim,
+    ));
+}
+
+/// Render chat messages with oh-my-pi styling.
+fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
+    let theme = Theme::default();
+
+    for msg in messages {
+        match msg.role {
+            MessageRole::User => {
+                container.push(Spacer::new(1));
+                container.push(Text::styled("You", theme.success));
+                for line in msg.content.lines() {
+                    container.push(Text::new(line));
+                }
+            }
+            MessageRole::Agent => {
+                container.push(Spacer::new(1));
+                container.push(Text::styled("Serana", theme.accent));
+                for line in msg.content.lines() {
+                    container.push(Text::new(line));
+                }
+                // Inline tool calls
+                if !msg.tool_calls.is_empty() {
+                    container.push(Spacer::new(1));
+                    for tool in &msg.tool_calls {
+                        container.push(Text::styled(
+                            &format!("⚡ {}", tool),
+                            theme.warning,
+                        ));
                     }
                 }
-                MessageRole::Agent => {
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(vec![
-                        Span::styled("Serana", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
-                    ]));
-                    
-                    for line in msg.content.lines() {
-                        lines.push(Line::from(line.to_string()));
-                    }
-                    
-                    // Tool calls inline
-                    if !msg.tool_calls.is_empty() {
-                        lines.push(Line::from(""));
-                        for tool in &msg.tool_calls {
-                            lines.push(Line::from(vec![
-                                Span::styled("⚡ ", Style::default().fg(theme.warning)),
-                                Span::styled(tool, Style::default().fg(theme.info)),
-                            ]));
-                        }
-                    }
-                }
-                MessageRole::System => {
-                    lines.push(Line::from(""));
-                    lines.push(Line::from(vec![
-                        Span::styled("System: ", Style::default().fg(theme.warning)),
-                        Span::styled(&msg.content, Style::default().fg(theme.dim)),
-                    ]));
-                }
+            }
+            MessageRole::System => {
+                container.push(Spacer::new(1));
+                container.push(Text::styled(
+                    &format!("System: {}", msg.content),
+                    theme.warning,
+                ));
             }
         }
     }
-    
-    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-    f.render_widget(paragraph, area);
 }
 
-/// Draw input area at bottom
-fn draw_input(f: &mut Frame, app: &App, theme: Theme, area: Rect) {
-    let border_color = match app.mode {
+/// Render input box at bottom.
+fn render_input(container: &mut Container, app: &App) {
+    let theme = Theme::default();
+
+    let border_style = match app.mode {
         AppMode::Normal => theme.dim,
         AppMode::Input => theme.accent,
         AppMode::Processing => theme.warning,
     };
-    
+
     let title = match app.mode {
         AppMode::Input => " Input ",
         AppMode::Processing => " Working ",
         AppMode::Normal => " Input ",
     };
-    
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .padding(Padding::new(1, 1, 0, 0));
-    
-    let text = if app.input.is_empty() {
-        if app.mode == AppMode::Processing {
-            Span::styled("Processing...", Style::default().fg(theme.dim))
-        } else {
-            Span::styled("Type your message...", Style::default().fg(Color::DarkGray))
+
+    let mut box_widget = BoxWidget::new()
+        .with_title(title)
+        .with_border_style(border_style);
+
+    let content = if app.input.is_empty() {
+        match app.mode {
+            AppMode::Processing => Text::styled("Processing...", theme.dim),
+            _ => Text::styled("Type your message...", theme.dim),
         }
     } else {
-        Span::raw(&app.input)
+        Text::new(&app.input)
     };
-    
-    let paragraph = Paragraph::new(text).block(block);
-    f.render_widget(paragraph, area);
+
+    box_widget.add_child(Box::new(content));
+    container.push(box_widget);
+}
+
+/// Render status line at the very bottom.
+fn render_status_line(container: &mut Container, model: &str, mode: AppMode) {
+    let theme = Theme::default();
+
+    let mode_text = match mode {
+        AppMode::Normal => "NORMAL",
+        AppMode::Input => "INPUT",
+        AppMode::Processing => "BUSY",
+    };
+
+    let status = format!(" {} │ {} │ Ctrl+D: exit ", mode_text, model);
+    container.push(Text::styled(&status, theme.dim));
+}
+
+/// Draw the complete UI.
+pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
+    let root = tui.root_mut();
+    root.clear();
+
+    // Welcome or messages
+    if app.messages.is_empty() {
+        render_welcome(root, &app.model);
+    } else {
+        render_messages(root, &app.messages);
+    }
+
+    // Spacer between content and input
+    root.push(Spacer::new(1));
+
+    // Input area
+    render_input(root, app);
+
+    // Status line
+    render_status_line(root, &app.model, app.mode);
+
+    Ok(())
 }
