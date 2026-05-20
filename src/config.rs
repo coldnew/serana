@@ -19,6 +19,28 @@ pub struct Config {
     pub max_tokens: usize,
     #[serde(default)]
     pub interactive: bool,
+    /// Legacy: default_model at top level (for backwards compatibility)
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// Legacy: default_provider at top level (for backwards compatibility)
+    #[serde(default)]
+    pub default_provider: Option<String>,
+    /// Legacy: providers array from older config format
+    #[serde(default)]
+    pub providers: Vec<LegacyProviderConfig>,
+}
+
+/// Legacy provider entry from older config format.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LegacyProviderConfig {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub base_url: Option<String>,
 }
 
 /// Provider configuration
@@ -73,6 +95,9 @@ impl Default for Config {
             workspace: PathBuf::from("."),
             max_tokens: 4096,
             interactive: false,
+            default_model: None,
+            default_provider: None,
+            providers: Vec::new(),
         }
     }
 }
@@ -98,6 +123,29 @@ impl Config {
         
         let mut config: Config = toml::from_str(&contents)
             .with_context(|| format!("Failed to parse config from {:?}", path))?;
+        
+        // Apply legacy config format compatibility
+        if let Some(model) = &config.default_model {
+            if config.llm.model == default_model() {
+                config.llm.model = model.clone();
+            }
+        }
+        if let Some(provider) = &config.default_provider {
+            if config.provider.name == default_provider() {
+                config.provider.name = provider.clone();
+            }
+        }
+        // Use providers array if available (legacy format)
+        if let Some(provider) = config.default_provider.as_ref()
+            .and_then(|id| config.providers.iter().find(|p| &p.id == id))
+        {
+            if config.llm.model == default_model() && !provider.model.is_empty() {
+                config.llm.model = provider.model.clone();
+            }
+            if let Some(url) = &provider.base_url {
+                config.provider.url = Some(url.clone());
+            }
+        }
         
         // Apply environment variable overrides
         config.apply_env_overrides();
@@ -179,6 +227,9 @@ pub fn generate_sample_config() -> String {
         workspace: PathBuf::from("."),
         max_tokens: 4096,
         interactive: false,
+        default_model: None,
+        default_provider: None,
+        providers: Vec::new(),
     };
     
     toml::to_string_pretty(&config).unwrap_or_default()

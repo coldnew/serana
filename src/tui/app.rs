@@ -58,7 +58,7 @@ impl App {
             cursor: 0,
             scroll: 0,
             mode: AppMode::Normal,
-            model: "gpt-4o".to_string(),
+            model: "gpt-4o".to_string(), // Will be updated from config
             should_quit: false,
             tick_count: 0,
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -73,6 +73,13 @@ impl App {
             git_unstaged: 0,
             git_untracked: 0,
         }
+    }
+
+    /// Create App with model from config
+    pub fn with_model(workspace: PathBuf, model: String) -> Self {
+        let mut app = Self::new(workspace);
+        app.model = model;
+        app
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
