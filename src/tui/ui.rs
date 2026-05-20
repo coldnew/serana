@@ -1,10 +1,11 @@
 //! UI rendering — vertical flow like oh-my-pi.
 
-use super::app::{App, AppMode, ChatMessage, MessageRole, TodoItem};
+use super::app::{App, AppMode, ChatMessage, MessageRole, TodoItem, ToolCallStatus};
 use super::component::Container;
 use super::components::{BoxWidget, Markdown, Spacer, Text};
 use super::style::{Colors, Style};
 use super::tui::Tui;
+use super::tool_execution::{ToolExecution, ToolState};
 
 /// Theme colors matching oh-my-pi dark theme.
 pub struct Theme {
@@ -35,12 +36,16 @@ impl Default for Theme {
     }
 }
 
-/// Render welcome screen with ASCII art logo (oh-my-pi style).
-fn render_welcome(container: &mut Container, version: &str) {
+/// Render welcome screen with two-column layout (oh-my-pi style).
+fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let theme = Theme::default();
 
-    // Oh My Pi style block logo
+    // Left column - centered logo and model info
     container.push(Spacer::new(1));
+    container.push(Text::styled("  Welcome back!", theme.accent.bold()));
+    container.push(Spacer::new(1));
+
+    // Serana ASCII logo
     container.push(Text::styled(
         "  ███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗",
         theme.accent,
@@ -65,26 +70,15 @@ fn render_welcome(container: &mut Container, version: &str) {
         "  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
         theme.accent,
     ));
-    container.push(Spacer::new(2));
-
-    // Tagline
-    container.push(Text::styled("  Your AI coding companion", theme.dim));
     container.push(Spacer::new(1));
-
-    // Version
-    let version_text = format!("  Version: {}", version);
-    container.push(Text::styled(&version_text, theme.info));
+    container.push(Text::styled(format!("  {}", model), theme.dim));
+    container.push(Text::styled(format!("  v{}", version), theme.dim));
     container.push(Spacer::new(2));
 
-    // Instructions
-    container.push(Text::styled(
-        "  Type your message and press Enter to send",
-        theme.dim,
-    ));
-    container.push(Text::styled(
-        "  Esc to cancel, Ctrl+D to quit",
-        theme.dim,
-    ));
+    // Right column content (tips, LSP status)
+    container.push(Text::styled("  Tips", theme.accent.bold()));
+    container.push(Text::styled("  Type your message and press Enter to send", theme.dim));
+    container.push(Text::styled("  Esc to cancel, Ctrl+D to quit", theme.dim));
     container.push(Spacer::new(1));
 }
 
@@ -106,7 +100,7 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
                 container.push(Spacer::new(1));
                 // Agent prefix with star
                 container.push(Text::styled("  ★ Serana", theme.accent));
-                
+
                 // Thinking block (if present)
                 if let Some(thinking) = &msg.thinking {
                     container.push(Text::styled("  ┌─ thinking ─", theme.thinking));
@@ -116,32 +110,27 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
                     container.push(Text::styled("  └─", theme.thinking));
                     container.push(Spacer::new(1));
                 }
-                
+
                 for line in msg.content.lines() {
                     container.push(Markdown::new(format!("    {}", line)));
                 }
-                
-                // Inline tool calls
-                if !msg.tool_calls.is_empty() {
-                    container.push(Spacer::new(1));
-                    for tool in &msg.tool_calls {
-                        let tool_icon = match tool.status {
-                            super::app::ToolCallStatus::Pending => "◌",
-                            super::app::ToolCallStatus::Running => "◐",
-                            super::app::ToolCallStatus::Success => "✓",
-                            super::app::ToolCallStatus::Error => "✗",
-                        };
-                        let tool_style = match tool.status {
-                            super::app::ToolCallStatus::Pending => theme.dim,
-                            super::app::ToolCallStatus::Running => theme.warning,
-                            super::app::ToolCallStatus::Success => theme.success,
-                            super::app::ToolCallStatus::Error => theme.error,
-                        };
-                        container.push(Text::styled(
-                            format!("  {} {}", tool_icon, tool.name),
-                            tool_style,
-                        ));
+
+                // Inline tool calls using ToolExecution component
+                for tool in &msg.tool_calls {
+                    let mut tool_ui = ToolExecution::new(&tool.name);
+                    tool_ui.set_state(match tool.status {
+                        ToolCallStatus::Pending => ToolState::Pending,
+                        ToolCallStatus::Running => ToolState::Running,
+                        ToolCallStatus::Success => ToolState::Success,
+                        ToolCallStatus::Error => ToolState::Error,
+                    });
+                    if !tool.args.is_empty() {
+                        tool_ui.set_args(&tool.args);
                     }
+                    if let Some(result) = &tool.result {
+                        tool_ui.set_output(result);
+                    }
+                    container.push(tool_ui);
                 }
             }
             MessageRole::System => {
@@ -303,7 +292,7 @@ pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
 
     // 1. Welcome or messages (oh-my-pi order)
     if app.show_welcome && app.messages.is_empty() {
-        render_welcome(root, &app.version);
+        render_welcome(root, &app.version, &app.model);
     } else {
         render_messages(root, &app.messages);
     }
