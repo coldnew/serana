@@ -26,6 +26,15 @@ impl Text {
         }
     }
 
+    /// Create centered text (no wrap, centered in terminal width)
+    pub fn styled_centered(content: impl Into<String>, style: Style) -> Self {
+        Self {
+            content: content.into(),
+            style: Some(style),
+            wrap: false,
+        }
+    }
+
     pub fn no_wrap(mut self) -> Self {
         self.wrap = false;
         self

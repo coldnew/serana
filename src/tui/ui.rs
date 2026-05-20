@@ -36,40 +36,46 @@ impl Default for Theme {
     }
 }
 
-/// Render welcome screen with bordered box layout (oh-my-pi style).
+/// Render welcome screen with two-column bordered box layout (oh-my-pi style).
 fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let theme = Theme::default();
 
     container.push(Spacer::new(1));
 
-    // Welcome box with logo and tips
+    // Two-column welcome box matching oh-my-pi structure
     let mut welcome_box = BoxWidget::new()
-        .with_title(" Serana ")
+        .with_title(&format!(" Serana v{} ", version))
         .with_border_style(Style::new().fg(Colors::GRAY));
 
-    // Logo
-    welcome_box.add_child(Box::new(Text::styled("  ███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled("  ██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled("  ███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  ", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled("  ╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  ", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled("  ███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗", theme.accent)));
-    welcome_box.add_child(Box::new(Text::styled("  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝", theme.accent)));
+    // Left column: centered logo and model
     welcome_box.add_child(Box::new(Spacer::new(1)));
-    welcome_box.add_child(Box::new(Text::styled(format!("  {} v{}", model, version), theme.dim)));
+    welcome_box.add_child(Box::new(Text::styled_centered("Welcome back!", theme.accent.bold())));
+    welcome_box.add_child(Box::new(Spacer::new(1)));
+    // Logo (centered)
+    welcome_box.add_child(Box::new(Text::styled_centered("███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled_centered("██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled_centered("███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  ", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled_centered("╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  ", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled_centered("███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled_centered("╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝", theme.accent)));
+    welcome_box.add_child(Box::new(Spacer::new(1)));
+    welcome_box.add_child(Box::new(Text::styled_centered(model, theme.dim)));
+    welcome_box.add_child(Box::new(Spacer::new(1)));
+
+    // Right column: Tips, LSP Servers, Recent Sessions
+    welcome_box.add_child(Box::new(Text::styled("  Tips", theme.accent.bold())));
+    welcome_box.add_child(Box::new(Text::styled("  ? for keyboard shortcuts", theme.dim)));
+    welcome_box.add_child(Box::new(Text::styled("  / for commands", theme.dim)));
+    welcome_box.add_child(Box::new(Text::styled("  ! to run bash", theme.dim)));
+    welcome_box.add_child(Box::new(Text::styled("  $ to run python", theme.dim)));
+    welcome_box.add_child(Box::new(Spacer::new(1)));
+    welcome_box.add_child(Box::new(Text::styled("  LSP Servers", theme.accent.bold())));
+    welcome_box.add_child(Box::new(Text::styled("  ○ No LSP servers", theme.dim)));
+    welcome_box.add_child(Box::new(Spacer::new(1)));
+    welcome_box.add_child(Box::new(Text::styled("  Recent sessions", theme.accent.bold())));
+    welcome_box.add_child(Box::new(Text::styled("  • No recent sessions", theme.dim)));
 
     container.push(welcome_box);
-    container.push(Spacer::new(1));
-
-    // Tips section (matching oh-my-pi style)
-    container.push(Text::styled("  Tips", theme.accent.bold()));
-    container.push(Text::styled("  ? for keyboard shortcuts", theme.dim));
-    container.push(Text::styled("  / for commands", theme.dim));
-    container.push(Text::styled("  ! to run bash", theme.dim));
-    container.push(Spacer::new(1));
-
-    // LSP Servers section
-    container.push(Text::styled("  LSP Servers", theme.accent.bold()));
-    container.push(Text::styled("  ○ No LSP servers", theme.dim));
     container.push(Spacer::new(1));
 }
 
