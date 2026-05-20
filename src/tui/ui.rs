@@ -2,7 +2,7 @@
 
 use super::app::{App, AppMode, ChatMessage, MessageRole, TodoItem};
 use super::component::Container;
-use super::components::{BoxWidget, Spacer, Text};
+use super::components::{BoxWidget, Markdown, Spacer, Text};
 use super::style::{Colors, Style};
 use super::tui::Tui;
 
@@ -78,11 +78,11 @@ fn render_welcome(container: &mut Container, version: &str) {
 
     // Instructions
     container.push(Text::styled(
-        "  Press 'i' to enter input mode, then type your message",
+        "  Type your message and press Enter to send",
         theme.dim,
     ));
     container.push(Text::styled(
-        "  Press Enter to send, Esc to cancel, Ctrl+D to quit",
+        "  Esc to cancel, Ctrl+D to quit",
         theme.dim,
     ));
     container.push(Spacer::new(1));
@@ -118,7 +118,7 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
                 }
                 
                 for line in msg.content.lines() {
-                    container.push(Text::styled(&format!("    {}", line), Style::default()));
+                    container.push(Markdown::new(&format!("    {}", line)));
                 }
                 
                 // Inline tool calls
@@ -232,7 +232,7 @@ fn render_input(container: &mut Container, app: &App) {
     let title = match app.mode {
         AppMode::Input => " Input ",
         AppMode::Processing => " Working ",
-        AppMode::Normal => " Input (press 'i') ",
+        AppMode::Normal => " Input ",
     };
 
     let mut box_widget = BoxWidget::new()
@@ -243,7 +243,7 @@ fn render_input(container: &mut Container, app: &App) {
         match app.mode {
             AppMode::Processing => Text::styled("Processing...", theme.dim),
             AppMode::Input => Text::styled("Type your message...", theme.dim),
-            AppMode::Normal => Text::styled("Press 'i' to start typing", theme.dim),
+            AppMode::Normal => Text::styled("Type to start...", theme.dim),
         }
     } else {
         Text::new(&app.input)
