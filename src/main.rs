@@ -4,6 +4,7 @@ use serana::config::Config;
 use serana::llm::{LlmClient, openai::OpenAiClient};
 use serana::tools::ToolRegistry;
 use anyhow::Context;
+use std::io::IsTerminal;
 
 #[derive(Parser)]
 #[command(name = "serana")]
@@ -87,6 +88,27 @@ async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
 }
 
 async fn run_interactive(config: Config) -> anyhow::Result<()> {
-    serana::tui::run(config.workspace)?;
+    // Check if we have a proper terminal for TUI
+    if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
+        serana::tui::run(config.workspace)?;
+    } else {
+        // Fallback to simple REPL if no TTY
+        println!("Serana interactive mode (Ctrl+C to exit)");
+        println!("(No TTY detected - using simple REPL)");
+        loop {
+            print!("> ");
+            std::io::Write::flush(&mut std::io::stdout())?;
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+            if input.is_empty() {
+                continue;
+            }
+            if input == "exit" || input == "quit" {
+                break;
+            }
+            run_once(config.clone(), input).await?;
+        }
+    }
     Ok(())
 }

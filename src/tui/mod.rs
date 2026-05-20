@@ -23,10 +23,45 @@ use self::app::App;
 use self::event::{Event, EventHandler};
 use crate::Result;
 
+/// RAII guard to ensure terminal is restored on drop
+struct TerminalGuard {
+    restored: bool,
+}
+
+impl TerminalGuard {
+    fn new() -> Result<Self> {
+        enable_raw_mode()?;
+        Ok(Self { restored: false })
+    }
+    
+    fn restore(&mut self) -> Result<()> {
+        if self.restored {
+            return Ok(());
+        }
+        self.restored = true;
+        
+        // Try to restore terminal state, ignore errors
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+        let _ = Terminal::new(CrosstermBackend::new(stdout)).and_then(|mut t| t.show_cursor());
+        
+        Ok(())
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = self.restore();
+    }
+}
+
 /// Run the TUI application
 pub fn run(workspace: std::path::PathBuf) -> Result<()> {
+    // Create guard that will restore terminal on drop (even on panic)
+    let mut guard = TerminalGuard::new()?;
+    
     // Setup terminal
-    enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
@@ -39,13 +74,10 @@ pub fn run(workspace: std::path::PathBuf) -> Result<()> {
     // Main loop
     let res = run_app(&mut terminal, &mut app, events);
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    // Explicitly restore terminal before returning
+    guard.restore()?;
+    
+    // Show cursor again after guard restoration
     terminal.show_cursor()?;
 
     res
