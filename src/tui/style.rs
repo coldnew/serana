@@ -148,6 +148,7 @@ impl Style {
 }
 
 /// Shorthand color constants (SCREAMING_CASE per Rust const convention).
+#[allow(non_snake_case)]
 pub mod Colors {
     use super::Color;
     pub const BLACK: Color = Color::Black;

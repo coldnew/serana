@@ -1,9 +1,9 @@
 //! UI rendering — vertical flow like oh-my-pi.
 
-use super::app::{App, AppMode, ChatMessage, MessageRole};
+use super::app::{App, AppMode, ChatMessage, MessageRole, TodoItem};
 use super::component::Container;
 use super::components::{BoxWidget, Spacer, Text};
-use super::style::{Color, Colors, Style};
+use super::style::{Colors, Style};
 use super::tui::Tui;
 
 /// Theme colors matching oh-my-pi dark theme.
@@ -14,8 +14,9 @@ pub struct Theme {
     pub error: Style,
     pub dim: Style,
     pub info: Style,
-    pub user_bg: Style,
-    pub agent_bg: Style,
+    pub user_fg: Style,
+    pub agent_fg: Style,
+    pub thinking: Style,
 }
 
 impl Default for Theme {
@@ -27,51 +28,64 @@ impl Default for Theme {
             error: Style::new().fg(Colors::BRIGHT_RED).bold(),
             dim: Style::new().fg(Colors::GRAY).dim(),
             info: Style::new().fg(Colors::BRIGHT_CYAN),
-            user_bg: Style::new().bg(Color::Rgb(35, 35, 45)),
-            agent_bg: Style::new().bg(Color::Rgb(25, 25, 35)),
+            user_fg: Style::new().fg(Colors::BRIGHT_GREEN),
+            agent_fg: Style::new().fg(Colors::BRIGHT_BLUE),
+            thinking: Style::new().fg(Colors::GRAY).italic(),
         }
     }
 }
 
-/// Render welcome screen with ASCII art logo.
-fn render_welcome(container: &mut Container, model: &str) {
+/// Render welcome screen with ASCII art logo (oh-my-pi style).
+fn render_welcome(container: &mut Container, version: &str) {
     let theme = Theme::default();
 
-    // ASCII logo
+    // Oh My Pi style block logo
     container.push(Spacer::new(1));
     container.push(Text::styled(
-        "  ____                  _       ",
+        "  ███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗",
         theme.accent,
     ));
     container.push(Text::styled(
-        " / ___|  ___ _ ____   _| | ___  ",
+        "  ██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝",
         theme.accent,
     ));
     container.push(Text::styled(
-        " \\___ \\ / _ \\ '__\\ \\ / / |/ _ \\ ",
+        "  ███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  ",
         theme.accent,
     ));
     container.push(Text::styled(
-        "  ___) |  __/ |   \\ V /| |  __/ ",
+        "  ╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  ",
         theme.accent,
     ));
     container.push(Text::styled(
-        " |____/ \\___|_|    \\_/ |_|\\___| ",
+        "  ███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗",
+        theme.accent,
+    ));
+    container.push(Text::styled(
+        "  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
         theme.accent,
     ));
     container.push(Spacer::new(2));
 
-    container.push(Text::styled("Your AI coding companion", theme.dim));
+    // Tagline
+    container.push(Text::styled("  Your AI coding companion", theme.dim));
     container.push(Spacer::new(1));
 
-    let model_info = format!("Model: {}", model);
-    container.push(Text::styled(&model_info, theme.info));
+    // Version
+    let version_text = format!("  Version: {}", version);
+    container.push(Text::styled(&version_text, theme.info));
     container.push(Spacer::new(2));
 
+    // Instructions
     container.push(Text::styled(
-        "Type a message and press Enter to start",
+        "  Press 'i' to enter input mode, then type your message",
         theme.dim,
     ));
+    container.push(Text::styled(
+        "  Press Enter to send, Esc to cancel, Ctrl+D to quit",
+        theme.dim,
+    ));
+    container.push(Spacer::new(1));
 }
 
 /// Render chat messages with oh-my-pi styling.
@@ -82,24 +96,50 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
         match msg.role {
             MessageRole::User => {
                 container.push(Spacer::new(1));
-                container.push(Text::styled("You", theme.success));
+                // User prefix with checkmark
+                container.push(Text::styled("  ✓ You", theme.success));
                 for line in msg.content.lines() {
-                    container.push(Text::new(line));
+                    container.push(Text::styled(&format!("    {}", line), Style::default()));
                 }
             }
             MessageRole::Agent => {
                 container.push(Spacer::new(1));
-                container.push(Text::styled("Serana", theme.accent));
-                for line in msg.content.lines() {
-                    container.push(Text::new(line));
+                // Agent prefix with star
+                container.push(Text::styled("  ★ Serana", theme.accent));
+                
+                // Thinking block (if present)
+                if let Some(thinking) = &msg.thinking {
+                    container.push(Text::styled("  ┌─ thinking ─", theme.thinking));
+                    for line in thinking.lines() {
+                        container.push(Text::styled(&format!("  │ {}", line), theme.thinking));
+                    }
+                    container.push(Text::styled("  └─", theme.thinking));
+                    container.push(Spacer::new(1));
                 }
+                
+                for line in msg.content.lines() {
+                    container.push(Text::styled(&format!("    {}", line), Style::default()));
+                }
+                
                 // Inline tool calls
                 if !msg.tool_calls.is_empty() {
                     container.push(Spacer::new(1));
                     for tool in &msg.tool_calls {
+                        let tool_icon = match tool.status {
+                            super::app::ToolCallStatus::Pending => "◌",
+                            super::app::ToolCallStatus::Running => "◐",
+                            super::app::ToolCallStatus::Success => "✓",
+                            super::app::ToolCallStatus::Error => "✗",
+                        };
+                        let tool_style = match tool.status {
+                            super::app::ToolCallStatus::Pending => theme.dim,
+                            super::app::ToolCallStatus::Running => theme.warning,
+                            super::app::ToolCallStatus::Success => theme.success,
+                            super::app::ToolCallStatus::Error => theme.error,
+                        };
                         container.push(Text::styled(
-                            &format!("⚡ {}", tool),
-                            theme.warning,
+                            &format!("  {} {}", tool_icon, tool.name),
+                            tool_style,
                         ));
                     }
                 }
@@ -107,7 +147,7 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
             MessageRole::System => {
                 container.push(Spacer::new(1));
                 container.push(Text::styled(
-                    &format!("System: {}", msg.content),
+                    &format!("  ⚠ System: {}", msg.content),
                     theme.warning,
                 ));
             }
@@ -115,20 +155,84 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
     }
 }
 
-/// Render input box at bottom.
+/// Render pending/streaming messages.
+fn render_pending(container: &mut Container, pending: &[String]) {
+    let theme = Theme::default();
+    
+    if pending.is_empty() {
+        return;
+    }
+    
+    container.push(Spacer::new(1));
+    container.push(Text::styled("  ◐ Working...", theme.warning));
+    
+    for msg in pending {
+        container.push(Text::styled(&format!("    {}", msg), theme.dim));
+    }
+}
+
+/// Render status messages.
+fn render_status(container: &mut Container, status: &[String]) {
+    let theme = Theme::default();
+    
+    if status.is_empty() {
+        return;
+    }
+    
+    container.push(Spacer::new(1));
+    for msg in status {
+        container.push(Text::styled(&format!("  → {}", msg), theme.info));
+    }
+}
+
+/// Render todo list.
+fn render_todo(container: &mut Container, todos: &[TodoItem]) {
+    let theme = Theme::default();
+    
+    if todos.is_empty() {
+        return;
+    }
+    
+    container.push(Spacer::new(1));
+    container.push(Text::styled("  Tasks", theme.accent));
+    
+    for todo in todos {
+        let check = if todo.done { "✓" } else { "○" };
+        let style = if todo.done { theme.dim } else { Style::default() };
+        container.push(Text::styled(&format!("    {} {}", check, todo.content), style));
+    }
+}
+
+/// Render btw notes.
+fn render_btw(container: &mut Container, notes: &[String]) {
+    let theme = Theme::default();
+    
+    if notes.is_empty() {
+        return;
+    }
+    
+    container.push(Spacer::new(1));
+    container.push(Text::styled("  By the way", theme.warning));
+    
+    for note in notes {
+        container.push(Text::styled(&format!("    • {}", note), theme.dim));
+    }
+}
+
+/// Render input box at bottom with dynamic border.
 fn render_input(container: &mut Container, app: &App) {
     let theme = Theme::default();
 
     let border_style = match app.mode {
-        AppMode::Normal => theme.dim,
-        AppMode::Input => theme.accent,
-        AppMode::Processing => theme.warning,
+        AppMode::Normal => Style::new().fg(Colors::GRAY),
+        AppMode::Input => Style::new().fg(Colors::BRIGHT_BLUE),
+        AppMode::Processing => Style::new().fg(Colors::BRIGHT_YELLOW),
     };
 
     let title = match app.mode {
         AppMode::Input => " Input ",
         AppMode::Processing => " Working ",
-        AppMode::Normal => " Input ",
+        AppMode::Normal => " Input (press 'i') ",
     };
 
     let mut box_widget = BoxWidget::new()
@@ -138,7 +242,8 @@ fn render_input(container: &mut Container, app: &App) {
     let content = if app.input.is_empty() {
         match app.mode {
             AppMode::Processing => Text::styled("Processing...", theme.dim),
-            _ => Text::styled("Type your message...", theme.dim),
+            AppMode::Input => Text::styled("Type your message...", theme.dim),
+            AppMode::Normal => Text::styled("Press 'i' to start typing", theme.dim),
         }
     } else {
         Text::new(&app.input)
@@ -148,17 +253,46 @@ fn render_input(container: &mut Container, app: &App) {
     container.push(box_widget);
 }
 
-/// Render status line at the very bottom.
-fn render_status_line(container: &mut Container, model: &str, mode: AppMode) {
+/// Render status line at the very bottom (oh-my-pi style).
+fn render_status_line(container: &mut Container, app: &App) {
     let theme = Theme::default();
 
-    let mode_text = match mode {
+    // Build segmented status line
+    let mut segments = Vec::new();
+    
+    // Mode indicator
+    let mode_text = match app.mode {
         AppMode::Normal => "NORMAL",
         AppMode::Input => "INPUT",
         AppMode::Processing => "BUSY",
     };
+    segments.push(Style::new().fg(Colors::BRIGHT_GREEN).apply(mode_text));
+    
+    // Separator
+    segments.push(" │ ".to_string());
+    
+    // Model
+    segments.push(theme.info.apply(&app.model));
+    
+    // Separator
+    segments.push(" │ ".to_string());
+    
+    // Git branch (if available)
+    if let Some(branch) = &app.git_branch {
+        segments.push(theme.dim.apply(&format!("git:{}", branch)));
+        segments.push(" │ ".to_string());
+    }
+    
+    // Workspace
+    let workspace_name = app.workspace.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("workspace");
+    segments.push(theme.dim.apply(workspace_name));
+    
+    // Right-aligned help
+    segments.push(" │ Ctrl+D: quit ".to_string());
 
-    let status = format!(" {} │ {} │ Ctrl+D: exit ", mode_text, model);
+    let status = format!(" {} ", segments.join(""));
     container.push(Text::styled(&status, theme.dim));
 }
 
@@ -167,21 +301,33 @@ pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
     let root = tui.root_mut();
     root.clear();
 
-    // Welcome or messages
-    if app.messages.is_empty() {
-        render_welcome(root, &app.model);
+    // 1. Welcome or messages (oh-my-pi order)
+    if app.show_welcome && app.messages.is_empty() {
+        render_welcome(root, &app.version);
     } else {
         render_messages(root, &app.messages);
     }
 
-    // Spacer between content and input
+    // 2. Pending messages (streaming)
+    render_pending(root, &app.pending_messages);
+
+    // 3. Status messages
+    render_status(root, &app.status_messages);
+
+    // 4. Todo list
+    render_todo(root, &app.todo_items);
+
+    // 5. BTW notes
+    render_btw(root, &app.btw_notes);
+
+    // 6. Spacer
     root.push(Spacer::new(1));
 
-    // Input area
+    // 7. Input area
     render_input(root, app);
 
-    // Status line
-    render_status_line(root, &app.model, app.mode);
+    // 8. Status line at bottom
+    render_status_line(root, app);
 
     Ok(())
 }

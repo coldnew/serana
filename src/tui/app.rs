@@ -11,6 +11,10 @@ use crate::Result;
 pub struct App {
     pub workspace: PathBuf,
     pub messages: Vec<ChatMessage>,
+    pub pending_messages: Vec<String>,
+    pub status_messages: Vec<String>,
+    pub todo_items: Vec<TodoItem>,
+    pub btw_notes: Vec<String>,
     pub input: String,
     pub cursor: usize,
     pub scroll: usize,
@@ -18,6 +22,16 @@ pub struct App {
     pub model: String,
     pub should_quit: bool,
     pub tick_count: u64,
+    pub version: String,
+    pub git_branch: Option<String>,
+    pub show_welcome: bool,
+}
+
+/// Todo item for task tracking.
+#[derive(Debug, Clone)]
+pub struct TodoItem {
+    pub content: String,
+    pub done: bool,
 }
 
 impl App {
@@ -25,6 +39,10 @@ impl App {
         Self {
             workspace,
             messages: Vec::new(),
+            pending_messages: Vec::new(),
+            status_messages: Vec::new(),
+            todo_items: Vec::new(),
+            btw_notes: Vec::new(),
             input: String::new(),
             cursor: 0,
             scroll: 0,
@@ -32,6 +50,9 @@ impl App {
             model: "gpt-4o".to_string(),
             should_quit: false,
             tick_count: 0,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            git_branch: None,
+            show_welcome: true,
         }
     }
 
@@ -123,11 +144,13 @@ impl App {
     fn submit_message(&mut self) {
         let content = std::mem::take(&mut self.input);
         self.cursor = 0;
+        self.show_welcome = false;
 
         self.messages.push(ChatMessage {
             role: MessageRole::User,
             content,
             tool_calls: Vec::new(),
+            thinking: None,
         });
 
         // For now, add a placeholder response
@@ -136,6 +159,7 @@ impl App {
             role: MessageRole::Agent,
             content: "I received your message. LLM integration pending.".to_string(),
             tool_calls: Vec::new(),
+            thinking: None,
         });
 
         self.mode = AppMode::Normal;
@@ -147,6 +171,18 @@ impl App {
 
     pub fn tick(&mut self) {
         self.tick_count += 1;
+    }
+    
+    pub fn add_status(&mut self, msg: impl Into<String>) {
+        self.status_messages.push(msg.into());
+    }
+    
+    pub fn clear_status(&mut self) {
+        self.status_messages.clear();
+    }
+    
+    pub fn add_btw(&mut self, note: impl Into<String>) {
+        self.btw_notes.push(note.into());
     }
 }
 
@@ -163,7 +199,26 @@ pub enum AppMode {
 pub struct ChatMessage {
     pub role: MessageRole,
     pub content: String,
-    pub tool_calls: Vec<String>,
+    pub tool_calls: Vec<ToolCall>,
+    pub thinking: Option<String>,
+}
+
+/// Tool call representation.
+#[derive(Debug, Clone)]
+pub struct ToolCall {
+    pub name: String,
+    pub args: String,
+    pub result: Option<String>,
+    pub status: ToolCallStatus,
+}
+
+/// Tool call status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCallStatus {
+    Pending,
+    Running,
+    Success,
+    Error,
 }
 
 /// Message role.
