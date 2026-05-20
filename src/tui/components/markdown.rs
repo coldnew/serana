@@ -296,7 +296,7 @@ fn is_wide_char(ch: char) -> bool {
 /// Format a terminal hyperlink using OSC 8.
 fn format_hyperlink(text: &str, target: &str) -> String {
     // OSC 8 hyperlink format: \x1b]8;;url\x07text\x1b]8;;\x07
-    let safe_target = target.replace('\x1b', "").replace('\x07', "");
+    let safe_target = target.replace(['\x1b', '\x07'], "");
     if safe_target.is_empty() {
         return text.to_string();
     }

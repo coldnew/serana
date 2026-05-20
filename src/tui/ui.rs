@@ -99,7 +99,7 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
                 // User prefix with checkmark
                 container.push(Text::styled("  ✓ You", theme.success));
                 for line in msg.content.lines() {
-                    container.push(Text::styled(&format!("    {}", line), Style::default()));
+                    container.push(Text::styled(format!("    {}", line), Style::default()));
                 }
             }
             MessageRole::Agent => {
@@ -111,14 +111,14 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
                 if let Some(thinking) = &msg.thinking {
                     container.push(Text::styled("  ┌─ thinking ─", theme.thinking));
                     for line in thinking.lines() {
-                        container.push(Text::styled(&format!("  │ {}", line), theme.thinking));
+                        container.push(Text::styled(format!("  │ {}", line), theme.thinking));
                     }
                     container.push(Text::styled("  └─", theme.thinking));
                     container.push(Spacer::new(1));
                 }
                 
                 for line in msg.content.lines() {
-                    container.push(Markdown::new(&format!("    {}", line)));
+                    container.push(Markdown::new(format!("    {}", line)));
                 }
                 
                 // Inline tool calls
@@ -138,7 +138,7 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
                             super::app::ToolCallStatus::Error => theme.error,
                         };
                         container.push(Text::styled(
-                            &format!("  {} {}", tool_icon, tool.name),
+                            format!("  {} {}", tool_icon, tool.name),
                             tool_style,
                         ));
                     }
@@ -147,7 +147,7 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
             MessageRole::System => {
                 container.push(Spacer::new(1));
                 container.push(Text::styled(
-                    &format!("  ⚠ System: {}", msg.content),
+                    format!("  ⚠ System: {}", msg.content),
                     theme.warning,
                 ));
             }
@@ -167,7 +167,7 @@ fn render_pending(container: &mut Container, pending: &[String]) {
     container.push(Text::styled("  ◐ Working...", theme.warning));
     
     for msg in pending {
-        container.push(Text::styled(&format!("    {}", msg), theme.dim));
+        container.push(Text::styled(format!("    {}", msg), theme.dim));
     }
 }
 
@@ -181,7 +181,7 @@ fn render_status(container: &mut Container, status: &[String]) {
     
     container.push(Spacer::new(1));
     for msg in status {
-        container.push(Text::styled(&format!("  → {}", msg), theme.info));
+        container.push(Text::styled(format!("  → {}", msg), theme.info));
     }
 }
 
@@ -199,7 +199,7 @@ fn render_todo(container: &mut Container, todos: &[TodoItem]) {
     for todo in todos {
         let check = if todo.done { "✓" } else { "○" };
         let style = if todo.done { theme.dim } else { Style::default() };
-        container.push(Text::styled(&format!("    {} {}", check, todo.content), style));
+        container.push(Text::styled(format!("    {} {}", check, todo.content), style));
     }
 }
 
@@ -215,7 +215,7 @@ fn render_btw(container: &mut Container, notes: &[String]) {
     container.push(Text::styled("  By the way", theme.warning));
     
     for note in notes {
-        container.push(Text::styled(&format!("    • {}", note), theme.dim));
+        container.push(Text::styled(format!("    • {}", note), theme.dim));
     }
 }
 

@@ -65,29 +65,25 @@ impl App {
     }
 
     fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<bool> {
-        match key.code {
-            KeyCode::Char(c) => {
-                if key.modifiers.contains(KeyModifiers::CONTROL) && (c == 'q' || c == 'd') {
-                    self.should_quit = true;
-                    return Ok(false);
-                }
-                // Any character starts typing immediately
-                self.mode = AppMode::Input;
-                self.input.insert(self.cursor, c);
-                self.cursor += 1;
+        if let KeyCode::Char(c) = key.code {
+            if key.modifiers.contains(KeyModifiers::CONTROL) && (c == 'q' || c == 'd') {
+                self.should_quit = true;
+                return Ok(false);
             }
-            _ => {}
+            // Any character starts typing immediately
+            self.mode = AppMode::Input;
+            self.input.insert(self.cursor, c);
+            self.cursor += 1;
         }
         Ok(true)
     }
 
     fn handle_input_mode(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
-            KeyCode::Enter => {
-                if !self.input.is_empty() {
+            KeyCode::Enter
+                if !self.input.is_empty() => {
                     self.submit_message();
                 }
-            }
             KeyCode::Esc => {
                 if self.input.is_empty() {
                     self.mode = AppMode::Normal;
@@ -96,27 +92,23 @@ impl App {
                     self.cursor = 0;
                 }
             }
-            KeyCode::Backspace => {
-                if self.cursor > 0 {
+            KeyCode::Backspace
+                if self.cursor > 0 => {
                     self.input.remove(self.cursor - 1);
                     self.cursor -= 1;
                 }
-            }
-            KeyCode::Delete => {
-                if self.cursor < self.input.len() {
+            KeyCode::Delete
+                if self.cursor < self.input.len() => {
                     self.input.remove(self.cursor);
                 }
-            }
-            KeyCode::Left => {
-                if self.cursor > 0 {
+            KeyCode::Left
+                if self.cursor > 0 => {
                     self.cursor -= 1;
                 }
-            }
-            KeyCode::Right => {
-                if self.cursor < self.input.len() {
+            KeyCode::Right
+                if self.cursor < self.input.len() => {
                     self.cursor += 1;
                 }
-            }
             KeyCode::Home => {
                 self.cursor = 0;
             }
