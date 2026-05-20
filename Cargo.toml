@@ -23,6 +23,7 @@ parking_lot = "0.12"
 dirs = "5.0"
 textwrap = "0.16"
 strip-ansi-escapes = "0.2"
+pulldown-cmark = "0.12"
 
 [dev-dependencies]
 tempfile = "3.12"

@@ -9,6 +9,7 @@ pub mod components;
 pub mod event;
 pub mod style;
 pub mod terminal;
+pub mod tool_execution;
 pub mod tui;
 pub mod ui;
 
