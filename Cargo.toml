@@ -19,6 +19,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ratatui = "0.28"
 crossterm = "0.28"
+parking_lot = "0.12"
 
 [dev-dependencies]
 tempfile = "3.12"

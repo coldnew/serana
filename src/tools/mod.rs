@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+
 use async_trait::async_trait;
 use serde_json::Value;
+
 use crate::Result;
 
 pub mod fs;
+pub mod hashline;
 
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -18,9 +21,13 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self {
+        let mut registry = Self {
             tools: HashMap::new(),
-        }
+        };
+        registry.register(Box::new(fs::ReadFileTool));
+        registry.register(Box::new(fs::WriteFileTool));
+        registry.register(Box::new(fs::EditFileTool));
+        registry
     }
 
     pub fn register(&mut self, tool: Box<dyn Tool>) {
@@ -28,15 +35,17 @@ impl ToolRegistry {
     }
 
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
-        self.tools.get(name).map(|b| &**b)
+        self.tools.get(name).map(|t| t.as_ref())
+    }
+
+    pub fn list(&self) -> Vec<&'static str> {
+        self.tools.keys().copied().collect()
     }
 
     pub fn describe_all(&self) -> String {
-        self.tools
-            .values()
-            .map(|t| format!("- {}: {}", t.name(), t.description()))
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut descriptions: Vec<&str> = self.tools.values().map(|t| t.description()).collect();
+        descriptions.sort();
+        descriptions.join("\n")
     }
 }
 

@@ -1277,6 +1277,7 @@ dependencies = [
  "async-trait",
  "clap",
  "crossterm",
+ "parking_lot",
  "ratatui",
  "reqwest",
  "serde",

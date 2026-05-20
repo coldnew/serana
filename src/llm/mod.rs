@@ -12,26 +12,72 @@ pub mod openai;
 
 /// Chat message
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
+#[serde(untagged)]
+pub enum Message {
+    Text {
+        role: String,
+        content: String,
+    },
+    ToolCall {
+        role: String,
+        content: Option<String>,
+        tool_calls: Vec<ToolCallData>,
+    },
+    ToolResult {
+        role: String,
+        tool_call_id: String,
+        content: String,
+    },
 }
 
 impl Message {
     /// Create a system message
     pub fn system(content: String) -> Self {
-        Self { role: "system".to_string(), content }
+        Self::Text { role: "system".to_string(), content }
     }
 
     /// Create a user message
     pub fn user(content: String) -> Self {
-        Self { role: "user".to_string(), content }
+        Self::Text { role: "user".to_string(), content }
     }
 
     /// Create an assistant message
     pub fn assistant(content: String) -> Self {
-        Self { role: "assistant".to_string(), content }
+        Self::Text { role: "assistant".to_string(), content }
     }
+
+    /// Create a tool-result message
+    pub fn tool_result(tool_call_id: String, content: String) -> Self {
+        Self::ToolResult { role: "tool".to_string(), tool_call_id, content }
+    }
+}
+
+/// Tool call data from LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallData {
+    pub id: String,
+    pub r#type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    pub name: String,
+    pub arguments: String,
+}
+
+/// Tool definition for LLM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub r#type: String,
+    pub function: FunctionDefinition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
 }
 
 /// LLM client trait
@@ -39,6 +85,13 @@ impl Message {
 pub trait LlmClient: Send + Sync {
     /// Send a chat completion request
     async fn chat(&self, messages: &[Message]) -> Result<String>;
+
+    /// Send a chat completion request with tool support
+    async fn chat_with_tools(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<Message>;
 }
 
 /// Provider type for configuration
