@@ -7,6 +7,7 @@ pub mod app;
 pub mod event;
 pub mod ui;
 pub mod components;
+pub mod theme;
 
 use std::io::{self, Stdout};
 use std::time::Duration;

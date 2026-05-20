@@ -87,19 +87,6 @@ async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
 }
 
 async fn run_interactive(config: Config) -> anyhow::Result<()> {
-    println!("Serana interactive mode (Ctrl+C to exit)");
-    loop {
-        println!("\n> ");
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
-        if input == "exit" || input == "quit" {
-            break;
-        }
-        run_once(config.clone(), input).await?;
-    }
+    serana::tui::run(config.workspace)?;
     Ok(())
 }
