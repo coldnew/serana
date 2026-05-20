@@ -205,6 +205,7 @@ pub struct ToolCall {
     pub args: String,
     pub result: Option<String>,
     pub status: ToolCallStatus,
+    pub diff_preview: Option<(String, String)>, // (path, diff)
 }
 
 /// Tool call status.

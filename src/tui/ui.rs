@@ -60,10 +60,16 @@ fn render_welcome(container: &mut Container, version: &str, model: &str) {
     container.push(welcome_box);
     container.push(Spacer::new(1));
 
-    // Tips section
+    // Tips section (matching oh-my-pi style)
     container.push(Text::styled("  Tips", theme.accent.bold()));
-    container.push(Text::styled("  Type your message and press Enter to send", theme.dim));
-    container.push(Text::styled("  Esc to cancel, Ctrl+D to quit", theme.dim));
+    container.push(Text::styled("  ? for keyboard shortcuts", theme.dim));
+    container.push(Text::styled("  / for commands", theme.dim));
+    container.push(Text::styled("  ! to run bash", theme.dim));
+    container.push(Spacer::new(1));
+
+    // LSP Servers section
+    container.push(Text::styled("  LSP Servers", theme.accent.bold()));
+    container.push(Text::styled("  ○ No LSP servers", theme.dim));
     container.push(Spacer::new(1));
 }
 
