@@ -36,46 +36,31 @@ impl Default for Theme {
     }
 }
 
-/// Render welcome screen with two-column layout (oh-my-pi style).
+/// Render welcome screen with bordered box layout (oh-my-pi style).
 fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let theme = Theme::default();
 
-    // Left column - centered logo and model info
-    container.push(Spacer::new(1));
-    container.push(Text::styled("  Welcome back!", theme.accent.bold()));
     container.push(Spacer::new(1));
 
-    // Serana ASCII logo
-    container.push(Text::styled(
-        "  ███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗",
-        theme.accent,
-    ));
-    container.push(Text::styled(
-        "  ██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝",
-        theme.accent,
-    ));
-    container.push(Text::styled(
-        "  ███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  ",
-        theme.accent,
-    ));
-    container.push(Text::styled(
-        "  ╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  ",
-        theme.accent,
-    ));
-    container.push(Text::styled(
-        "  ███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗",
-        theme.accent,
-    ));
-    container.push(Text::styled(
-        "  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
-        theme.accent,
-    ));
-    container.push(Spacer::new(1));
-    container.push(Text::styled(format!("  {}", model), theme.dim));
-    container.push(Text::styled(format!("  v{}", version), theme.dim));
-    container.push(Spacer::new(2));
+    // Welcome box with logo and tips
+    let mut welcome_box = BoxWidget::new()
+        .with_title(" Serana ")
+        .with_border_style(Style::new().fg(Colors::GRAY));
 
-    // Right column content (tips, LSP status)
+    // Logo
+    welcome_box.add_child(Box::new(Text::styled("  ███████╗███████╗██╗  ██╗ ██████╗ ██████╗ ██████╗ ███████╗", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled("  ██╔════╝██╔════╝██║  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled("  ███████╗█████╗  ███████║██║     ██║   ██║██║  ██║█████╗  ", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled("  ╚════██║██╔══╝  ██╔══██║██║     ██║   ██║██║  ██║██╔══╝  ", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled("  ███████║███████╗██║  ██║╚██████╗╚██████╔╝██████╔╝███████╗", theme.accent)));
+    welcome_box.add_child(Box::new(Text::styled("  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝", theme.accent)));
+    welcome_box.add_child(Box::new(Spacer::new(1)));
+    welcome_box.add_child(Box::new(Text::styled(format!("  {} v{}", model, version), theme.dim)));
+
+    container.push(welcome_box);
+    container.push(Spacer::new(1));
+
+    // Tips section
     container.push(Text::styled("  Tips", theme.accent.bold()));
     container.push(Text::styled("  Type your message and press Enter to send", theme.dim));
     container.push(Text::styled("  Esc to cancel, Ctrl+D to quit", theme.dim));
