@@ -343,6 +343,26 @@ fn render_status_line(container: &mut Container, app: &App) {
             let usage = format!("in:{} out:{}", total_input, app.tokens_output);
             left_segments.push(theme.dim.apply(&usage));
         }
+        // Context window percentage (oh-my-pi style)
+        if app.context_window > 0 {
+            let total_tokens = total_input + app.tokens_output;
+            let pct = (total_tokens as f64 / app.context_window as f64 * 100.0) as u32;
+            if pct > 0 {
+                left_segments.push(" ┆ ".to_string());
+                let ctx_str = format!("ctx:{}%", pct);
+                // Color based on usage level
+                let ctx_style = if pct >= 90 {
+                    theme.error
+                } else if pct >= 70 {
+                    theme.warning
+                } else if pct >= 50 {
+                    Style::new().fg(Colors::BRIGHT_MAGENTA)
+                } else {
+                    theme.dim
+                };
+                left_segments.push(ctx_style.apply(&ctx_str));
+            }
+        }
     }
 
     // Right: help

@@ -29,6 +29,9 @@ pub struct App {
     pub tokens_input: u64,
     pub tokens_output: u64,
     pub tokens_cache_read: u64,
+    pub tokens_cache_write: u64,
+    // Context window tracking
+    pub context_window: u64,
     // Git status counts
     pub git_staged: u32,
     pub git_unstaged: u32,
@@ -64,6 +67,8 @@ impl App {
             tokens_input: 0,
             tokens_output: 0,
             tokens_cache_read: 0,
+            tokens_cache_write: 0,
+            context_window: 200_000,
             git_staged: 0,
             git_unstaged: 0,
             git_untracked: 0,
