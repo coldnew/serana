@@ -3,6 +3,7 @@ use serana::agent::{Agent, coding::CodingAgent};
 use serana::config::Config;
 use serana::llm::{LlmClient, openai::OpenAiClient};
 use serana::tools::ToolRegistry;
+use anyhow::Context;
 
 #[derive(Parser)]
 #[command(name = "serana")]
@@ -35,10 +36,9 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let mut config = Config {
-        workspace: std::path::PathBuf::from(&cli.workspace),
-        ..Config::default()
-    };
+    let mut config = Config::load()
+        .with_context(|| "Failed to load config")?;
+    config.workspace = std::path::PathBuf::from(&cli.workspace);
 
     match cli.command {
         Some(Commands::Interactive) => {
@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
-    let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config.llm.clone()));
+    let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
     let tools = ToolRegistry::new();
     let agent = CodingAgent::new(llm, tools);
 

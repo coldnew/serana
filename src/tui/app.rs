@@ -66,8 +66,8 @@ pub enum MessageRole {
 
 impl App {
     pub fn new(workspace: PathBuf) -> Self {
-        let config = Config::default();
-        let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config.llm.clone()));
+        let config = Config::load().unwrap_or_default();
+        let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config.clone()));
         let tools = ToolRegistry::new();
         let agent = CodingAgent::new(llm, tools);
 

@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::config::LlmConfig;
+use crate::config::Config;
 use crate::llm::{LlmClient, Message, ToolCallData, FunctionCall, ToolDefinition};
 use crate::Result;
 
@@ -30,12 +30,12 @@ struct ChatMessageResponse {
 /// OpenAI-compatible LLM client
 pub struct OpenAiClient {
     client: Client,
-    config: LlmConfig,
+    config: Config,
 }
 
 impl OpenAiClient {
     /// Create a new OpenAI-compatible client
-    pub fn new(config: LlmConfig) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             client: Client::new(),
             config,
@@ -43,13 +43,13 @@ impl OpenAiClient {
     }
 
     /// Create a client with custom HTTP client
-    pub fn with_client(client: Client, config: LlmConfig) -> Self {
+    pub fn with_client(client: Client, config: Config) -> Self {
         Self { client, config }
     }
 
     /// Build the authorization header value
-    fn auth_header(&self) -> String {
-        format!("Bearer {}", self.config.api_key)
+    fn auth_header(&self) -> Option<String> {
+        self.config.api_key().map(|k| format!("Bearer {}", k))
     }
 
     /// Send a chat completion request with tool support
@@ -58,22 +58,25 @@ impl OpenAiClient {
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<Message> {
-        let url = format!("{}/chat/completions", self.config.api_url);
-
+        let url = format!("{}/chat/completions", self.config.api_url());
+        
         let request_body = json!({
-            "model": self.config.model,
+            "model": self.config.model(),
             "messages": messages,
-            "temperature": self.config.temperature,
+            "temperature": self.config.temperature(),
             "tools": tools,
         });
 
-        let response = self.client
+        let mut request = self.client
             .post(&url)
-            .header("Authorization", self.auth_header())
             .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await?;
+            .json(&request_body);
+        
+        if let Some(auth) = self.auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        let response = request.send().await?;
 
         let status = response.status();
         if !status.is_success() {
@@ -82,7 +85,7 @@ impl OpenAiClient {
         }
 
         let response_body: serde_json::Value = response.json().await?;
-
+        
         // Parse the response into a Message enum
         let msg = if let Some(tool_calls) = response_body["choices"][0]["message"]["tool_calls"].as_array() {
             let mut tc = Vec::new();
@@ -117,21 +120,24 @@ impl OpenAiClient {
 #[async_trait]
 impl LlmClient for OpenAiClient {
     async fn chat(&self, messages: &[Message]) -> Result<String> {
-        let url = format!("{}/chat/completions", self.config.api_url);
+        let url = format!("{}/chat/completions", self.config.api_url());
 
         let request_body = json!({
-            "model": self.config.model,
+            "model": self.config.model(),
             "messages": messages,
-            "temperature": self.config.temperature,
+            "temperature": self.config.temperature(),
         });
 
-        let response = self.client
+        let mut request = self.client
             .post(&url)
-            .header("Authorization", self.auth_header())
             .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await?;
+            .json(&request_body);
+        
+        if let Some(auth) = self.auth_header() {
+            request = request.header("Authorization", auth);
+        }
+
+        let response = request.send().await?;
 
         let status = response.status();
         if !status.is_success() {
