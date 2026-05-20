@@ -66,12 +66,15 @@ impl App {
 
     fn handle_normal_mode(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
-            KeyCode::Char('i') => {
+            KeyCode::Char(c) => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) && (c == 'q' || c == 'd') {
+                    self.should_quit = true;
+                    return Ok(false);
+                }
+                // Any character starts typing immediately
                 self.mode = AppMode::Input;
-            }
-            KeyCode::Char('q') | KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.should_quit = true;
-                return Ok(false);
+                self.input.insert(self.cursor, c);
+                self.cursor += 1;
             }
             _ => {}
         }
