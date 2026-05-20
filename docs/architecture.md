@@ -293,7 +293,7 @@ pub trait LlmClient: Send + Sync {
 
 | Module | Purpose |
 |--------|---------|
-| `config` | Configuration structs, default values, environment variables |
+| `config` | Configuration loading from ~/.serana/config.toml, provider setup, environment overrides |
 | `tui` | Terminal UI, event handling, widget rendering |
 | `web` | Web frontend stub (future implementation) |
 | `agent` | Agent trait, planning logic, task execution |
@@ -303,6 +303,33 @@ pub trait LlmClient: Send + Sync {
 | `llm` | LLM client trait, OpenAI implementation, prompt templates |
 | `context` | File gathering, context compaction for long sessions |
 
+## Configuration
+
+Configuration is loaded from `~/.serana/config.toml` with environment variable overrides.
+
+### Provider Configuration
+
+```toml
+[provider]
+name = "openai"  # openai, anthropic, ollama, openrouter, custom
+url = ""         # Required only for custom provider
+
+[llm]
+model = "gpt-4"
+temperature = 0.7
+
+[agent]
+max_tokens = 4096
+```
+
+### Environment Variables
+
+| Variable | Purpose |
+|---------|---------|
+| `SERANA_PROVIDER` | Override provider name |
+| `SERANA_API_KEY` | API key (takes precedence over config) |
+| `SERANA_MODEL` | Override model name |
+| `OPENAI_API_KEY` | Fallback API key for OpenAI |
 ## Extension Points
 
 ### Adding a New Language Server

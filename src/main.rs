@@ -25,7 +25,11 @@ enum Commands {
     /// Start interactive REPL mode
     Interactive,
     /// Show configuration
-    Config,
+    Config {
+        /// Show sample config.toml
+        #[arg(short, long)]
+        sample: bool,
+    },
 }
 
 #[tokio::main]
@@ -45,8 +49,14 @@ async fn main() -> anyhow::Result<()> {
             config.interactive = true;
             run_interactive(config).await?;
         }
-        Some(Commands::Config) => {
-            println!("{:#?}", config);
+        Some(Commands::Config { sample }) => {
+            if sample {
+                println!("{}", serana::config::generate_sample_config());
+            } else {
+                println!("Config path: {:?}", Config::config_path());
+                println!("\nResolved configuration:");
+                println!("{:#?}", config);
+            }
         }
         None => {
             if let Some(instruction) = cli.instruction {

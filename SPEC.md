@@ -37,7 +37,56 @@ cargo fmt --check
 cargo run                           # Launch TUI
 cargo run -- /path/to/project       # Launch TUI with workspace
 cargo run -- --help                 # Show CLI options
+
+# Configuration
+cargo run -- config                 # Show resolved configuration
+cargo run -- config --sample        # Show sample config.toml
 ```
+
+## Configuration
+
+Serana reads configuration from `~/.serana/config.toml`. If the file doesn't exist, defaults are used.
+
+### Config File Schema
+
+```toml
+[provider]
+# Built-in providers: openai, anthropic, ollama, openrouter, custom
+name = "openai"
+
+# For custom providers, specify the URL:
+# name = "custom"
+# url = "http://localhost:11434/v1"
+
+[llm]
+model = "gpt-4"
+temperature = 0.7
+
+# API key is optional - prefer environment variables
+# api_key = "sk-..."
+
+[agent]
+max_tokens = 4096
+```
+
+### Environment Variables
+
+Environment variables take precedence over the config file:
+
+- `SERANA_PROVIDER` - Provider name (openai, anthropic, ollama, openrouter, custom)
+- `SERANA_API_KEY` - API key (recommended over config file)
+- `SERANA_MODEL` - Model name
+- `OPENAI_API_KEY` - Fallback API key for OpenAI
+
+### Provider URLs
+
+| Provider | API URL |
+|----------|---------|
+| openai | https://api.openai.com/v1 |
+| anthropic | https://api.anthropic.com/v1 |
+| ollama | http://localhost:11434/v1 |
+| openrouter | https://openrouter.ai/api/v1 |
+| custom | User-specified via `provider.url` |
 
 ## Project Structure
 
