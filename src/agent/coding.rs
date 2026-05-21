@@ -6,7 +6,7 @@ use crate::agent::{
     Agent, AgentOutput, AgentCallbacks, AgentStatus,
     IterationBudget, PromptBuilder, execute_tools_concurrent, validate_message_alternation,
     SessionStore, ContextCompressor, CompressionDecision,
-    CancelToken,
+    CancelToken, MetaCognition,
 };
 use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition, AuxiliaryClient};
 use crate::tools::ToolRegistry;
@@ -24,6 +24,7 @@ pub struct CodingAgent {
     session_id: Option<String>,
     compressor: ContextCompressor,
     cancel_token: Option<CancelToken>,
+    meta_cognition: Arc<MetaCognition>,
 }
 
 impl CodingAgent {
@@ -39,6 +40,7 @@ impl CodingAgent {
             session_id: None,
             compressor: ContextCompressor::with_defaults(),
             cancel_token: None,
+            meta_cognition: Arc::new(MetaCognition::new()),
         }
     }
 

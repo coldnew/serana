@@ -337,7 +337,7 @@ impl Tool for RecordModificationTool {
             lessons: vec![],
         };
 
-        let mut meta = MetaCognition::new(PathBuf::from(SERANA_ROOT));
+        let meta = MetaCognition::new();
         meta.record(record.clone()).await?;
 
         Ok(json!({ "recorded": true, "timestamp": record.timestamp }))
@@ -355,7 +355,7 @@ impl Tool for ModificationStatsTool {
     }
 
     async fn execute(&self, _input: Value) -> Result<Value> {
-        let meta = MetaCognition::new(PathBuf::from(SERANA_ROOT));
+        let meta = MetaCognition::new();
         let stats = meta.stats().await?;
         Ok(json!({
             "total": stats.total_modifications,
@@ -385,7 +385,7 @@ impl Tool for ReflectModificationTool {
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
 
-        let mut meta = MetaCognition::new(PathBuf::from(SERANA_ROOT));
+        let meta = MetaCognition::new();
         meta.reflect(&file, lessons.clone()).await?;
 
         Ok(json!({ "reflected": true, "file": file, "lessons_count": lessons.len() }))

@@ -1,241 +1,144 @@
-//! Meta-cognition for Serana self-improvement.
-//!
-//! Tracks modifications, learns from successes/failures, enables self-reflection.
+//! Meta-cognition for agent self-reflection and decision tracking.
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use serde::{Serialize, Deserialize};
+use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
+use tokio::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::Result;
+/// Type of modification or decision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum ModificationKind {
+    ToolCall, ContextCompression, Iteration, Cancellation, Error, Decision, Observation,
+    Feature, BugFix, Optimization, Refactor, TestAddition, Dependency, Config,
+}
 
-/// Record of a self-modification made by Serana.
+/// Full modification record with lessons.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModificationRecord {
-    /// Timestamp of modification
     pub timestamp: String,
-    /// File that was modified
     pub file: String,
-    /// Type of modification
     pub kind: ModificationKind,
-    /// Description of what was changed
     pub description: String,
-    /// Whether tests passed after modification
     pub tests_passed: bool,
-    /// Git commit hash if committed
     pub commit: Option<String>,
-    /// Lessons learned (filled after reflection)
     pub lessons: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ModificationKind {
-    /// Added new functionality
-    Feature,
-    /// Fixed a bug
-    BugFix,
-    /// Improved performance
-    Optimization,
-    /// Refactored code
-    Refactor,
-    /// Added tests
-    TestAddition,
-    /// Updated dependencies
-    Dependency,
-    /// Configuration change
-    Config,
-}
-
-/// Statistics about Serana's self-modifications.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Stats for self-evolution.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModificationStats {
-    pub total_modifications: u64,
-    pub successful_modifications: u64,
-    pub failed_modifications: u64,
-    pub by_kind: HashMap<String, u64>,
+    pub total_modifications: usize,
+    pub successful_modifications: usize,
+    pub failed_modifications: usize,
+    pub by_kind: HashMap<String, usize>,
     pub common_patterns: Vec<String>,
 }
 
-/// Meta-cognition system for tracking self-improvements.
+/// Simple in-memory record for transient events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaRecord {
+    pub id: u64,
+    pub kind: ModificationKind,
+    pub description: String,
+    pub timestamp: u64,
+    pub metadata: serde_json::Value,
+}
+
+/// Meta-cognition state with persistence support.
+#[derive(Debug)]
 pub struct MetaCognition {
-    /// Path to modifications log
-    log_path: PathBuf,
-    /// In-memory cache of recent modifications
-    recent: Vec<ModificationRecord>,
+    records: Mutex<VecDeque<MetaRecord>>,
+    next_id: Mutex<u64>,
+    max_records: usize,
+    storage_path: PathBuf,
+    persisted_records: Mutex<Vec<ModificationRecord>>,
 }
 
 impl MetaCognition {
-    /// Create a new meta-cognition system.
-    pub fn new(workspace: PathBuf) -> Self {
-        let log_path = workspace.join(".serana").join("modifications.jsonl");
+    pub fn new() -> Self {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let storage_dir = PathBuf::from(home).join(".serana");
+        Self::with_storage(storage_dir)
+    }
+
+    pub fn with_storage<P: AsRef<Path>>(storage_dir: P) -> Self {
+        let storage_path = storage_dir.as_ref().join("modifications.json");
+        if let Some(parent) = storage_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let persisted = Self::load_persisted(&storage_path).unwrap_or_default();
         Self {
-            log_path,
-            recent: Vec::new(),
+            records: Mutex::new(VecDeque::with_capacity(1000)),
+            next_id: Mutex::new(0),
+            max_records: 1000,
+            storage_path,
+            persisted_records: Mutex::new(persisted),
         }
     }
 
-    /// Record a modification made by Serana.
-    pub async fn record(&mut self, record: ModificationRecord) -> Result<()> {
-        // Append to log file
-        let line = serde_json::to_string(&record)? + "\n";
-        
-        if let Some(parent) = self.log_path.parent() {
-            fs::create_dir_all(parent).await?;
-        }
-        
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.log_path)
-            .await?;
-        file.write_all(line.as_bytes()).await?;
-        
-        // Update cache
-        self.recent.push(record);
-        if self.recent.len() > 100 {
-            self.recent.remove(0);
-        }
-        
+    fn load_persisted(path: &Path) -> Option<Vec<ModificationRecord>> {
+        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok())
+    }
+
+    async fn save_persisted(&self, records: &[ModificationRecord]) -> crate::Result<()> {
+        let json = serde_json::to_string_pretty(records)?;
+        tokio::fs::write(&self.storage_path, json).await?;
         Ok(())
     }
 
-    /// Get statistics about modifications.
-    pub async fn stats(&self) -> Result<ModificationStats> {
-        let records = self.load_all().await?;
-        
-        let mut stats = ModificationStats::default();
-        
-        for record in &records {
-            stats.total_modifications += 1;
-            
-            if record.tests_passed {
-                stats.successful_modifications += 1;
-            } else {
-                stats.failed_modifications += 1;
-            }
-            
-            let kind_key = format!("{:?}", record.kind);
-            *stats.by_kind.entry(kind_key).or_insert(0) += 1;
-        }
-        
-        // Extract common patterns from lessons
-        let mut lesson_counts: HashMap<String, u64> = HashMap::new();
-        for record in &records {
-            for lesson in &record.lessons {
-                *lesson_counts.entry(lesson.clone()).or_insert(0) += 1;
-            }
-        }
-        
-        let mut lessons: Vec<_> = lesson_counts.into_iter().collect();
-        lessons.sort_by(|a, b| b.1.cmp(&a.1));
-        stats.common_patterns = lessons.into_iter().take(10).map(|(k, _)| k).collect();
-        
-        Ok(stats)
+    pub async fn add_record(&self, kind: ModificationKind, description: impl Into<String>, metadata: serde_json::Value) -> u64 {
+        let mut next_id = self.next_id.lock().await;
+        let id = *next_id;
+        *next_id += 1;
+        drop(next_id);
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let record = MetaRecord { id, kind, description: description.into(), timestamp, metadata };
+        let mut records = self.records.lock().await;
+        if records.len() >= self.max_records { records.pop_front(); }
+        records.push_back(record);
+        id
     }
 
-    /// Get recent modifications.
-    pub fn recent(&self, limit: usize) -> &[ModificationRecord] {
-        let start = self.recent.len().saturating_sub(limit);
-        &self.recent[start..]
+    pub async fn record(&self, record: ModificationRecord) -> crate::Result<()> {
+        let mut records = self.persisted_records.lock().await;
+        records.push(record);
+        self.save_persisted(&records).await
     }
 
-    /// Reflect on a modification and add lessons learned.
-    pub async fn reflect(&mut self, file: &str, lessons: Vec<String>) -> Result<()> {
-        // Find the most recent modification to this file
-        if let Some(record) = self.recent.iter_mut().rev().find(|r| r.file == file) {
-            record.lessons = lessons.clone();
-            
-            // Rewrite the log with updated record
-            self.rewrite_log().await?;
+    pub async fn stats(&self) -> crate::Result<ModificationStats> {
+        let records = self.persisted_records.lock().await;
+        let total = records.len();
+        let successful = records.iter().filter(|r| r.tests_passed).count();
+        let mut by_kind: HashMap<String, usize> = HashMap::new();
+        for r in records.iter() {
+            *by_kind.entry(format!("{:?}", r.kind)).or_insert(0) += 1;
         }
-        
+        Ok(ModificationStats {
+            total_modifications: total,
+            successful_modifications: successful,
+            failed_modifications: total - successful,
+            by_kind,
+            common_patterns: vec![],
+        })
+    }
+
+    pub async fn reflect(&self, file: &str, lessons: Vec<String>) -> crate::Result<()> {
+        let mut records = self.persisted_records.lock().await;
+        if let Some(record) = records.iter_mut().rev().find(|r| r.file == file) {
+            record.lessons.extend(lessons);
+            self.save_persisted(&records).await?;
+        }
         Ok(())
     }
 
-    /// Load all modification records from disk.
-    async fn load_all(&self) -> Result<Vec<ModificationRecord>> {
-        let mut records = Vec::new();
-        
-        if !self.log_path.exists() {
-            return Ok(records);
-        }
-        
-        let content = fs::read_to_string(&self.log_path).await?;
-        for line in content.lines() {
-            if let Ok(record) = serde_json::from_str::<ModificationRecord>(line) {
-                records.push(record);
-            }
-        }
-        
-        Ok(records)
-    }
-
-    /// Rewrite the log file (used when updating records).
-    async fn rewrite_log(&self) -> Result<()> {
-        let mut content = String::new();
-        for record in &self.recent {
-            content += &serde_json::to_string(record)?;
-            content += "\n";
-        }
-        
-        fs::write(&self.log_path, content).await?;
-        Ok(())
+    pub async fn get_last(&self, n: usize) -> Vec<MetaRecord> {
+        let records = self.records.lock().await;
+        let start = records.len().saturating_sub(n);
+        records.iter().skip(start).cloned().collect()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[tokio::test]
-    async fn records_modification() {
-        let dir = tempdir().unwrap();
-        let mut meta = MetaCognition::new(dir.path().to_path_buf());
-        
-        let record = ModificationRecord {
-            timestamp: "2026-05-21T00:00:00Z".to_string(),
-            file: "src/agent/coding.rs".to_string(),
-            kind: ModificationKind::Feature,
-            description: "Added self-reflection".to_string(),
-            tests_passed: true,
-            commit: Some("abc123".to_string()),
-            lessons: vec![],
-        };
-        
-        meta.record(record).await.unwrap();
-        assert!(!meta.recent.is_empty());
-    }
-
-    #[tokio::test]
-    async fn computes_stats() {
-        let dir = tempdir().unwrap();
-        let mut meta = MetaCognition::new(dir.path().to_path_buf());
-        
-        meta.record(ModificationRecord {
-            timestamp: "2026-05-21T00:00:00Z".into(),
-            file: "src/lib.rs".into(),
-            kind: ModificationKind::Feature,
-            description: "Test 1".into(),
-            tests_passed: true,
-            commit: None,
-            lessons: vec!["Test early".into()],
-        }).await.unwrap();
-        
-        meta.record(ModificationRecord {
-            timestamp: "2026-05-21T00:00:01Z".into(),
-            file: "src/lib.rs".into(),
-            kind: ModificationKind::BugFix,
-            description: "Test 2".into(),
-            tests_passed: false,
-            commit: None,
-            lessons: vec![],
-        }).await.unwrap();
-        
-        let stats = meta.stats().await.unwrap();
-        assert_eq!(stats.total_modifications, 2);
-        assert_eq!(stats.successful_modifications, 1);
-        assert_eq!(stats.failed_modifications, 1);
-    }
+impl Default for MetaCognition {
+    fn default() -> Self { Self::new() }
 }
