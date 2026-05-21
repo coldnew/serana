@@ -27,6 +27,42 @@ struct ChatMessageResponse {
     content: Option<String>,
 }
 
+fn extract_message_content(response_body: &serde_json::Value) -> Option<String> {
+    response_body["choices"][0]["message"]["content"]
+        .as_str()
+        .map(str::to_string)
+}
+
+fn extract_stream_content(response_text: &str) -> Result<Option<String>> {
+    if !response_text.lines().any(|line| line.trim_start().starts_with("data:")) {
+        return Ok(None);
+    }
+
+    let mut content = String::new();
+    for line in response_text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(':') {
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data == "[DONE]" || data.is_empty() {
+            continue;
+        }
+
+        let chunk: serde_json::Value = serde_json::from_str(data)?;
+        if let Some(delta) = chunk["choices"][0]["delta"]["content"].as_str() {
+            content.push_str(delta);
+        } else if let Some(message) = extract_message_content(&chunk) {
+            content.push_str(&message);
+        }
+    }
+
+    Ok(Some(content))
+}
+
 /// OpenAI-compatible LLM client
 pub struct OpenAiClient {
     client: Client,
@@ -84,7 +120,17 @@ impl OpenAiClient {
             anyhow::bail!("LLM API error ({}): {}", status, body);
         }
 
-        let response_body: serde_json::Value = response.json().await?;
+        let response_text = response.text().await?;
+        tracing::debug!("LLM API response: {}", response_text);
+
+        if let Some(content) = extract_stream_content(&response_text)? {
+            return Ok(Message::Text {
+                role: "assistant".to_string(),
+                content,
+            });
+        }
+
+        let response_body: serde_json::Value = serde_json::from_str(&response_text)?;
         
         // Parse the response into a Message enum
         let msg = if let Some(tool_calls) = response_body["choices"][0]["message"]["tool_calls"].as_array() {
@@ -145,8 +191,17 @@ impl LlmClient for OpenAiClient {
             anyhow::bail!("LLM API error ({}): {}", status, body);
         }
 
-        let response_body: ChatResponse = response.json().await?;
+        let response_text = response.text().await?;
+        tracing::debug!("LLM API response: {}", response_text);
 
+        // Handle streaming SSE responses
+        if let Some(content) = extract_stream_content(&response_text)? {
+            if !content.is_empty() {
+                return Ok(content);
+            }
+        }
+
+        let response_body: ChatResponse = serde_json::from_str(&response_text)?;
         let content = response_body.choices.first()
             .and_then(|c| c.message.content.as_deref())
             .ok_or_else(|| anyhow::anyhow!("Empty response from LLM API"))?;

@@ -36,7 +36,10 @@ enum Commands {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter("serana=debug")
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "serana=info".parse().expect("valid default filter")),
+        )
         .init();
 
     let cli = Cli::parse();
@@ -92,7 +95,7 @@ async fn run_interactive(config: Config) -> anyhow::Result<()> {
     if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
         let model = config.model().to_string();
         let provider = config.provider.name.clone();
-        serana::tui::run(config.workspace, model, provider)?;
+        serana::tui::run(config.workspace.clone(), model, provider, config.clone())?;
     } else {
         // Fallback to simple REPL if no TTY
         println!("Serana interactive mode (Ctrl+C to exit)");

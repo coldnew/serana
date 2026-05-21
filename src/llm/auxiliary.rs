@@ -152,7 +152,7 @@ impl LlmClient for AuxiliaryClient {
     async fn chat_with_tools(
         &self,
         messages: &[Message],
-        tools: &[ToolDefinition],
+        _tools: &[ToolDefinition],
     ) -> Result<Message> {
         // Auxiliary client doesn't use tools
         let response = self.chat(messages).await?;

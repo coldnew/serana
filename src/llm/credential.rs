@@ -92,7 +92,7 @@ impl RefreshableClient {
                 Err(e) => {
                     if Self::is_auth_error(&e) && attempts < self.max_retries {
                         // Refresh credentials
-                        let mut provider = self.credential_provider.write().await;
+                        let provider = self.credential_provider.write().await;
                         provider.refresh().await?;
                         attempts += 1;
                         last_error = Some(e);

@@ -177,16 +177,7 @@ impl App {
             thinking: None,
         });
 
-        // For now, add a placeholder response
-        // TODO: integrate with actual LLM
-        self.messages.push(ChatMessage {
-            role: MessageRole::Agent,
-            content: "I received your message. LLM integration pending.".to_string(),
-            tool_calls: Vec::new(),
-            thinking: None,
-        });
-
-        self.mode = AppMode::Normal;
+        self.mode = AppMode::Processing;
     }
 
     pub fn handle_resize(&mut self, _width: u16, _height: u16) {

@@ -40,7 +40,7 @@ impl Default for CancelToken {
     }
 }
 
-/// A future that can be cancelled.
+// A future that can be cancelled.
 pin_project_lite::pin_project! {
     pub struct InterruptibleFuture<F> {
         #[pin]

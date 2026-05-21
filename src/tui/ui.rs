@@ -519,6 +519,7 @@ pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
     if app.show_welcome && app.messages.is_empty() {
         render_welcome(root, &app.version, &app.model, &app.provider);
     } else {
+        render_messages(root, &app.messages);
     }
 
     // 2. Pending messages (streaming)
