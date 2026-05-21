@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::Result;
 
 pub mod openai;
+pub mod fallback;
 
 /// Chat message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +117,8 @@ pub trait LlmClient: Send + Sync {
         tools: &[ToolDefinition],
     ) -> Result<Message>;
 }
+
+pub use fallback::{FallbackChain, FallbackConfig, ProviderEntry, ProviderStatus};
 
 /// Provider type for configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
