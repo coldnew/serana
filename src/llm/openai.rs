@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::stream::Stream;
 use futures::StreamExt;
 use reqwest::Client;
-use serde::Deserialize;
+use serde_json::json;
 use serde_json::json;
 use std::pin::Pin;
 
@@ -12,21 +12,6 @@ use crate::config::Config;
 use crate::llm::{LlmClient, Message, ToolCallData, FunctionCall, ToolDefinition, SseStream};
 use crate::Result;
 
-/// Chat completion response
-#[derive(Debug, Deserialize)]
-struct ChatResponse {
-    choices: Vec<ChatChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatMessageResponse,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatMessageResponse {
-    content: Option<String>,
-}
 
 /// OpenAI-compatible LLM client
 pub struct OpenAiClient {
