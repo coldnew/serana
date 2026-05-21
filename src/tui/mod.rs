@@ -14,7 +14,7 @@ pub mod tui;
 pub mod ui;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::agent::{Agent, coding::CodingAgent, SessionStore};
+use crate::agent::{Agent, AgentCallbacks, coding::CodingAgent, SessionStore};
 use crate::llm::{LlmClient, openai::OpenAiClient};
 use crate::tools::ToolRegistry;
 use crate::config::Config;
@@ -35,13 +35,23 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     let events = event::EventHandler::new(Duration::from_millis(16));
 
     let (response_tx, mut response_rx) = mpsc::unbounded_channel::<AgentResponse>();
+    let (stream_tx, mut stream_rx) = mpsc::unbounded_channel::<String>();
     let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
     let tools = ToolRegistry::new();
     let session_store = SessionStore::default_location();
     session_store.init()?;
     let session = session_store.create_session()?;
+    
+    // Set up streaming callback
+    let stream_tx_clone = stream_tx.clone();
+    let callbacks = AgentCallbacks::new()
+        .with_stream_delta(Arc::new(move |delta| {
+            let _ = stream_tx_clone.send(delta.to_string());
+        }));
+    
     let agent = Arc::new(
         CodingAgent::new(llm, tools)
+            .with_callbacks(callbacks)
             .with_workspace(workspace_for_agent)
             .with_session(session_store, session.meta.id),
     );
@@ -49,7 +59,7 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     tui.clear_screen()?;
     tui.hide_cursor()?;
 
-    let result = run_app(&mut tui, &mut app, events, agent, response_tx, &mut response_rx);
+    let result = run_app(&mut tui, &mut app, events, agent, response_tx, &mut response_rx, &mut stream_rx);
 
     tui.show_cursor()?;
     tui.restore()?;
@@ -69,12 +79,21 @@ fn run_app(
     agent: Arc<CodingAgent>,
     response_tx: mpsc::UnboundedSender<AgentResponse>,
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
+    stream_rx: &mut mpsc::UnboundedReceiver<String>,
 ) -> Result<()> {
     let mut pending_request: Option<tokio::task::JoinHandle<()>> = None;
+    let mut streaming_content = String::new();
 
     loop {
         ui::draw(tui, app)?;
         tui.render()?;
+
+        // Check for streaming deltas
+        while let Ok(delta) = stream_rx.try_recv() {
+            streaming_content.push_str(&delta);
+            app.set_pending_response(streaming_content.clone());
+            tui.request_render();
+        }
 
         // Check for agent responses
         if let Ok(resp) = response_rx.try_recv() {
@@ -85,6 +104,8 @@ fn run_app(
                 thinking: None,
             });
             app.mode = app::AppMode::Normal;
+            app.clear_pending_response();
+            streaming_content.clear();
             pending_request = None;
             tui.request_render();
         }

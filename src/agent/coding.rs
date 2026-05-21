@@ -1,17 +1,20 @@
 use async_trait::async_trait;
+use futures::StreamExt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use crate::agent::{
     Agent, AgentOutput, AgentCallbacks, AgentStatus,
     IterationBudget, PromptBuilder, execute_tools_concurrent, validate_message_alternation,
     SessionStore, ContextCompressor, CompressionDecision,
 };
-use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition};
+use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition, AuxiliaryClient};
 use crate::tools::ToolRegistry;
 use crate::Result;
 
 /// Hermes-style coding agent with iteration budget and callback support.
 pub struct CodingAgent {
     llm: Box<dyn LlmClient>,
+    auxiliary: Option<Arc<AuxiliaryClient>>,
     tools: ToolRegistry,
     budget: IterationBudget,
     callbacks: AgentCallbacks,
@@ -25,6 +28,7 @@ impl CodingAgent {
     pub fn new(llm: Box<dyn LlmClient>, tools: ToolRegistry) -> Self {
         Self {
             llm,
+            auxiliary: None,
             tools,
             budget: IterationBudget::default_parent(),
             callbacks: AgentCallbacks::new(),
@@ -65,6 +69,12 @@ impl CodingAgent {
         self.compressor = compressor;
         self
     }
+
+    /// Set auxiliary client for background tasks (compression, validation, etc).
+    pub fn with_auxiliary(mut self, auxiliary: AuxiliaryClient) -> Self {
+        self.auxiliary = Some(Arc::new(auxiliary));
+        self
+    }
 }
 
 #[async_trait]
@@ -75,9 +85,7 @@ impl Agent for CodingAgent {
 
     async fn execute(&self, instruction: &str) -> Result<AgentOutput> {
         // Notify status
-        if let Some(cb) = &self.callbacks.status {
-            cb(AgentStatus::Running);
-        }
+        self.callbacks.fire_status(AgentStatus::Running);
 
         let system_prompt = self.prompt_builder.build();
         let tools = self.build_tool_definitions();
@@ -87,6 +95,19 @@ impl Agent for CodingAgent {
         ];
         self.persist_message("user", instruction)?;
 
+        // Generate session title in background if auxiliary available
+        if let (Some(store), Some(session_id), Some(aux)) = 
+            (&self.session_store, &self.session_id, &self.auxiliary) {
+            let store = store.clone();
+            let sid = session_id.clone();
+            let aux = aux.clone();
+            let first_msg = instruction.chars().take(200).collect::<String>();
+            tokio::spawn(async move {
+                if let Ok(title) = aux.generate_title(&first_msg).await {
+                    let _ = store.update_session_title(&sid, &title);
+                }
+            });
+        }
 
         let mut all_tool_calls = Vec::new();
 
@@ -94,13 +115,9 @@ impl Agent for CodingAgent {
         while self.budget.remaining() > 0 {
             match self.compressor.check_compression(self.compressor.estimate_tokens(&messages)) {
                 CompressionDecision::Gateway => {
-                    if let Some(cb) = &self.callbacks.status {
-                        cb(AgentStatus::Compressing);
-                    }
-                    messages = self.compressor.compress_messages(&messages, self.llm.as_ref()).await?;
-                    if let Some(cb) = &self.callbacks.status {
-                        cb(AgentStatus::Running);
-                    }
+                    self.callbacks.fire_status(AgentStatus::Compressing);
+                    messages = self.compress_messages(&messages).await?;
+                    self.callbacks.fire_status(AgentStatus::Running);
                 }
                 CompressionDecision::Preflight | CompressionDecision::None => {}
             }
@@ -110,7 +127,16 @@ impl Agent for CodingAgent {
                 anyhow::bail!("Message alternation error: {}", e);
             }
 
-            let response = self.llm.chat_with_tools(&messages, &tools).await?;
+            // Validate risky tool calls if auxiliary available
+            self.validate_tool_calls_before_execution(&messages, &tools).await?;
+
+            // Use streaming API for real-time response
+            // Clone messages and tools so stream can own them without blocking mutations
+            self.callbacks.fire_status(AgentStatus::Thinking);
+            let messages_snapshot = messages.clone();
+            let tools_snapshot = tools.clone();
+            let response = self.stream_llm_call(&messages_snapshot, &tools_snapshot).await?;
+            self.callbacks.fire_status(AgentStatus::Running);
 
             match response {
                 Message::ToolCall { role, content, tool_calls } => {
@@ -121,7 +147,9 @@ impl Agent for CodingAgent {
                     messages.push(Message::ToolCall { role, content, tool_calls: tool_calls.clone() });
 
                     // Execute tools
+                    self.callbacks.fire_status(AgentStatus::ExecutingTool);
                     let results = execute_tools_concurrent(&tool_calls, &self.tools, &self.callbacks).await;
+                    self.callbacks.fire_status(AgentStatus::Running);
 
                     // Process results
                     for result in results {
@@ -134,18 +162,14 @@ impl Agent for CodingAgent {
 
                     // Check if budget exceeded after iteration
                     if self.budget.increment() {
-                        if let Some(cb) = &self.callbacks.status {
-                            cb(AgentStatus::BudgetExhausted);
-                        }
+                        self.callbacks.fire_status(AgentStatus::BudgetExhausted);
                         break;
                     }
                 }
                 Message::Text { role: _, content } => {
                     // Final response - no more tool calls
                     self.persist_message("assistant", &content)?;
-                    if let Some(cb) = &self.callbacks.status {
-                        cb(AgentStatus::Complete);
-                    }
+                    self.callbacks.fire_status(AgentStatus::Complete);
                     return Ok(AgentOutput {
                         response: content,
                         tool_calls: all_tool_calls,
@@ -158,9 +182,7 @@ impl Agent for CodingAgent {
             }
         }
 
-        if let Some(cb) = &self.callbacks.status {
-            cb(AgentStatus::BudgetExhausted);
-        }
+        self.callbacks.fire_status(AgentStatus::BudgetExhausted);
 
         anyhow::bail!("Exceeded iteration budget")
     }
@@ -204,6 +226,62 @@ impl CodingAgent {
             )?;
         }
         Ok(())
+    }
+
+    /// Compress messages using auxiliary client if available, otherwise main LLM.
+    async fn compress_messages(&self, messages: &[Message]) -> Result<Vec<Message>> {
+        if let Some(aux) = &self.auxiliary {
+            self.compressor.compress_messages_with_auxiliary(messages, aux.as_ref()).await
+        } else {
+            self.compressor.compress_messages(messages, self.llm.as_ref()).await
+        }
+    }
+
+    /// Validate tool calls before execution using auxiliary client.
+    async fn validate_tool_calls_before_execution(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<()> {
+        // Tool validation is handled in tool_executor.rs via callbacks
+        // This is a placeholder for pre-execution validation if needed
+        Ok(())
+    }
+
+    /// Call LLM with streaming, consuming the stream and firing callbacks.
+    async fn stream_llm_call(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<Message> {
+        let mut stream = self.llm.chat_with_tools_stream(messages, tools);
+        let mut final_message: Option<Message> = None;
+        let mut accumulated_content = String::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(Message::Text { content, .. }) => {
+                    // Stream delta - fire callback for each chunk
+                    self.callbacks.fire_stream_delta(&content);
+                    accumulated_content.push_str(&content);
+                }
+                Ok(msg) => {
+                    // Non-streaming message (tool call or complete)
+                    final_message = Some(msg);
+                    break;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        // If we accumulated content but no final message, construct one
+        if final_message.is_none() && !accumulated_content.is_empty() {
+            final_message = Some(Message::assistant(accumulated_content));
+        }
+
+        final_message.ok_or_else(|| anyhow::anyhow!("No message received from stream"))
     }
 }
 

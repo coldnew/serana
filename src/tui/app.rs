@@ -199,6 +199,20 @@ impl App {
     pub fn add_btw(&mut self, note: impl Into<String>) {
         self.btw_notes.push(note.into());
     }
+
+    /// Set streaming response content (real-time display)
+    pub fn set_pending_response(&mut self, content: String) {
+        if self.pending_messages.is_empty() {
+            self.pending_messages.push(content);
+        } else {
+            self.pending_messages[0] = content;
+        }
+    }
+
+    /// Clear streaming response content
+    pub fn clear_pending_response(&mut self) {
+        self.pending_messages.clear();
+    }
 }
 
 /// Application mode.

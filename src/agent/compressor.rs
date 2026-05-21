@@ -3,7 +3,7 @@
 //! Compresses conversation history when approaching context limits,
 //! preserving recent messages and system prompts.
 
-use crate::llm::{LlmClient, Message};
+use crate::llm::{LlmClient, Message, AuxiliaryClient};
 use crate::Result;
 
 /// Compression trigger thresholds as percentages of max context.
@@ -115,6 +115,43 @@ impl ContextCompressor {
         Ok(result)
     }
 
+    /// Compress messages using auxiliary client (Hermes pattern).
+    ///
+    /// Uses the auxiliary client for background compression tasks.
+    pub async fn compress_messages_with_auxiliary(
+        &self,
+        messages: &[Message],
+        auxiliary: &AuxiliaryClient,
+    ) -> Result<Vec<Message>> {
+        if messages.len() <= self.config.protect_last_n {
+            return Ok(messages.to_vec());
+        }
+
+        let (system_msgs, rest) = self.split_system_messages(messages);
+        let split_point = rest.len().saturating_sub(self.config.protect_last_n);
+        let (to_compress, protected) = rest.split_at(split_point);
+
+        if to_compress.is_empty() {
+            return Ok(messages.to_vec());
+        }
+
+        // Build conversation text
+        let conversation = to_compress
+            .iter()
+            .map(|m| format!("{}: {:?}", m.role(), m))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // Use auxiliary client's summarize method
+        let summary = auxiliary.summarize(&conversation, 2000).await?;
+
+        let mut result = system_msgs;
+        result.push(Message::user(format!("[Previous conversation summary]\n{}", summary)));
+        result.extend_from_slice(protected);
+
+        Ok(result)
+    }
+
     /// Split system messages from the rest.
     fn split_system_messages<'a>(&self, messages: &'a [Message]) -> (Vec<Message>, &'a [Message]) {
         let system_count = messages.iter().take_while(|m| m.role() == "system").count();
@@ -164,6 +201,7 @@ impl ContextCompressor {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use std::sync::Arc;
 
     struct MockLlm;
 
@@ -244,5 +282,30 @@ mod tests {
 
         // Both system messages should be preserved
         assert!(compressed.iter().filter(|m| m.role() == "system").count() >= 2);
+    }
+
+    #[tokio::test]
+    async fn compress_with_auxiliary() {
+        let config = CompressionConfig {
+            max_tokens: 128_000,
+            protect_last_n: 1,
+            thresholds: CompressionThresholds::default(),
+        };
+        let compressor = ContextCompressor::new(config);
+        let auxiliary = AuxiliaryClient::new(Arc::new(MockLlm));
+
+        // Need enough messages to trigger compression (> protect_last_n)
+        let messages = vec![
+            Message::system("System".to_string()),
+            Message::user("Old message 1".to_string()),
+            Message::assistant("Old response 1".to_string()),
+            Message::user("Old message 2".to_string()),
+            Message::assistant("Recent".to_string()),
+        ];
+
+        let compressed = compressor.compress_messages_with_auxiliary(&messages, &auxiliary).await.unwrap();
+        // Should have: system + summary + 1 protected
+        assert_eq!(compressed.len(), 3);
+        assert!(compressed.iter().any(|m| matches!(m, Message::Text { content, .. } if content.contains("Previous conversation summary"))));
     }
 }
