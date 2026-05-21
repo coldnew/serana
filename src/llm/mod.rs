@@ -50,6 +50,29 @@ impl Message {
     pub fn tool_result(tool_call_id: String, content: String) -> Self {
         Self::ToolResult { role: "tool".to_string(), tool_call_id, content }
     }
+
+    /// Create an assistant message with tool calls.
+    pub fn assistant_with_tool_calls(tool_calls: Vec<ToolCallData>) -> Self {
+        Self::ToolCall {
+            role: "assistant".to_string(),
+            content: None,
+            tool_calls,
+        }
+    }
+
+    /// Get the role of the message.
+    pub fn role(&self) -> String {
+        match self {
+            Self::Text { role, .. } => role.clone(),
+            Self::ToolCall { role, .. } => role.clone(),
+            Self::ToolResult { role, .. } => role.clone(),
+        }
+    }
+
+    /// Whether this message contains tool calls.
+    pub fn has_tool_calls(&self) -> bool {
+        matches!(self, Self::ToolCall { tool_calls, .. } if !tool_calls.is_empty())
+    }
 }
 
 /// Tool call data from LLM
