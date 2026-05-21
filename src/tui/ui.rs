@@ -40,47 +40,77 @@ impl Default for Theme {
 
 /// PI logo block characters (oh-my-pi style)
 const PI_LOGO: &[&str] = &[
-    "▀██████████▀",
-    " ╘██    ██  ",
-    "  ██    ██  ",
-    "  ██    ██  ",
-    " ▄██▄  ▄██▄ ",
+    "▀████████████▀",
+    " ╘███    ███  ",
+    "  ███    ███  ",
+    "  ███    ███  ",
+    " ▄███▄  ▄███▄ ",
 ];
 
-/// Apply magenta→cyan gradient to logo (simplified - just uses magenta)
+/// Apply magenta→cyan gradient to logo (matching oh-my-pi)
 fn gradient_logo(lines: &[&str]) -> Vec<String> {
-    lines.iter().map(|l| {
-        let magenta = "\x1b[35m";
-        let reset = "\x1b[0m";
-        format!("{}{}{}", magenta, l, reset)
+    // 256-color gradient: bright magenta → bright cyan
+    let colors = [
+        "\x1b[38;5;199m", // bright magenta
+        "\x1b[38;5;171m", // magenta-purple
+        "\x1b[38;5;135m", // purple
+        "\x1b[38;5;99m",  // purple-blue
+        "\x1b[38;5;75m",  // cyan-blue
+        "\x1b[38;5;51m",  // bright cyan
+    ];
+    let reset = "\x1b[0m";
+
+    lines.iter().map(|line| {
+        let mut result = String::new();
+        let color_count = colors.len();
+        let step = (line.len() / color_count).max(1);
+        let mut color_idx = 0;
+
+        for (i, char) in line.chars().enumerate() {
+            if i > 0 && i % step == 0 && color_idx < color_count - 1 {
+                color_idx += 1;
+            }
+            if char != ' ' {
+                result.push_str(colors[color_idx]);
+                result.push(char);
+                result.push_str(reset);
+            } else {
+                result.push(char);
+            }
+        }
+        result
     }).collect()
 }
 
 /// Render welcome screen with true two-column layout (oh-my-pi style).
-fn render_welcome(container: &mut Container, version: &str, model: &str) {
+/// Render welcome screen with true two-column layout (oh-my-pi style).
+fn render_welcome(container: &mut Container, version: &str, model: &str, provider: &str) {
     let theme = Theme::default();
-    
+
     // Get terminal width (assume 80 minimum)
     let width = 80;
     let max_width = 100;
     let box_width = width.min(max_width).max(4);
-    
+
     // Column layout
     let dual_content_width = box_width - 3; // │ + │ + │
     let preferred_left_col = 26;
-    let min_left_col = 12; // logo width
+    let min_left_col = 14; // logo width (updated to match oh-my-pi)
     let min_right_col = 20;
-    
-    let left_min_content_width = min_left_col.max(visible_width("Welcome back!")).max(visible_width(model));
+
+    let left_min_content_width = min_left_col
+        .max(visible_width("Welcome back!"))
+        .max(visible_width(model))
+        .max(visible_width(provider));
     let desired_left_col = preferred_left_col.min((dual_content_width as f64 * 0.35) as usize).max(min_left_col);
-    
+
     let dual_left_col = if dual_content_width >= min_right_col + 1 {
         desired_left_col.min(dual_content_width - min_right_col)
     } else {
         (dual_content_width - 1).max(1)
     };
     let dual_right_col = (dual_content_width - dual_left_col).max(1);
-    
+
     let show_right_column = dual_left_col >= left_min_content_width && dual_right_col >= min_right_col;
     let left_col = if show_right_column { dual_left_col } else { box_width - 2 };
     let right_col = if show_right_column { dual_right_col } else { 0 };
@@ -94,13 +124,14 @@ fn render_welcome(container: &mut Container, version: &str, model: &str) {
         center_text(&theme.accent.apply("Welcome back!"), left_col),
         "".to_string(),
     ];
-    
+
     for line in &logo_colored {
         left_lines.push(center_text(line, left_col));
     }
-    
+
     left_lines.push("".to_string());
     left_lines.push(center_text(&theme.muted.apply(model), left_col));
+    left_lines.push(center_text(&theme.dim.apply(provider), left_col));
     left_lines.push("".to_string());
 
     // Right column content
@@ -487,9 +518,8 @@ pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
 
     // 1. Welcome or messages (oh-my-pi order)
     if app.show_welcome && app.messages.is_empty() {
-        render_welcome(root, &app.version, &app.model);
+        render_welcome(root, &app.version, &app.model, &app.provider);
     } else {
-        render_messages(root, &app.messages);
     }
 
     // 2. Pending messages (streaming)

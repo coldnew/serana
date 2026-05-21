@@ -91,7 +91,8 @@ async fn run_interactive(config: Config) -> anyhow::Result<()> {
     // Check if we have a proper terminal for TUI
     if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
         let model = config.model().to_string();
-        serana::tui::run(config.workspace, model)?;
+        let provider = config.provider.name.clone();
+        serana::tui::run(config.workspace, model, provider)?;
     } else {
         // Fallback to simple REPL if no TTY
         println!("Serana interactive mode (Ctrl+C to exit)");

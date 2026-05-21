@@ -20,6 +20,7 @@ pub struct App {
     pub scroll: usize,
     pub mode: AppMode,
     pub model: String,
+    pub provider: String,
     pub should_quit: bool,
     pub tick_count: u64,
     pub version: String,
@@ -58,7 +59,8 @@ impl App {
             cursor: 0,
             scroll: 0,
             mode: AppMode::Normal,
-            model: "gpt-4o".to_string(), // Will be updated from config
+            model: "gpt-4o".to_string(),
+            provider: "openai".to_string(),
             should_quit: false,
             tick_count: 0,
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -76,9 +78,10 @@ impl App {
     }
 
     /// Create App with model from config
-    pub fn with_model(workspace: PathBuf, model: String) -> Self {
+    pub fn with_model(workspace: PathBuf, model: String, provider: String) -> Self {
         let mut app = Self::new(workspace);
         app.model = model;
+        app.provider = provider;
         app
     }
 

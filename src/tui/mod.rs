@@ -22,9 +22,9 @@ use self::tui::Tui;
 use crate::Result;
 
 /// Run the TUI application.
-pub fn run(workspace: PathBuf, model: String) -> Result<()> {
+pub fn run(workspace: PathBuf, model: String, provider: String) -> Result<()> {
     let mut tui = Tui::new()?;
-    let mut app = App::with_model(workspace, model);
+    let mut app = App::with_model(workspace, model, provider);
     let events = event::EventHandler::new(Duration::from_millis(16));
 
     tui.clear_screen()?;
@@ -36,6 +36,7 @@ pub fn run(workspace: PathBuf, model: String) -> Result<()> {
     tui.restore()?;
     result
 }
+
 
 fn run_app(tui: &mut Tui, app: &mut App, mut events: event::EventHandler) -> Result<()> {
     loop {
