@@ -83,7 +83,6 @@ fn gradient_logo(lines: &[&str]) -> Vec<String> {
 }
 
 /// Render welcome screen with true two-column layout (oh-my-pi style).
-/// Render welcome screen with true two-column layout (oh-my-pi style).
 fn render_welcome(container: &mut Container, version: &str, model: &str, provider: &str) {
     let theme = Theme::default();
 
