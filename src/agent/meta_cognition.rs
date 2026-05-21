@@ -167,10 +167,41 @@ impl MetaCognition {
         let start = records.len().saturating_sub(n);
         records.iter().skip(start).cloned().collect()
     }
-}
 
-impl Default for MetaCognition {
-    fn default() -> Self {
-        Self::new()
+    pub async fn query_by_context(&self, query: &str) -> Vec<ModificationRecord> {
+        let records = self.persisted_records.lock().await;
+        records
+            .iter()
+            .filter(|r| {
+                r.file.contains(query)
+                    || r.description.contains(query)
+                    || format!("{:?}", r.kind).contains(query)
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub async fn get_recent_failures(&self, tool_name: &str, limit: usize) -> Vec<ModificationRecord> {
+        let records = self.persisted_records.lock().await;
+        records
+            .iter()
+            .filter(|r| {
+                r.file == format!("tool:{}", tool_name) && !r.tests_passed
+            })
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
+    pub async fn add_lesson(&self, timestamp: &str, lesson: String) -> crate::Result<()> {
+        let mut records = self.persisted_records.lock().await;
+        if let Some(record) = records.iter_mut().find(|r| r.timestamp == timestamp) {
+            record.lessons.push(lesson);
+            self.save_persisted(&records).await?;
+            Ok(())
+        } else {
+            anyhow::bail!("Record not found for timestamp: {}", timestamp)
+        }
     }
 }
