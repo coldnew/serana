@@ -24,6 +24,7 @@ pub struct CodingAgent {
     session_id: Option<String>,
     compressor: ContextCompressor,
     cancel_token: Option<CancelToken>,
+    #[allow(dead_code)]
     meta_cognition: Arc<MetaCognition>,
 }
 

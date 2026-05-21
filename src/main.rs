@@ -33,7 +33,7 @@ enum Commands {
     },
 }
 
-#[tokio::main]
+    // test comment
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
