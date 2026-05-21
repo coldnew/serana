@@ -1,263 +1,255 @@
-//! Tool approval system for dangerous operations.
+//! Tool approval system for controlling dangerous operations.
 //!
-//! Provides user confirmation workflow for destructive or high-risk tool calls.
+//! Provides approval modes and risk classification for tool calls.
 
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
-/// Risk level of a tool operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RiskLevel {
-    /// Safe operations (read-only)
-    Safe,
-    /// Moderate risk (creates new files)
-    Moderate,
-    /// High risk (modifies or deletes files)
-    High,
-    /// Critical (destructive, affects multiple files or external systems)
-    Critical,
+/// Tool approval mode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApprovalMode {
+    /// Automatically approve all tool calls
+    Auto,
+    /// Require user approval for every tool call
+    Interactive,
+    /// Automatically approve whitelisted tools, ask for others
+    Whitelist(HashSet<String>),
+    /// Automatically approve safe tools, ask for dangerous ones
+    Smart,
 }
 
-/// Approval decision from user.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApprovalDecision {
-    /// Approved for this execution
-    Approved,
-    /// Rejected
-    Rejected,
-    /// Approved for all similar operations in this session
-    ApprovedAll,
-}
-
-/// Tool approval policy.
-#[derive(Debug, Clone)]
-pub struct ApprovalPolicy {
-    /// Require approval for high-risk operations
-    pub require_high_approval: bool,
-    /// Require approval for moderate-risk operations
-    pub require_moderate_approval: bool,
-    /// Auto-approve safe operations
-    pub auto_approve_safe: bool,
-    /// Paths that always require approval (e.g., production configs)
-    pub protected_paths: Vec<String>,
-}
-
-impl Default for ApprovalPolicy {
+impl Default for ApprovalMode {
     fn default() -> Self {
+        Self::Smart
+    }
+}
+
+/// Risk level for tool operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RiskLevel {
+    /// Safe operations (read-only, no side effects)
+    Safe,
+    /// Low-risk operations (local writes, non-destructive)
+    Low,
+    /// Medium-risk operations (file modifications, local commands)
+    Medium,
+    /// High-risk operations (deletions, network requests, system changes)
+    High,
+}
+
+/// Tool approval decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalDecision {
+    /// Approve this tool call
+    Approve,
+    /// Deny this tool call
+    Deny,
+    /// Approve and add to whitelist
+    ApproveAlways,
+    /// Deny and add to blacklist
+    DenyAlways,
+}
+
+/// Tool approval system.
+#[derive(Debug, Clone)]
+pub struct ToolApproval {
+    mode: ApprovalMode,
+    whitelist: HashSet<String>,
+    blacklist: HashSet<String>,
+}
+
+impl ToolApproval {
+    /// Create a new tool approval system with the given mode.
+    pub fn new(mode: ApprovalMode) -> Self {
+        let whitelist = match &mode {
+            ApprovalMode::Whitelist(list) => list.clone(),
+            _ => HashSet::new(),
+        };
+        
         Self {
-            require_high_approval: true,
-            require_moderate_approval: false,
-            auto_approve_safe: true,
-            protected_paths: vec![
-                ".env".to_string(),
-                "config.prod".to_string(),
-                "credentials".to_string(),
-            ],
-        }
-    }
-}
-
-impl ApprovalPolicy {
-    /// Create a permissive policy (auto-approve everything).
-    pub fn permissive() -> Self {
-        Self {
-            require_high_approval: false,
-            require_moderate_approval: false,
-            auto_approve_safe: true,
-            protected_paths: vec![],
+            mode,
+            whitelist,
+            blacklist: HashSet::new(),
         }
     }
 
-    /// Create a strict policy (require approval for all modifications).
-    pub fn strict() -> Self {
-        Self {
-            require_high_approval: true,
-            require_moderate_approval: true,
-            auto_approve_safe: true,
-            protected_paths: vec![],
-        }
+    /// Create with default smart mode.
+    pub fn smart() -> Self {
+        Self::new(ApprovalMode::Smart)
     }
 
-    /// Determine risk level for a tool call.
-    pub fn assess_risk(&self, tool_name: &str, arguments: &Value) -> RiskLevel {
-        match tool_name {
-            "read_file" | "list_files" | "search" | "grep" => RiskLevel::Safe,
-            "write_file" => {
-                if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
-                    if self.is_protected_path(path) {
-                        return RiskLevel::Critical;
-                    }
-                    // Writing to existing file is high risk
-                    if std::path::Path::new(path).exists() {
-                        return RiskLevel::High;
-                    }
-                    // New file is moderate
-                    return RiskLevel::Moderate;
-                }
-                RiskLevel::High
-            }
-            "edit_file" => {
-                if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
-                    if self.is_protected_path(path) {
-                        return RiskLevel::Critical;
-                    }
-                }
-                RiskLevel::High
-            }
-            "delete_file" | "rm" | "execute_shell" => RiskLevel::Critical,
-            _ => RiskLevel::High, // Unknown tools are high risk
-        }
+    /// Create with auto-approve mode.
+    pub fn auto() -> Self {
+        Self::new(ApprovalMode::Auto)
     }
 
-    /// Check if a path is protected.
-    pub fn is_protected_path(&self, path: &str) -> bool {
-        self.protected_paths.iter().any(|p| path.contains(p))
+    /// Create with interactive mode.
+    pub fn interactive() -> Self {
+        Self::new(ApprovalMode::Interactive)
     }
 
-    /// Check if approval is required for a tool call.
-    pub fn requires_approval(&self, tool_name: &str, arguments: &Value) -> bool {
-        let risk = self.assess_risk(tool_name, arguments);
-        match risk {
-            RiskLevel::Safe => !self.auto_approve_safe,
-            RiskLevel::Moderate => self.require_moderate_approval,
-            RiskLevel::High => self.require_high_approval,
-            RiskLevel::Critical => true,
-        }
-    }
-}
-
-/// Approval callback trait for UI integration.
-pub trait ApprovalCallback: Send + Sync {
-    /// Request approval for a tool call.
-    /// Returns the user's decision.
-    fn request_approval(&self, tool_name: &str, arguments: &Value, risk: RiskLevel) -> ApprovalDecision;
-}
-
-/// Default approval callback that auto-approves everything.
-pub struct AutoApprove;
-
-impl ApprovalCallback for AutoApprove {
-    fn request_approval(&self, _tool_name: &str, _arguments: &Value, _risk: RiskLevel) -> ApprovalDecision {
-        ApprovalDecision::ApprovedAll
-    }
-}
-
-/// In-memory approval state for session-level decisions.
-#[derive(Debug, Clone, Default)]
-pub struct ApprovalState {
-    /// Tools that have been approved for all similar operations
-    approved_all: Vec<String>,
-    /// Policy configuration
-    policy: ApprovalPolicy,
-}
-
-impl ApprovalState {
-    pub fn new(policy: ApprovalPolicy) -> Self {
-        Self {
-            approved_all: Vec::new(),
-            policy,
-        }
-    }
-
-    /// Check if a tool call is already approved (from previous ApprovedAll).
-    pub fn is_preapproved(&self, tool_name: &str) -> bool {
-        self.approved_all.iter().any(|t| t == tool_name)
-    }
-
-    /// Record an ApprovedAll decision.
-    pub fn record_approved_all(&mut self, tool_name: &str) {
-        if !self.is_preapproved(tool_name) {
-            self.approved_all.push(tool_name.to_string());
-        }
-    }
-
-    /// Check if approval is needed for a tool call.
-    pub fn needs_approval(&self, tool_name: &str, arguments: &Value) -> bool {
-        if self.is_preapproved(tool_name) {
+    pub fn requires_approval(&self, tool_name: &str) -> bool {
+        // Check blacklist first
+        if self.blacklist.contains(tool_name) {
             return false;
         }
-        self.policy.requires_approval(tool_name, arguments)
+
+        // Whitelist overrides everything
+        if self.whitelist.contains(tool_name) {
+            return false;
+        }
+
+        match &self.mode {
+            ApprovalMode::Auto => false,
+            ApprovalMode::Interactive => true,
+            ApprovalMode::Whitelist(_) => true,
+            ApprovalMode::Smart => {
+                let risk = Self::classify_risk(tool_name);
+                risk >= RiskLevel::High
+            }
+        }
     }
 
-    /// Get the risk level for a tool call.
-    pub fn get_risk_level(&self, tool_name: &str, arguments: &Value) -> RiskLevel {
-        self.policy.assess_risk(tool_name, arguments)
+    /// Classify the risk level of a tool.
+    pub fn classify_risk(tool_name: &str) -> RiskLevel {
+        match tool_name {
+            // Safe: read-only operations
+            "read_file" | "list_files" | "search_code" | "get_definition" 
+            | "find_references" | "get_hover" | "get_diagnostics" => RiskLevel::Safe,
+            
+            // Low: local non-destructive writes
+            "write_file" | "create_file" | "append_file" => RiskLevel::Low,
+            
+            // Medium: modifications and local commands
+            "edit_file" | "rename_file" | "run_command" | "git_commit" => RiskLevel::Medium,
+            
+            // High: destructive or network operations
+            "delete_file" | "delete_directory" | "git_push" | "http_request" 
+            | "install_package" | "system_command" => RiskLevel::High,
+            
+            // Unknown tools default to high risk
+            _ => RiskLevel::High,
+        }
+    }
+
+    /// Apply an approval decision.
+    pub fn apply_decision(&mut self, tool_name: &str, decision: ApprovalDecision) {
+        match decision {
+            ApprovalDecision::Approve => {
+                // One-time approval, no state change
+            }
+            ApprovalDecision::Deny => {
+                // One-time denial, no state change
+            }
+            ApprovalDecision::ApproveAlways => {
+                self.whitelist.insert(tool_name.to_string());
+                self.blacklist.remove(tool_name);
+            }
+            ApprovalDecision::DenyAlways => {
+                self.blacklist.insert(tool_name.to_string());
+                self.whitelist.remove(tool_name);
+            }
+        }
+    }
+
+    /// Get the current approval mode.
+    pub fn mode(&self) -> &ApprovalMode {
+        &self.mode
+    }
+
+    /// Get the whitelist.
+    pub fn whitelist(&self) -> &HashSet<String> {
+        &self.whitelist
+    }
+
+    /// Get the blacklist.
+    pub fn blacklist(&self) -> &HashSet<String> {
+        &self.blacklist
+    }
+
+    /// Check if a tool is whitelisted.
+    pub fn is_whitelisted(&self, tool_name: &str) -> bool {
+        self.whitelist.contains(tool_name)
+    }
+
+    /// Check if a tool is blacklisted.
+    pub fn is_blacklisted(&self, tool_name: &str) -> bool {
+        self.blacklist.contains(tool_name)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
-    fn read_file_is_safe() {
-        let policy = ApprovalPolicy::default();
-        assert_eq!(
-            policy.assess_risk("read_file", &json!({"path": "test.txt"})),
-            RiskLevel::Safe
-        );
+    fn auto_mode_approves_all() {
+        let approval = ToolApproval::auto();
+        assert!(!approval.requires_approval("delete_file"));
+        assert!(!approval.requires_approval("read_file"));
     }
 
     #[test]
-    fn write_new_file_is_moderate() {
-        let policy = ApprovalPolicy::default();
-        assert_eq!(
-            policy.assess_risk("write_file", &json!({"path": "/tmp/new_file.txt"})),
-            RiskLevel::Moderate
-        );
+    fn interactive_mode_requires_all() {
+        let approval = ToolApproval::interactive();
+        assert!(approval.requires_approval("delete_file"));
+        assert!(approval.requires_approval("read_file"));
     }
 
     #[test]
-    fn write_existing_file_is_high() {
-        let policy = ApprovalPolicy::default();
-        // Cargo.toml exists in the workspace
-        assert_eq!(
-            policy.assess_risk("write_file", &json!({"path": "Cargo.toml"})),
-            RiskLevel::High
-        );
+    fn smart_mode_requires_high_risk() {
+        let approval = ToolApproval::smart();
+        assert!(approval.requires_approval("delete_file"));
+        assert!(approval.requires_approval("git_push"));
+        assert!(!approval.requires_approval("read_file"));
+        assert!(!approval.requires_approval("write_file"));
     }
 
     #[test]
-    fn protected_paths_are_critical() {
-        let policy = ApprovalPolicy::default();
-        assert_eq!(
-            policy.assess_risk("write_file", &json!({"path": ".env"})),
-            RiskLevel::Critical
-        );
-        assert_eq!(
-            policy.assess_risk("edit_file", &json!({"path": "config.prod.yaml"})),
-            RiskLevel::Critical
-        );
-    }
-
-    #[test]
-    fn policy_requires_approval_correctly() {
-        let policy = ApprovalPolicy::default();
+    fn whitelist_mode_checks_list() {
+        let mut whitelist = HashSet::new();
+        whitelist.insert("read_file".to_string());
+        whitelist.insert("write_file".to_string());
         
-        // Safe operations don't need approval
-        assert!(!policy.requires_approval("read_file", &json!({"path": "test.txt"})));
-        
-        // High risk needs approval
-        assert!(policy.requires_approval("write_file", &json!({"path": "Cargo.toml"})));
-        
-        // Critical always needs approval
-        assert!(policy.requires_approval("write_file", &json!({"path": ".env"})));
+        let approval = ToolApproval::new(ApprovalMode::Whitelist(whitelist));
+        assert!(!approval.requires_approval("read_file"));
+        assert!(!approval.requires_approval("write_file"));
+        assert!(approval.requires_approval("delete_file"));
     }
 
     #[test]
-    fn permissive_policy_auto_approves() {
-        let policy = ApprovalPolicy::permissive();
-        assert!(!policy.requires_approval("write_file", &json!({"path": "Cargo.toml"})));
-        assert!(!policy.requires_approval("edit_file", &json!({"path": ".env"})));
+    fn classifies_risk_correctly() {
+        assert_eq!(ToolApproval::classify_risk("read_file"), RiskLevel::Safe);
+        assert_eq!(ToolApproval::classify_risk("write_file"), RiskLevel::Low);
+        assert_eq!(ToolApproval::classify_risk("edit_file"), RiskLevel::Medium);
+        assert_eq!(ToolApproval::classify_risk("delete_file"), RiskLevel::High);
+        assert_eq!(ToolApproval::classify_risk("unknown_tool"), RiskLevel::High);
     }
 
-    fn approval_state_tracks_approved_all() {
-        let mut state = ApprovalState::new(ApprovalPolicy::default());
+    #[test]
+    fn approve_always_adds_to_whitelist() {
+        let mut approval = ToolApproval::smart();
+        approval.apply_decision("delete_file", ApprovalDecision::ApproveAlways);
+        
+        assert!(approval.is_whitelisted("delete_file"));
+        assert!(!approval.requires_approval("delete_file"));
+    }
 
-        // Use an existing file for High risk (requires approval by default)
-        assert!(state.needs_approval("write_file", &json!({"path": "Cargo.toml"})));
+    #[test]
+    fn deny_always_adds_to_blacklist() {
+        let mut approval = ToolApproval::auto();
+        approval.apply_decision("delete_file", ApprovalDecision::DenyAlways);
+        
+        assert!(approval.is_blacklisted("delete_file"));
+    }
 
-        state.record_approved_all("write_file");
-        assert!(!state.needs_approval("write_file", &json!({"path": "other.txt"})));
+    #[test]
+    fn blacklist_overrides_whitelist() {
+        let mut approval = ToolApproval::smart();
+        approval.apply_decision("delete_file", ApprovalDecision::ApproveAlways);
+        approval.apply_decision("delete_file", ApprovalDecision::DenyAlways);
+        
+        assert!(!approval.is_whitelisted("delete_file"));
+        assert!(approval.is_blacklisted("delete_file"));
     }
 }

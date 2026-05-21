@@ -33,7 +33,7 @@ pub use prompt_builder::PromptBuilder;
 pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
 pub use session::{Session, SessionMeta, SessionStore, SearchResult, StoredMessage, StoredToolCall};
 pub use compressor::{CompressionConfig, CompressionDecision, CompressionThresholds, ContextCompressor};
-pub use tool_approval::{ApprovalCallback, ApprovalDecision, ApprovalPolicy, ApprovalState, AutoApprove, RiskLevel};
+pub use tool_approval::{ApprovalDecision, ApprovalMode, RiskLevel, ToolApproval};
 pub use subagent::{delegate_task, SubagentConfig, SubagentResult, SubagentSpawner, SubagentTask};
 pub use meta_cognition::{MetaCognition, ModificationKind, ModificationRecord};
 
