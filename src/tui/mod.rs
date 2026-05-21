@@ -12,13 +12,13 @@ pub mod terminal;
 pub mod tool_execution;
 pub mod tui;
 pub mod ui;
+use crate::agent::{coding::CodingAgent, Agent, AgentCallbacks, CancelToken, SessionStore};
+use crate::config::Config;
+use crate::llm::{openai::OpenAiClient, LlmClient};
+use crate::tools::self_evolve;
+use crate::tools::ToolRegistry;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::agent::{Agent, AgentCallbacks, coding::CodingAgent, SessionStore, CancelToken};
-use crate::llm::{LlmClient, openai::OpenAiClient};
-use crate::tools::ToolRegistry;
-use crate::tools::self_evolve;
-use crate::config::Config;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -44,17 +44,16 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     let session_store = SessionStore::default_location();
     session_store.init()?;
     let session = session_store.create_session()?;
-    
+
     // Set up streaming callback
     let stream_tx_clone = stream_tx.clone();
-    let callbacks = AgentCallbacks::new()
-        .with_stream_delta(Arc::new(move |delta| {
-            let _ = stream_tx_clone.send(delta.to_string());
-        }));
+    let callbacks = AgentCallbacks::new().with_stream_delta(Arc::new(move |delta| {
+        let _ = stream_tx_clone.send(delta.to_string());
+    }));
     // Create cancel token for interruptible execution
     let cancel_token = CancelToken::new();
     let agent_cancel_token = cancel_token.clone();
-    
+
     let agent = Arc::new(
         CodingAgent::new(llm, tools)
             .with_callbacks(callbacks)
@@ -66,7 +65,16 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     tui.clear_screen()?;
     tui.hide_cursor()?;
 
-    let result = run_app(&mut tui, &mut app, events, agent, cancel_token, response_tx, &mut response_rx, &mut stream_rx);
+    let result = run_app(
+        &mut tui,
+        &mut app,
+        events,
+        agent,
+        cancel_token,
+        response_tx,
+        &mut response_rx,
+        &mut stream_rx,
+    );
 
     tui.show_cursor()?;
     tui.restore()?;
@@ -77,7 +85,6 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
 struct AgentResponse {
     content: String,
 }
-
 
 fn run_app(
     tui: &mut Tui,

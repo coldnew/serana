@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use crate::context::Context;
 use crate::Result;
+use std::path::PathBuf;
 
 pub struct ContextCompactor;
 

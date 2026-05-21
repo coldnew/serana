@@ -65,7 +65,7 @@ impl ToolApproval {
             ApprovalMode::Whitelist(list) => list.clone(),
             _ => HashSet::new(),
         };
-        
+
         Self {
             mode,
             whitelist,
@@ -114,19 +114,19 @@ impl ToolApproval {
     pub fn classify_risk(tool_name: &str) -> RiskLevel {
         match tool_name {
             // Safe: read-only operations
-            "read_file" | "list_files" | "search_code" | "get_definition" 
-            | "find_references" | "get_hover" | "get_diagnostics" => RiskLevel::Safe,
-            
+            "read_file" | "list_files" | "search_code" | "get_definition" | "find_references"
+            | "get_hover" | "get_diagnostics" => RiskLevel::Safe,
+
             // Low: local non-destructive writes
             "write_file" | "create_file" | "append_file" => RiskLevel::Low,
-            
+
             // Medium: modifications and local commands
             "edit_file" | "rename_file" | "run_command" | "git_commit" => RiskLevel::Medium,
-            
+
             // High: destructive or network operations
-            "delete_file" | "delete_directory" | "git_push" | "http_request" 
+            "delete_file" | "delete_directory" | "git_push" | "http_request"
             | "install_package" | "system_command" => RiskLevel::High,
-            
+
             // Unknown tools default to high risk
             _ => RiskLevel::High,
         }
@@ -210,7 +210,7 @@ mod tests {
         let mut whitelist = HashSet::new();
         whitelist.insert("read_file".to_string());
         whitelist.insert("write_file".to_string());
-        
+
         let approval = ToolApproval::new(ApprovalMode::Whitelist(whitelist));
         assert!(!approval.requires_approval("read_file"));
         assert!(!approval.requires_approval("write_file"));
@@ -230,7 +230,7 @@ mod tests {
     fn approve_always_adds_to_whitelist() {
         let mut approval = ToolApproval::smart();
         approval.apply_decision("delete_file", ApprovalDecision::ApproveAlways);
-        
+
         assert!(approval.is_whitelisted("delete_file"));
         assert!(!approval.requires_approval("delete_file"));
     }
@@ -239,7 +239,7 @@ mod tests {
     fn deny_always_adds_to_blacklist() {
         let mut approval = ToolApproval::auto();
         approval.apply_decision("delete_file", ApprovalDecision::DenyAlways);
-        
+
         assert!(approval.is_blacklisted("delete_file"));
     }
 
@@ -248,7 +248,7 @@ mod tests {
         let mut approval = ToolApproval::smart();
         approval.apply_decision("delete_file", ApprovalDecision::ApproveAlways);
         approval.apply_decision("delete_file", ApprovalDecision::DenyAlways);
-        
+
         assert!(!approval.is_whitelisted("delete_file"));
         assert!(approval.is_blacklisted("delete_file"));
     }

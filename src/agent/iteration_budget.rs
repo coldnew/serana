@@ -84,7 +84,8 @@ impl IterationBudget {
 
     /// Get remaining iterations.
     pub fn remaining(&self) -> usize {
-        self.max_iterations.saturating_sub(self.current.load(Ordering::SeqCst))
+        self.max_iterations
+            .saturating_sub(self.current.load(Ordering::SeqCst))
     }
 
     /// Check if budget is exhausted.
@@ -123,12 +124,12 @@ mod tests {
     #[test]
     fn budget_allows_iterations_within_limit() {
         let budget = IterationBudget::new(5);
-        
+
         for _ in 0..4 {
             assert!(budget.can_continue());
             assert!(!budget.increment());
         }
-        
+
         // Last iteration exhausts the budget
         assert!(budget.increment());
         assert!(!budget.can_continue());
@@ -138,24 +139,24 @@ mod tests {
     #[test]
     fn unlimited_budget_never_exhausts() {
         let budget = IterationBudget::unlimited();
-        
+
         for _ in 0..1000 {
             assert!(budget.can_continue());
             assert!(!budget.increment());
         }
-        
+
         assert!(!budget.is_exhausted());
     }
 
     #[test]
     fn reset_clears_state() {
         let budget = IterationBudget::new(5);
-        
+
         budget.increment();
         budget.increment();
-        
+
         budget.reset();
-        
+
         assert_eq!(budget.current(), 0);
         assert!(budget.can_continue());
     }
@@ -163,19 +164,19 @@ mod tests {
     #[test]
     fn calculates_progress() {
         let budget = IterationBudget::new(10);
-        
+
         assert_eq!(budget.progress(), 0.0);
-        
+
         for _ in 0..5 {
             budget.increment();
         }
-        
+
         assert_eq!(budget.progress(), 0.5);
-        
+
         for _ in 0..5 {
             budget.increment();
         }
-        
+
         assert_eq!(budget.progress(), 1.0);
     }
 }

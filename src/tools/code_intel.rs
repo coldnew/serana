@@ -140,7 +140,9 @@ impl Tool for LspDefinitionTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut manager = LspManager::new(request.workspace);
-        let locations = manager.definition(request.path.as_ref(), request.position).await?;
+        let locations = manager
+            .definition(request.path.as_ref(), request.position)
+            .await?;
         manager.shutdown_all().await?;
         Ok(json!({ "locations": locations }))
     }
@@ -171,7 +173,9 @@ impl Tool for LspReferencesTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut manager = LspManager::new(request.workspace);
-        let locations = manager.references(request.path.as_ref(), request.position).await?;
+        let locations = manager
+            .references(request.path.as_ref(), request.position)
+            .await?;
         manager.shutdown_all().await?;
         Ok(json!({ "locations": locations }))
     }
@@ -202,7 +206,9 @@ impl Tool for LspHoverTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut manager = LspManager::new(request.workspace);
-        let hover = manager.hover(request.path.as_ref(), request.position).await?;
+        let hover = manager
+            .hover(request.path.as_ref(), request.position)
+            .await?;
         manager.shutdown_all().await?;
         Ok(json!({ "hover": hover }))
     }
@@ -228,7 +234,8 @@ impl LspToolRequest {
         let character = input
             .get("character")
             .and_then(Value::as_u64)
-            .ok_or_else(|| anyhow::anyhow!("Missing 'character' field"))? as u32;
+            .ok_or_else(|| anyhow::anyhow!("Missing 'character' field"))?
+            as u32;
         let workspace = input
             .get("workspace")
             .and_then(Value::as_str)
@@ -260,7 +267,9 @@ mod tests {
     async fn ast_outline_returns_rust_symbols() {
         let dir = tempdir().unwrap();
         let file = dir.path().join("main.rs");
-        fs::write(&file, "use std::fmt;\nstruct App;\nfn main() {}\n").await.unwrap();
+        fs::write(&file, "use std::fmt;\nstruct App;\nfn main() {}\n")
+            .await
+            .unwrap();
 
         let output = AstOutlineTool
             .execute(json!({ "path": file.to_string_lossy() }))
@@ -279,7 +288,8 @@ mod tests {
             "line": 3,
             "character": 10,
             "workspace": "."
-        })).unwrap();
+        }))
+        .unwrap();
         assert_eq!(request.path, "src/main.rs");
         assert_eq!(request.position.line, 3);
         assert_eq!(request.position.character, 10);

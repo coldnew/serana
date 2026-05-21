@@ -2,9 +2,9 @@
 //!
 //! Loads configuration from ~/.serana/config.toml with environment variable overrides.
 
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 /// Main configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,8 +58,12 @@ fn default_provider() -> String {
     "openai".to_string()
 }
 
-fn default_max_tokens() -> usize { 4096 }
-fn default_temperature() -> f32 { 0.7 }
+fn default_max_tokens() -> usize {
+    4096
+}
+fn default_temperature() -> f32 {
+    0.7
+}
 
 /// LLM-specific configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,22 +116,26 @@ impl Config {
         if config_path.exists() {
             tracing::info!("Config file found, loading...");
             let config = Self::load_from_path(&config_path)?;
-            tracing::info!("Loaded config: model={}, provider={}", config.model(), config.provider.name);
+            tracing::info!(
+                "Loaded config: model={}, provider={}",
+                config.model(),
+                config.provider.name
+            );
             Ok(config)
         } else {
             tracing::info!("No config file found at {:?}, using defaults", config_path);
             Ok(Self::default())
         }
     }
-    
+
     /// Load configuration from a specific path
     pub fn load_from_path(path: &Path) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config from {:?}", path))?;
-        
+
         let mut config: Config = toml::from_str(&contents)
             .with_context(|| format!("Failed to parse config from {:?}", path))?;
-        
+
         // Apply legacy config format compatibility
         if let Some(model) = &config.default_model {
             if config.llm.model == default_model() {
@@ -140,7 +148,9 @@ impl Config {
             }
         }
         // Use providers array if available (legacy format)
-        if let Some(provider) = config.default_provider.as_ref()
+        if let Some(provider) = config
+            .default_provider
+            .as_ref()
             .and_then(|id| config.providers.iter().find(|p| &p.id == id))
         {
             if config.llm.model == default_model() && !provider.model.is_empty() {
@@ -150,13 +160,13 @@ impl Config {
                 config.provider.url = Some(url.clone());
             }
         }
-        
+
         // Apply environment variable overrides
         config.apply_env_overrides();
-        
+
         Ok(config)
     }
-    
+
     /// Get the configuration file path.
     /// Prioritizes ~/.serana/config.toml for compatibility with Serana's documented config.
     pub fn config_path() -> PathBuf {
@@ -172,30 +182,30 @@ impl Config {
             .join("serana")
             .join("config.toml")
     }
-    
+
     /// Apply environment variable overrides
     fn apply_env_overrides(&mut self) {
         // Provider override
         if let Ok(provider) = std::env::var("SERANA_PROVIDER") {
             self.provider.name = provider;
         }
-        
+
         // API key override (highest priority)
         if let Ok(api_key) = std::env::var("SERANA_API_KEY") {
             self.llm.api_key = Some(api_key);
         }
-        
+
         // Also check provider-specific env vars as fallback
         if self.llm.api_key.is_none() {
             self.llm.api_key = std::env::var("OPENAI_API_KEY").ok();
         }
-        
+
         // Model override
         if let Ok(model) = std::env::var("SERANA_MODEL") {
             self.llm.model = model;
         }
     }
-    
+
     /// Get the resolved API URL based on provider
     pub fn api_url(&self) -> String {
         match self.provider.name.as_str() {
@@ -204,20 +214,24 @@ impl Config {
             "ollama" => "http://localhost:11434/v1".to_string(),
             "openrouter" => "https://openrouter.ai/api/v1".to_string(),
             "custom" => self.provider.url.clone().unwrap_or_default(),
-            _ => self.provider.url.clone().unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
+            _ => self
+                .provider
+                .url
+                .clone()
+                .unwrap_or_else(|| "https://api.openai.com/v1".to_string()),
         }
     }
-    
+
     /// Get the resolved API key
     pub fn api_key(&self) -> Option<String> {
         self.llm.api_key.clone()
     }
-    
+
     /// Get the model name
     pub fn model(&self) -> &str {
         &self.llm.model
     }
-    
+
     /// Get the temperature
     pub fn temperature(&self) -> f32 {
         self.llm.temperature
@@ -243,6 +257,6 @@ pub fn generate_sample_config() -> String {
         default_provider: None,
         providers: Vec::new(),
     };
-    
+
     toml::to_string_pretty(&config).unwrap_or_default()
 }

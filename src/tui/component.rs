@@ -10,11 +10,17 @@ pub trait Component: Any {
     /// Invalidate cached rendering state.
     fn invalidate(&mut self) {}
 
-    fn as_any_mut(&mut self) -> &mut dyn Any where Self: Sized {
+    fn as_any_mut(&mut self) -> &mut dyn Any
+    where
+        Self: Sized,
+    {
         self
     }
 
-    fn as_any(&self) -> &dyn Any where Self: Sized {
+    fn as_any(&self) -> &dyn Any
+    where
+        Self: Sized,
+    {
         self
     }
 }

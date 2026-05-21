@@ -23,7 +23,9 @@ pub struct EventHandler {
 impl EventHandler {
     pub fn new(_tick_rate: Duration) -> Self {
         // Ignore the tick_rate parameter and use fast polling
-        Self { tick_rate: Duration::from_millis(16) } // ~60fps
+        Self {
+            tick_rate: Duration::from_millis(16),
+        } // ~60fps
     }
 
     /// Get next event
@@ -34,9 +36,7 @@ impl EventHandler {
             Ok(true) => {
                 if let Ok(e) = event::read() {
                     match e {
-                        CrosstermEvent::Key(key)
-                            if key.kind == KeyEventKind::Press =>
-                        {
+                        CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => {
                             return Ok(Event::Key(key));
                         }
                         CrosstermEvent::Resize(w, h) => return Ok(Event::Resize(w, h)),

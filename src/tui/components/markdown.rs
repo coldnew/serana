@@ -126,7 +126,10 @@ impl Markdown {
         let normalized = self.text.replace('\t', "   ");
 
         // Parse markdown
-        let parser = Parser::new_ext(&normalized, Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH);
+        let parser = Parser::new_ext(
+            &normalized,
+            Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH,
+        );
 
         // Render events to lines
         let renderer = MarkdownRenderer::new(&self.theme, content_width, self.code_block_indent);
@@ -161,7 +164,13 @@ impl Component for Markdown {
         for line in raw_lines {
             let visible_len = visible_width(&line);
             let right_needed = width.saturating_sub(visible_len + self.padding_x * 2);
-            lines.push(format!("{}{}{}{}", left_pad, line, right_pad, " ".repeat(right_needed)));
+            lines.push(format!(
+                "{}{}{}{}",
+                left_pad,
+                line,
+                right_pad,
+                " ".repeat(right_needed)
+            ));
         }
 
         // Bottom padding
@@ -206,10 +215,10 @@ fn unicode_width(ch: char) -> usize {
         '\x00'..='\x1F' => 0,
         // Zero-width characters
         '\u{0300}'..='\u{036F}' => 0, // Combining diacritical marks
-        '\u{200B}' => 0, // Zero-width space
+        '\u{200B}' => 0,              // Zero-width space
         '\u{200C}'..='\u{200D}' => 0, // Zero-width joiners
         '\u{FE00}'..='\u{FE0F}' => 0, // Variation selectors
-        '\u{FEFF}' => 0, // BOM
+        '\u{FEFF}' => 0,              // BOM
         // East Asian Wide characters (width 2)
         _ if is_wide_char(ch) => 2,
         // Everything else
@@ -393,7 +402,8 @@ impl<'a> MarkdownRenderer<'a> {
             Event::FootnoteReference(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {}
             Event::TaskListMarker(checked) => {
                 let marker = if checked { "✓ " } else { "○ " };
-                self.current_line.push_str(&self.theme.list_bullet.apply(marker));
+                self.current_line
+                    .push_str(&self.theme.list_bullet.apply(marker));
             }
             Event::InlineHtml(html) => {
                 self.push_text(html.as_ref());
@@ -408,7 +418,8 @@ impl<'a> MarkdownRenderer<'a> {
                 self.current_style = Some(self.theme.heading);
                 if level != HeadingLevel::H1 {
                     let prefix = "#".repeat(level as usize) + " ";
-                    self.current_line.push_str(&self.theme.heading.apply(&prefix));
+                    self.current_line
+                        .push_str(&self.theme.heading.apply(&prefix));
                 }
             }
             Tag::BlockQuote(_) => {
@@ -446,7 +457,8 @@ impl<'a> MarkdownRenderer<'a> {
                     "- ".to_string()
                 };
                 self.current_line.push_str(&indent);
-                self.current_line.push_str(&self.theme.list_bullet.apply(&bullet));
+                self.current_line
+                    .push_str(&self.theme.list_bullet.apply(&bullet));
             }
             Tag::Emphasis => {
                 self.style_stack.push(self.theme.italic);
@@ -468,7 +480,12 @@ impl<'a> MarkdownRenderer<'a> {
             }
             Tag::Image { .. } => {}
             Tag::Table(_) | Tag::TableHead | Tag::TableRow | Tag::TableCell => {}
-            Tag::FootnoteDefinition(_) | Tag::MetadataBlock(_) | Tag::DefinitionList | Tag::DefinitionListTitle | Tag::DefinitionListDefinition | Tag::HtmlBlock => {}
+            Tag::FootnoteDefinition(_)
+            | Tag::MetadataBlock(_)
+            | Tag::DefinitionList
+            | Tag::DefinitionListTitle
+            | Tag::DefinitionListDefinition
+            | Tag::HtmlBlock => {}
         }
     }
 
@@ -518,7 +535,12 @@ impl<'a> MarkdownRenderer<'a> {
             }
             TagEnd::Image => {}
             TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow | TagEnd::TableCell => {}
-            TagEnd::FootnoteDefinition | TagEnd::MetadataBlock(_) | TagEnd::DefinitionList | TagEnd::DefinitionListTitle | TagEnd::DefinitionListDefinition | TagEnd::HtmlBlock => {}
+            TagEnd::FootnoteDefinition
+            | TagEnd::MetadataBlock(_)
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition
+            | TagEnd::HtmlBlock => {}
         }
     }
 

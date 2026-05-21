@@ -183,10 +183,9 @@ mod tests {
         let call_count = Arc::new(AtomicU32::new(0));
         let count_clone = call_count.clone();
 
-        let callbacks = AgentCallbacks::new()
-            .with_thinking(Arc::new(move |_| {
-                count_clone.fetch_add(1, Ordering::SeqCst);
-            }));
+        let callbacks = AgentCallbacks::new().with_thinking(Arc::new(move |_| {
+            count_clone.fetch_add(1, Ordering::SeqCst);
+        }));
 
         callbacks.fire_thinking(true);
         callbacks.fire_thinking(false);

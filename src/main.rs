@@ -1,9 +1,9 @@
-use clap::{Parser, Subcommand};
-use serana::agent::{Agent, coding::CodingAgent};
-use serana::config::Config;
-use serana::llm::{LlmClient, openai::OpenAiClient};
-use serana::tools::ToolRegistry;
 use anyhow::Context;
+use clap::{Parser, Subcommand};
+use serana::agent::{coding::CodingAgent, Agent};
+use serana::config::Config;
+use serana::llm::{openai::OpenAiClient, LlmClient};
+use serana::tools::ToolRegistry;
 use std::io::IsTerminal;
 
 #[derive(Parser)]
@@ -33,7 +33,7 @@ enum Commands {
     },
 }
 
-    // test comment
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -44,8 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    let mut config = Config::load()
-        .with_context(|| "Failed to load config")?;
+    let mut config = Config::load().with_context(|| "Failed to load config")?;
     config.workspace = std::path::PathBuf::from(&cli.workspace);
 
     match cli.command {

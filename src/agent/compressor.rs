@@ -3,7 +3,7 @@
 //! Compresses conversation history when approaching context limits,
 //! preserving recent messages and system prompts.
 
-use crate::llm::{LlmClient, Message, AuxiliaryClient};
+use crate::llm::{AuxiliaryClient, LlmClient, Message};
 use crate::Result;
 
 /// Compression trigger thresholds as percentages of max context.
@@ -73,7 +73,7 @@ impl ContextCompressor {
     /// Check if compression is needed based on current token count.
     pub fn check_compression(&self, current_tokens: usize) -> CompressionDecision {
         let ratio = current_tokens as f32 / self.config.max_tokens as f32;
-        
+
         if ratio >= self.config.thresholds.gateway {
             CompressionDecision::Gateway
         } else if ratio >= self.config.thresholds.preflight {
@@ -109,7 +109,10 @@ impl ContextCompressor {
 
         // Reconstruct: system + summary + protected
         let mut result = system_msgs;
-        result.push(Message::user(format!("[Previous conversation summary]\n{}", summary)));
+        result.push(Message::user(format!(
+            "[Previous conversation summary]\n{}",
+            summary
+        )));
         result.extend_from_slice(protected);
 
         Ok(result)
@@ -146,7 +149,10 @@ impl ContextCompressor {
         let summary = auxiliary.summarize(&conversation, 2000).await?;
 
         let mut result = system_msgs;
-        result.push(Message::user(format!("[Previous conversation summary]\n{}", summary)));
+        result.push(Message::user(format!(
+            "[Previous conversation summary]\n{}",
+            summary
+        )));
         result.extend_from_slice(protected);
 
         Ok(result)
@@ -186,9 +192,11 @@ impl ContextCompressor {
             .map(|m| {
                 let content_len = match m {
                     Message::Text { content, .. } => content.len(),
-                    Message::ToolCall { content, tool_calls, .. } => {
-                        content.as_ref().map(|c| c.len()).unwrap_or(0) + tool_calls.len() * 50
-                    }
+                    Message::ToolCall {
+                        content,
+                        tool_calls,
+                        ..
+                    } => content.as_ref().map(|c| c.len()).unwrap_or(0) + tool_calls.len() * 50,
                     Message::ToolResult { content, .. } => content.len(),
                 };
                 (m.role().len() + content_len) / 4
@@ -223,20 +231,29 @@ mod tests {
     #[test]
     fn detects_compression_thresholds() {
         let compressor = ContextCompressor::with_defaults();
-        
-        assert_eq!(compressor.check_compression(10_000), CompressionDecision::None);
-        assert_eq!(compressor.check_compression(70_000), CompressionDecision::Preflight);
-        assert_eq!(compressor.check_compression(110_000), CompressionDecision::Gateway);
+
+        assert_eq!(
+            compressor.check_compression(10_000),
+            CompressionDecision::None
+        );
+        assert_eq!(
+            compressor.check_compression(70_000),
+            CompressionDecision::Preflight
+        );
+        assert_eq!(
+            compressor.check_compression(110_000),
+            CompressionDecision::Gateway
+        );
     }
 
     #[test]
     fn estimates_token_count() {
         let compressor = ContextCompressor::with_defaults();
         let messages = vec![
-            Message::user("a".repeat(400)), // ~100 tokens
+            Message::user("a".repeat(400)),      // ~100 tokens
             Message::assistant("b".repeat(400)), // ~100 tokens
         ];
-        
+
         let estimate = compressor.estimate_tokens(&messages);
         assert!(estimate >= 190 && estimate <= 210); // ~200 tokens
     }
@@ -264,7 +281,9 @@ mod tests {
         // Should have: system + summary + 2 protected
         assert_eq!(compressed.len(), 4);
         assert_eq!(compressed[0].role(), "system");
-        assert!(matches!(&compressed[1], Message::Text { content, .. } if content.contains("Previous conversation summary")));
+        assert!(
+            matches!(&compressed[1], Message::Text { content, .. } if content.contains("Previous conversation summary"))
+        );
     }
 
     #[tokio::test]
@@ -303,7 +322,10 @@ mod tests {
             Message::assistant("Recent".to_string()),
         ];
 
-        let compressed = compressor.compress_messages_with_auxiliary(&messages, &auxiliary).await.unwrap();
+        let compressed = compressor
+            .compress_messages_with_auxiliary(&messages, &auxiliary)
+            .await
+            .unwrap();
         // Should have: system + summary + 1 protected
         assert_eq!(compressed.len(), 3);
         assert!(compressed.iter().any(|m| matches!(m, Message::Text { content, .. } if content.contains("Previous conversation summary"))));

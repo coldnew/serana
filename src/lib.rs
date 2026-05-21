@@ -1,9 +1,9 @@
 pub mod agent;
-pub mod tools;
-pub mod llm;
-pub mod context;
 pub mod config;
+pub mod context;
+pub mod llm;
 pub mod lsp;
+pub mod tools;
 pub mod tree_sitter;
 pub mod tui;
 pub mod web;

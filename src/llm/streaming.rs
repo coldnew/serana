@@ -108,7 +108,9 @@ mod tests {
     async fn parses_sse_chunks() {
         let response_body = b"data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\ndata: [DONE]\n\n";
         let stream = SseStream {
-            bytes_stream: Box::pin(futures::stream::iter(vec![Ok(Bytes::from_static(response_body))])),
+            bytes_stream: Box::pin(futures::stream::iter(vec![Ok(Bytes::from_static(
+                response_body,
+            ))])),
             buffer: String::new(),
         };
         let chunks: Vec<String> = stream.map(|r| r.unwrap()).collect().await;

@@ -5,8 +5,8 @@
 use std::path::Path;
 
 use crate::Result;
-use tree_sitter::{Language, Parser, Query, QueryCursor, Tree};
 use serde::Serialize;
+use tree_sitter::{Language, Parser, Query, QueryCursor, Tree};
 
 /// Language identifier (shared with LSP)
 pub use crate::lsp::LanguageId;
@@ -43,7 +43,13 @@ impl ParserManager {
             for capture in m.captures {
                 let capture_name = &query.capture_names()[capture.index as usize];
                 match *capture_name {
-                    "name" => name = capture.node.utf8_text(content.as_bytes()).ok().map(str::to_string),
+                    "name" => {
+                        name = capture
+                            .node
+                            .utf8_text(content.as_bytes())
+                            .ok()
+                            .map(str::to_string)
+                    }
                     "item" => node = Some(capture.node),
                     _ => {}
                 }
@@ -78,7 +84,13 @@ impl ParserManager {
             for capture in m.captures {
                 let capture_name = &query.capture_names()[capture.index as usize];
                 match *capture_name {
-                    "name" => name = capture.node.utf8_text(content.as_bytes()).ok().map(str::to_string),
+                    "name" => {
+                        name = capture
+                            .node
+                            .utf8_text(content.as_bytes())
+                            .ok()
+                            .map(str::to_string)
+                    }
                     "item" => node = Some(capture.node),
                     _ => {}
                 }
@@ -111,7 +123,12 @@ impl ParserManager {
             for capture in m.captures {
                 if query.capture_names()[capture.index as usize] == "source" {
                     imports.push(Import {
-                        source: capture.node.utf8_text(content.as_bytes()).unwrap_or_default().trim_matches(['\'', '"']).to_string(),
+                        source: capture
+                            .node
+                            .utf8_text(content.as_bytes())
+                            .unwrap_or_default()
+                            .trim_matches(['\'', '"'])
+                            .to_string(),
                         start_line: capture.node.start_position().row + 1,
                     });
                 }
@@ -166,7 +183,9 @@ fn language_for_path(path: &Path) -> Result<Language> {
 
     match LanguageId::from_extension(ext) {
         Some(LanguageId::Rust) => Ok(tree_sitter_rust::language()),
-        Some(LanguageId::JavaScript) | Some(LanguageId::TypeScript) => Ok(tree_sitter_javascript::language()),
+        Some(LanguageId::JavaScript) | Some(LanguageId::TypeScript) => {
+            Ok(tree_sitter_javascript::language())
+        }
         Some(LanguageId::Python) => Ok(tree_sitter_python::language()),
         Some(LanguageId::Go) => Ok(tree_sitter_go::language()),
         None => anyhow::bail!("unsupported source language: {}", path.display()),

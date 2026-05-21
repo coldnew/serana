@@ -220,7 +220,11 @@ impl SessionStore {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Some(Session { meta, messages, tool_calls }))
+        Ok(Some(Session {
+            meta,
+            messages,
+            tool_calls,
+        }))
     }
 
     pub fn save_message(&self, session_id: &str, role: &str, content: &str) -> crate::Result<()> {
@@ -324,13 +328,17 @@ mod tests {
         store.init().unwrap();
 
         let session = store.create_session().unwrap();
-        store.save_message(&session.meta.id, "user", "How do I implement OAuth?").unwrap();
-        store.save_tool_call(
-            &session.meta.id,
-            "read_file",
-            &serde_json::json!({"path":"Cargo.toml"}),
-            Some(&serde_json::json!({"ok":true})),
-        ).unwrap();
+        store
+            .save_message(&session.meta.id, "user", "How do I implement OAuth?")
+            .unwrap();
+        store
+            .save_tool_call(
+                &session.meta.id,
+                "read_file",
+                &serde_json::json!({"path":"Cargo.toml"}),
+                Some(&serde_json::json!({"ok":true})),
+            )
+            .unwrap();
 
         let loaded = store.load_session(&session.meta.id).unwrap().unwrap();
         assert_eq!(loaded.messages.len(), 1);
@@ -346,7 +354,9 @@ mod tests {
         store.init().unwrap();
 
         let session = store.create_session().unwrap();
-        store.save_message(&session.meta.id, "user", "OAuth implementation details").unwrap();
+        store
+            .save_message(&session.meta.id, "user", "OAuth implementation details")
+            .unwrap();
 
         let results = store.search_messages("OAuth", 10).unwrap();
         assert_eq!(results.len(), 1);
@@ -362,7 +372,10 @@ mod tests {
         let original = store.create_session().unwrap();
         let compressed = store.create_compressed_session(&original.meta.id).unwrap();
 
-        assert_eq!(compressed.meta.compressed_from.as_deref(), Some(original.meta.id.as_str()));
+        assert_eq!(
+            compressed.meta.compressed_from.as_deref(),
+            Some(original.meta.id.as_str())
+        );
         assert_eq!(compressed.meta.compression_count, 1);
     }
 
@@ -373,7 +386,9 @@ mod tests {
         store.init().unwrap();
 
         let session = store.create_session().unwrap();
-        store.update_session_title(&session.meta.id, "OAuth Implementation").unwrap();
+        store
+            .update_session_title(&session.meta.id, "OAuth Implementation")
+            .unwrap();
 
         let loaded = store.load_session(&session.meta.id).unwrap().unwrap();
         assert_eq!(loaded.meta.title, Some("OAuth Implementation".to_string()));

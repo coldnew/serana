@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
-
-pub mod gatherer;
 pub mod compactor;
+pub mod gatherer;
 
 pub struct Context {
     pub workspace_root: PathBuf,

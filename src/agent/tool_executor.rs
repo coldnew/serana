@@ -5,8 +5,8 @@
 use serde_json::Value;
 
 use crate::agent::{AgentCallbacks, ToolCall};
-use crate::tools::ToolRegistry;
 use crate::llm::ToolCallData;
+use crate::tools::ToolRegistry;
 use crate::Result;
 
 /// Execute multiple tool calls concurrently.
@@ -20,7 +20,7 @@ pub async fn execute_tools_concurrent(
     for tc in tool_calls {
         let tool_name = &tc.function.name;
         let tool_args = &tc.function.arguments;
-        
+
         // Notify start
         if let Some(cb) = &callbacks.tool_progress {
             cb(tool_name, tool_args, false);
@@ -54,8 +54,8 @@ async fn execute_single_tool(
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Unknown tool: {}", name))?;
 
-    let args: Value = serde_json::from_str(arguments)
-        .unwrap_or(Value::Object(serde_json::Map::new()));
+    let args: Value =
+        serde_json::from_str(arguments).unwrap_or(Value::Object(serde_json::Map::new()));
 
     tool.execute(args).await
 }
@@ -101,16 +101,14 @@ mod tests {
         let registry = ToolRegistry::new();
         let callbacks = AgentCallbacks::new();
 
-        let tool_calls = vec![
-            crate::llm::ToolCallData {
-                id: "call_1".to_string(),
-                r#type: "function".to_string(),
-                function: crate::llm::FunctionCall {
-                    name: "read_file".to_string(),
-                    arguments: r#"{"path": "test.txt"}"#.to_string(),
-                },
+        let tool_calls = vec![crate::llm::ToolCallData {
+            id: "call_1".to_string(),
+            r#type: "function".to_string(),
+            function: crate::llm::FunctionCall {
+                name: "read_file".to_string(),
+                arguments: r#"{"path": "test.txt"}"#.to_string(),
             },
-        ];
+        }];
 
         let results = execute_tools_concurrent(&tool_calls, &registry, &callbacks).await;
         assert_eq!(results.len(), 1);

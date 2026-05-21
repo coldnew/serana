@@ -103,7 +103,10 @@ impl SubagentSpawner {
     /// Spawn a single subagent task.
     pub fn spawn_task(&self, task: SubagentTask) -> JoinHandle<SubagentResult> {
         let llm = self.llm.clone();
-        let config = task.config.clone().unwrap_or_else(|| self.default_config.clone());
+        let config = task
+            .config
+            .clone()
+            .unwrap_or_else(|| self.default_config.clone());
         let task_id = task.id.clone();
         let instruction = task.instruction.clone();
 
@@ -117,16 +120,16 @@ impl SubagentSpawner {
 
             let output = agent.execute(&instruction).await;
 
-            SubagentResult {
-                task_id,
-                output,
-            }
+            SubagentResult { task_id, output }
         })
     }
 
     /// Spawn multiple subagent tasks in parallel.
     pub fn spawn_tasks(&self, tasks: Vec<SubagentTask>) -> Vec<JoinHandle<SubagentResult>> {
-        tasks.into_iter().map(|task| self.spawn_task(task)).collect()
+        tasks
+            .into_iter()
+            .map(|task| self.spawn_task(task))
+            .collect()
     }
 
     /// Spawn tasks and wait for all to complete.
@@ -159,7 +162,9 @@ pub async fn delegate_task(
     let spawner = SubagentSpawner::new(llm);
     let task = SubagentTask::new(task_id, instruction);
     let handle = spawner.spawn_task(task);
-    let result = handle.await.map_err(|e| anyhow::anyhow!("Join error: {}", e))?;
+    let result = handle
+        .await
+        .map_err(|e| anyhow::anyhow!("Join error: {}", e))?;
     result.output
 }
 

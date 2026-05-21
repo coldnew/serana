@@ -215,7 +215,10 @@ fn parse_hover(result: Value) -> Option<String> {
     if let Some(array) = contents.as_array() {
         let values: Vec<&str> = array
             .iter()
-            .filter_map(|item| item.as_str().or_else(|| item.get("value").and_then(Value::as_str)))
+            .filter_map(|item| {
+                item.as_str()
+                    .or_else(|| item.get("value").and_then(Value::as_str))
+            })
             .collect();
         if !values.is_empty() {
             return Some(values.join("\n"));

@@ -7,34 +7,42 @@
 //! - `CancelToken` - interruptible operations
 //! - `PromptBuilder` - system prompt assembly
 
+use crate::Result;
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::Result;
 
-pub mod coding;
-pub mod iteration_budget;
 pub mod callbacks;
-pub mod interruptible;
-pub mod message_validation;
-pub mod prompt_builder;
-pub mod tool_executor;
-pub mod session;
+pub mod coding;
 pub mod compressor;
-pub mod tool_approval;
-pub mod subagent;
+pub mod interruptible;
+pub mod iteration_budget;
+pub mod message_validation;
 pub mod meta_cognition;
-pub use meta_cognition::{MetaCognition, ModificationKind, MetaRecord, ModificationRecord, ModificationStats};
-pub use iteration_budget::{IterationBudget, DEFAULT_MAX_ITERATIONS, DEFAULT_SUBAGENT_MAX_ITERATIONS};
+pub mod prompt_builder;
+pub mod session;
+pub mod subagent;
+pub mod tool_approval;
+pub mod tool_executor;
 pub use callbacks::{AgentCallbacks, AgentStatus, CallbackState};
 pub use interruptible::{CancelToken, InterruptibleApiCall};
-pub use message_validation::{validate_message_alternation, fix_message_alternation};
+pub use iteration_budget::{
+    IterationBudget, DEFAULT_MAX_ITERATIONS, DEFAULT_SUBAGENT_MAX_ITERATIONS,
+};
+pub use message_validation::{fix_message_alternation, validate_message_alternation};
+pub use meta_cognition::{
+    MetaCognition, MetaRecord, ModificationKind, ModificationRecord, ModificationStats,
+};
 pub use prompt_builder::PromptBuilder;
 
-pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
-pub use session::{Session, SessionMeta, SessionStore, SearchResult, StoredMessage, StoredToolCall};
-pub use compressor::{CompressionConfig, CompressionDecision, CompressionThresholds, ContextCompressor};
-pub use tool_approval::{ApprovalDecision, ApprovalMode, RiskLevel, ToolApproval};
+pub use compressor::{
+    CompressionConfig, CompressionDecision, CompressionThresholds, ContextCompressor,
+};
+pub use session::{
+    SearchResult, Session, SessionMeta, SessionStore, StoredMessage, StoredToolCall,
+};
 pub use subagent::{delegate_task, SubagentConfig, SubagentResult, SubagentSpawner, SubagentTask};
+pub use tool_approval::{ApprovalDecision, ApprovalMode, RiskLevel, ToolApproval};
+pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
 
 /// Core agent trait.
 #[async_trait]

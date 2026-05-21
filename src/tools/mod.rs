@@ -5,9 +5,9 @@ use serde_json::Value;
 
 use crate::Result;
 
+pub mod code_intel;
 pub mod fs;
 pub mod hashline;
-pub mod code_intel;
 pub mod self_evolve;
 
 #[async_trait]

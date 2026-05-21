@@ -71,9 +71,9 @@ impl AuxiliaryClient {
             "Summarize the following text in at most {} characters. Preserve key information:\n\n{}",
             max_length, text
         );
-        
+
         let messages = vec![Message::user(prompt)];
-        
+
         self.chat(&messages).await
     }
 
@@ -83,10 +83,10 @@ impl AuxiliaryClient {
             "Generate a short, descriptive title (max 50 chars) for a conversation that starts with:\n\n{}",
             first_message.chars().take(200).collect::<String>()
         );
-        
+
         let messages = vec![Message::user(prompt)];
         let title = self.chat(&messages).await?;
-        
+
         // Truncate if needed
         let title = title.lines().next().unwrap_or("").to_string();
         Ok(title.chars().take(50).collect())
@@ -103,10 +103,10 @@ impl AuxiliaryClient {
             tool_name,
             serde_json::to_string_pretty(arguments)?
         );
-        
+
         let messages = vec![Message::user(prompt)];
         let response = self.chat(&messages).await?;
-        
+
         Ok(response.to_lowercase().starts_with("yes"))
     }
 
@@ -117,10 +117,10 @@ impl AuxiliaryClient {
             context,
             code
         );
-        
+
         let messages = vec![Message::user(prompt)];
         let response = self.chat(&messages).await?;
-        
+
         Ok(response
             .lines()
             .filter(|l| !l.trim().is_empty())
@@ -138,14 +138,14 @@ impl LlmClient for AuxiliaryClient {
             self.inner.chat(messages),
         )
         .await??;
-        
+
         // Truncate if exceeds max_tokens (rough approximation)
         let truncated = if result.len() > self.config.max_tokens * 4 {
             result.chars().take(self.config.max_tokens * 4).collect()
         } else {
             result
         };
-        
+
         Ok(truncated)
     }
 
@@ -195,7 +195,7 @@ impl AuxiliaryBuilder {
         } else {
             self.primary_client
         };
-        
+
         AuxiliaryClient::with_config(client, self.config)
     }
 }
@@ -224,7 +224,10 @@ mod tests {
     #[tokio::test]
     async fn generates_title() {
         let client = AuxiliaryClient::new(Arc::new(MockLlm));
-        let title = client.generate_title("How do I implement OAuth?").await.unwrap();
+        let title = client
+            .generate_title("How do I implement OAuth?")
+            .await
+            .unwrap();
         assert!(!title.is_empty());
     }
 
@@ -237,9 +240,8 @@ mod tests {
 
     #[tokio::test]
     async fn builder_creates_client() {
-        let client = AuxiliaryBuilder::new(Arc::new(MockLlm))
-            .build();
-        
+        let client = AuxiliaryBuilder::new(Arc::new(MockLlm)).build();
+
         let result = client.chat(&[]).await.unwrap();
         assert_eq!(result, "Mock response");
     }

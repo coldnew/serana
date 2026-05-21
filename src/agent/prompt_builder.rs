@@ -101,7 +101,10 @@ impl PromptBuilder {
 
         // Tools
         if !self.tool_descriptions.is_empty() {
-            parts.push(format!("\n## Available Tools\n\n{}", self.tool_descriptions));
+            parts.push(format!(
+                "\n## Available Tools\n\n{}",
+                self.tool_descriptions
+            ));
         }
 
         // Tool usage guidance
@@ -111,7 +114,8 @@ impl PromptBuilder {
     }
 
     fn build_core_prompt(&self) -> String {
-        let ws_name = self.workspace
+        let ws_name = self
+            .workspace
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("workspace");
@@ -158,7 +162,10 @@ Current workspace: {}
         // Check for AGENTS.md
         let agents_path = self.workspace.join("AGENTS.md");
         if let Some(content) = self.read_file(&agents_path) {
-            parts.push(format!("\n## Project Guidelines (AGENTS.md)\n\n{}", content));
+            parts.push(format!(
+                "\n## Project Guidelines (AGENTS.md)\n\n{}",
+                content
+            ));
         }
 
         // Check for .serana.md (project-specific)
@@ -238,8 +245,7 @@ mod tests {
         let memory_path = dir.path().join("MEMORY.md");
         fs::write(&memory_path, "Project memory: use async patterns").unwrap();
 
-        let builder = PromptBuilder::new(dir.path().to_path_buf())
-            .with_memory(memory_path);
+        let builder = PromptBuilder::new(dir.path().to_path_buf()).with_memory(memory_path);
         let prompt = builder.build();
 
         assert!(prompt.contains("Project memory"));

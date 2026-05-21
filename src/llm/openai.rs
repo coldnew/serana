@@ -8,9 +8,8 @@ use serde_json::json;
 use std::pin::Pin;
 
 use crate::config::Config;
-use crate::llm::{LlmClient, Message, ToolCallData, FunctionCall, ToolDefinition, SseStream};
+use crate::llm::{FunctionCall, LlmClient, Message, SseStream, ToolCallData, ToolDefinition};
 use crate::Result;
-
 
 /// OpenAI-compatible LLM client
 pub struct OpenAiClient {
@@ -44,7 +43,7 @@ impl OpenAiClient {
         tools: &[ToolDefinition],
     ) -> Result<Message> {
         let url = format!("{}/chat/completions", self.config.api_url());
-        
+
         let request_body = json!({
             "model": self.config.model(),
             "messages": messages,
@@ -52,11 +51,12 @@ impl OpenAiClient {
             "tools": tools,
         });
 
-        let mut request = self.client
+        let mut request = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&request_body);
-        
+
         if let Some(auth) = self.auth_header() {
             request = request.header("Authorization", auth);
         }
@@ -77,8 +77,10 @@ impl OpenAiClient {
         }
 
         let response_body: serde_json::Value = serde_json::from_str(&response_text)?;
-        
-        let msg = if let Some(tool_calls) = response_body["choices"][0]["message"]["tool_calls"].as_array() {
+
+        let msg = if let Some(tool_calls) =
+            response_body["choices"][0]["message"]["tool_calls"].as_array()
+        {
             let mut tc = Vec::new();
             for call in tool_calls {
                 tc.push(ToolCallData {
@@ -86,18 +88,26 @@ impl OpenAiClient {
                     r#type: call["type"].as_str().unwrap_or("function").to_string(),
                     function: FunctionCall {
                         name: call["function"]["name"].as_str().unwrap_or("").to_string(),
-                        arguments: call["function"]["arguments"].as_str().unwrap_or("").to_string(),
+                        arguments: call["function"]["arguments"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
                     },
                 });
             }
-            let content = response_body["choices"][0]["message"]["content"].as_str().map(|s| s.to_string());
+            let content = response_body["choices"][0]["message"]["content"]
+                .as_str()
+                .map(|s| s.to_string());
             Message::ToolCall {
                 role: "assistant".to_string(),
                 content,
                 tool_calls: tc,
             }
         } else {
-            let content = response_body["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
+            let content = response_body["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
             Message::Text {
                 role: "assistant".to_string(),
                 content,
@@ -111,8 +121,9 @@ impl OpenAiClient {
 /// Parse SSE streaming response that may contain tool calls
 fn parse_streaming_tool_response(response_text: &str) -> Result<Message> {
     let mut content = String::new();
-    let mut tool_calls: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
-    
+    let mut tool_calls: std::collections::HashMap<usize, (String, String, String)> =
+        std::collections::HashMap::new();
+
     for line in response_text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with(':') {
@@ -130,7 +141,7 @@ fn parse_streaming_tool_response(response_text: &str) -> Result<Message> {
             Ok(v) => v,
             Err(_) => continue,
         };
-        
+
         // Check for tool calls in delta
         if let Some(delta_tool_calls) = chunk["choices"][0]["delta"]["tool_calls"].as_array() {
             for call in delta_tool_calls {
@@ -142,7 +153,7 @@ fn parse_streaming_tool_response(response_text: &str) -> Result<Message> {
                         String::new(), // function name
                     )
                 });
-                
+
                 if let Some(id) = call["id"].as_str() {
                     entry.0 = id.to_string();
                 }
@@ -154,39 +165,46 @@ fn parse_streaming_tool_response(response_text: &str) -> Result<Message> {
                 }
             }
         }
-        
+
         // Check for content in delta
         if let Some(delta_content) = chunk["choices"][0]["delta"]["content"].as_str() {
             content.push_str(delta_content);
         }
-        
+
         // Check for message content (non-delta)
         if let Some(msg_content) = chunk["choices"][0]["message"]["content"].as_str() {
             content.push_str(msg_content);
         }
     }
-    
+
     // If we have tool calls, return ToolCall message
     if !tool_calls.is_empty() {
-        let tc: Vec<ToolCallData> = tool_calls.into_iter().map(|(_, (id, _t, name))| {
-            ToolCallData {
-                id,
-                r#type: "function".to_string(),
-                function: FunctionCall {
-                    name,
-                    arguments: "{}".to_string(), // Arguments are accumulated separately
-                },
-            }
-        }).collect();
-        
-        let content = if content.is_empty() { None } else { Some(content) };
+        let tc: Vec<ToolCallData> = tool_calls
+            .into_iter()
+            .map(|(_, (id, _t, name))| {
+                ToolCallData {
+                    id,
+                    r#type: "function".to_string(),
+                    function: FunctionCall {
+                        name,
+                        arguments: "{}".to_string(), // Arguments are accumulated separately
+                    },
+                }
+            })
+            .collect();
+
+        let content = if content.is_empty() {
+            None
+        } else {
+            Some(content)
+        };
         return Ok(Message::ToolCall {
             role: "assistant".to_string(),
             content,
             tool_calls: tc,
         });
     }
-    
+
     // Otherwise return text message
     Ok(Message::Text {
         role: "assistant".to_string(),
@@ -221,7 +239,7 @@ impl LlmClient for OpenAiClient {
         let config = self.config.clone();
         let auth_header = self.auth_header();
         let messages_owned = messages.to_vec();
-        
+
         Box::pin(async_stream::stream! {
             let url = format!("{}/chat/completions", config.api_url());
             let request_body = json!({
@@ -235,7 +253,7 @@ impl LlmClient for OpenAiClient {
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .json(&request_body);
-            
+
             if let Some(auth) = auth_header {
                 request = request.header("Authorization", auth);
             }
@@ -281,7 +299,7 @@ impl LlmClient for OpenAiClient {
         let auth_header = self.auth_header();
         let messages_owned = messages.to_vec();
         let tools_owned = tools.to_vec();
-        
+
         Box::pin(async_stream::stream! {
             let url = format!("{}/chat/completions", config.api_url());
             let request_body = json!({
@@ -296,7 +314,7 @@ impl LlmClient for OpenAiClient {
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .json(&request_body);
-            
+
             if let Some(auth) = auth_header {
                 request = request.header("Authorization", auth);
             }
@@ -309,12 +327,12 @@ impl LlmClient for OpenAiClient {
                         yield Err(anyhow::anyhow!("LLM API error ({}): {}", status, body));
                         return;
                     }
-                    
+
                     // Accumulate streaming tool call data
                     let mut tool_call_accumulator: std::collections::HashMap<usize, ToolCallAccumulator> = std::collections::HashMap::new();
                     let mut content_accumulator = String::new();
                     let mut chunk_count = 0;
-                    
+
                     let mut sse_stream = SseStream::new(response);
                     while let Some(chunk) = sse_stream.next().await {
                         match chunk {
@@ -332,7 +350,7 @@ impl LlmClient for OpenAiClient {
                                                     for tc in tc_array {
                                                         let index = tc["index"].as_u64().unwrap_or(0) as usize;
                                                         let acc = tool_call_accumulator.entry(index).or_default();
-                                                        
+
                                                         if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
                                                             acc.id = id.to_string();
                                                             tracing::debug!("Tool call {} id: {}", index, id);
@@ -347,7 +365,7 @@ impl LlmClient for OpenAiClient {
                                                         }
                                                     }
                                                 }
-                                                
+
                                                 // Handle content in delta
                                                 if let Some(c) = delta.get("content").and_then(|c| c.as_str()) {
                                                     content_accumulator.push_str(c);
@@ -363,10 +381,10 @@ impl LlmClient for OpenAiClient {
                             }
                         }
                     }
-                    
-                    tracing::debug!("Stream ended. Processed {} chunks. Tool calls: {}, Content len: {}", 
+
+                    tracing::debug!("Stream ended. Processed {} chunks. Tool calls: {}, Content len: {}",
                         chunk_count, tool_call_accumulator.len(), content_accumulator.len());
-                    
+
                     // Build final message
                     if !tool_call_accumulator.is_empty() {
                         let tool_calls: Vec<ToolCallData> = tool_call_accumulator
@@ -380,7 +398,7 @@ impl LlmClient for OpenAiClient {
                                 },
                             })
                             .collect();
-                        
+
                         let content = if content_accumulator.is_empty() { None } else { Some(content_accumulator) };
                         yield Ok(Message::ToolCall {
                             role: "assistant".to_string(),

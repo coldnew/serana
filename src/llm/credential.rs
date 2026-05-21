@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 pub trait CredentialProvider: Send + Sync {
     /// Get current credentials (API key, token, etc.)
     async fn get_credentials(&self) -> Result<String>;
-    
+
     /// Refresh credentials after auth failure
     async fn refresh(&self) -> Result<String>;
 }
@@ -70,12 +70,12 @@ impl RefreshableClient {
     /// Check if error indicates auth failure.
     fn is_auth_error(error: &anyhow::Error) -> bool {
         let error_str = error.to_string().to_lowercase();
-        error_str.contains("401") || 
-            error_str.contains("403") ||
-            error_str.contains("unauthorized") ||
-            error_str.contains("forbidden") ||
-            error_str.contains("invalid api key") ||
-            error_str.contains("authentication")
+        error_str.contains("401")
+            || error_str.contains("403")
+            || error_str.contains("unauthorized")
+            || error_str.contains("forbidden")
+            || error_str.contains("invalid api key")
+            || error_str.contains("authentication")
     }
 
     /// Refresh credentials and retry.
@@ -159,10 +159,10 @@ impl CredentialProvider for EnvCredential {
             return Ok(key.clone());
         }
         drop(current);
-        
+
         let key = std::env::var(&self.env_var)
             .map_err(|_| anyhow::anyhow!("Environment variable {} not set", self.env_var))?;
-        
+
         let mut current = self.current.write().await;
         *current = Some(key.clone());
         Ok(key)
@@ -187,7 +187,9 @@ mod tests {
     #[async_trait]
     impl LlmClient for MockClient {
         async fn chat(&self, _messages: &[Message]) -> Result<String> {
-            let count = self.fail_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let count = self
+                .fail_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if count == 0 {
                 Err(anyhow::anyhow!("401 Unauthorized"))
             } else {
@@ -215,17 +217,26 @@ mod tests {
         }
 
         async fn refresh(&self) -> Result<String> {
-            self.refresh_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.refresh_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok("refreshed-key".to_string())
         }
     }
 
     #[test]
     fn detects_auth_errors() {
-        assert!(RefreshableClient::is_auth_error(&anyhow::anyhow!("401 Unauthorized")));
-        assert!(RefreshableClient::is_auth_error(&anyhow::anyhow!("403 Forbidden")));
-        assert!(RefreshableClient::is_auth_error(&anyhow::anyhow!("Invalid API key")));
-        assert!(!RefreshableClient::is_auth_error(&anyhow::anyhow!("Network error")));
+        assert!(RefreshableClient::is_auth_error(&anyhow::anyhow!(
+            "401 Unauthorized"
+        )));
+        assert!(RefreshableClient::is_auth_error(&anyhow::anyhow!(
+            "403 Forbidden"
+        )));
+        assert!(RefreshableClient::is_auth_error(&anyhow::anyhow!(
+            "Invalid API key"
+        )));
+        assert!(!RefreshableClient::is_auth_error(&anyhow::anyhow!(
+            "Network error"
+        )));
     }
 
     #[tokio::test]

@@ -103,7 +103,10 @@ impl FallbackChain {
 
     /// Get healthy provider count.
     pub fn healthy_count(&self) -> usize {
-        self.providers.iter().filter(|p| p.status == ProviderStatus::Healthy).count()
+        self.providers
+            .iter()
+            .filter(|p| p.status == ProviderStatus::Healthy)
+            .count()
     }
 }
 

@@ -1,5 +1,5 @@
 //! LSP (Language Server Protocol) client implementation
-//! 
+//!
 //! Provides built-in LSP support for code intelligence features like
 //! go-to-definition, find-references, hover, rename, and diagnostics.
 
@@ -97,7 +97,11 @@ impl LspManager {
         languages
     }
 
-    pub async fn definition(&mut self, path: &std::path::Path, position: types::Position) -> Result<Vec<types::Location>> {
+    pub async fn definition(
+        &mut self,
+        path: &std::path::Path,
+        position: types::Position,
+    ) -> Result<Vec<types::Location>> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -107,7 +111,11 @@ impl LspManager {
             .await
     }
 
-    pub async fn references(&mut self, path: &std::path::Path, position: types::Position) -> Result<Vec<types::Location>> {
+    pub async fn references(
+        &mut self,
+        path: &std::path::Path,
+        position: types::Position,
+    ) -> Result<Vec<types::Location>> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -117,7 +125,11 @@ impl LspManager {
             .await
     }
 
-    pub async fn hover(&mut self, path: &std::path::Path, position: types::Position) -> Result<Option<String>> {
+    pub async fn hover(
+        &mut self,
+        path: &std::path::Path,
+        position: types::Position,
+    ) -> Result<Option<String>> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -133,7 +145,6 @@ impl LspManager {
         }
         Ok(())
     }
-
 
     /// Start a language server for the given language
     pub async fn start_server(&mut self, lang: LanguageId) -> Result<()> {
@@ -178,7 +189,10 @@ mod tests {
     #[test]
     fn test_language_from_extension() {
         assert_eq!(LanguageId::from_extension("rs"), Some(LanguageId::Rust));
-        assert_eq!(LanguageId::from_extension("ts"), Some(LanguageId::TypeScript));
+        assert_eq!(
+            LanguageId::from_extension("ts"),
+            Some(LanguageId::TypeScript)
+        );
         assert_eq!(LanguageId::from_extension("py"), Some(LanguageId::Python));
         assert_eq!(LanguageId::from_extension("go"), Some(LanguageId::Go));
         assert_eq!(LanguageId::from_extension("txt"), None);

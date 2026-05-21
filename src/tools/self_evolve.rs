@@ -8,10 +8,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use tokio::fs;
 
+use crate::agent::{MetaCognition, ModificationKind, ModificationRecord};
 use crate::tools::Tool;
 use crate::tools::ToolRegistry;
 use crate::Result;
-use crate::agent::{MetaCognition, ModificationKind, ModificationRecord};
 
 /// Read Serana's own source file.
 pub struct ReadSelfTool;
@@ -74,12 +74,12 @@ impl Tool for ReadSelfTool {
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
-        
+
         // Security: prevent path traversal
         if relative.contains("..") || relative.starts_with('/') {
             anyhow::bail!("Path traversal not allowed");
         }
-        
+
         let path = serana_path(relative);
         let content = fs::read_to_string(&path).await?;
         Ok(json!({
@@ -134,17 +134,19 @@ impl Tool for EditSelfTool {
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
-        
+
         // Security: prevent path traversal
         if relative.contains("..") || relative.starts_with('/') {
             anyhow::bail!("Path traversal not allowed");
         }
-        
+
         let path = serana_path(relative);
-        
+
         if let Some(content) = input.get("content") {
             // Full file replacement
-            let content = content.as_str().ok_or_else(|| anyhow::anyhow!("content must be string"))?;
+            let content = content
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("content must be string"))?;
             fs::write(&path, content).await?;
             return Ok(json!({
                 "path": relative,
@@ -152,24 +154,28 @@ impl Tool for EditSelfTool {
                 "bytes_written": content.len(),
             }));
         }
-        
+
         if let Some(edits) = input.get("edits").and_then(|v| v.as_array()) {
             // Apply multiple string replacements
             let mut content = fs::read_to_string(&path).await?;
             let mut replacements = 0;
-            
+
             for edit in edits {
-                let old = edit.get("old").and_then(|v| v.as_str())
+                let old = edit
+                    .get("old")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Edit missing 'old' field"))?;
-                let new = edit.get("new").and_then(|v| v.as_str())
+                let new = edit
+                    .get("new")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Edit missing 'new' field"))?;
-                
+
                 if content.contains(old) {
                     content = content.replace(old, new);
                     replacements += 1;
                 }
             }
-            
+
             fs::write(&path, &content).await?;
             return Ok(json!({
                 "path": relative,
@@ -177,7 +183,7 @@ impl Tool for EditSelfTool {
                 "replacements": replacements,
             }));
         }
-        
+
         anyhow::bail!("Must provide either 'content' or 'edits' field");
     }
 }
@@ -215,23 +221,23 @@ impl Tool for CargoTool {
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' field"))?;
-        
+
         let args: Vec<&str> = input
             .get("args")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
-        
+
         // Run cargo synchronously (simpler for self-modification verification)
         let output = Command::new("cargo")
             .current_dir(SERANA_ROOT)
             .arg(cmd)
             .args(&args)
             .output()?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         Ok(json!({
             "command": format!("cargo {} {}", cmd, args.join(" ")).trim(),
             "success": output.status.success(),
@@ -275,28 +281,34 @@ impl Tool for GitTool {
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' field"))?;
-        
+
         let args: Vec<&str> = input
             .get("args")
             .and_then(|v| v.as_array())
             .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
-        
+
         // Safety: only allow certain git commands
-        let allowed = ["status", "diff", "log", "add", "commit", "branch", "checkout", "stash", "reset", "show"];
+        let allowed = [
+            "status", "diff", "log", "add", "commit", "branch", "checkout", "stash", "reset",
+            "show",
+        ];
         if !allowed.contains(&cmd) {
-            anyhow::bail!("Git command '{}' not allowed for self-modification safety", cmd);
+            anyhow::bail!(
+                "Git command '{}' not allowed for self-modification safety",
+                cmd
+            );
         }
-        
+
         let output = Command::new("git")
             .current_dir(SERANA_ROOT)
             .arg(cmd)
             .args(&args)
             .output()?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         Ok(json!({
             "command": format!("git {} {}", cmd, args.join(" ")).trim(),
             "success": output.status.success(),
@@ -339,19 +351,16 @@ impl Tool for SearchCodeTool {
             .get("pattern")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'pattern' field"))?;
-        
-        let search_path = input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("src");
-        
+
+        let search_path = input.get("path").and_then(|v| v.as_str()).unwrap_or("src");
+
         // Security check
         if search_path.contains("..") || search_path.starts_with('/') {
             anyhow::bail!("Path traversal not allowed");
         }
-        
+
         let full_path = serana_path(search_path);
-        
+
         // Use ripgrep via Command (simpler than implementing regex search)
         let output = Command::new("rg")
             .current_dir(SERANA_ROOT)
@@ -361,15 +370,15 @@ impl Tool for SearchCodeTool {
             .arg(pattern)
             .arg(&full_path)
             .output();
-        
+
         let results = match output {
             Ok(o) if o.status.success() => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
                 parse_ripgrep_json(&stdout)
             }
-            _ => vec![]
+            _ => vec![],
         };
-        
+
         Ok(json!({
             "pattern": pattern,
             "path": search_path,
@@ -444,9 +453,15 @@ impl Tool for RecordModificationTool {
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
-        let file = input.get("file").and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'file' field"))?.to_string();
-        let kind_str = input.get("kind").and_then(|v| v.as_str()).unwrap_or("Feature");
+        let file = input
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'file' field"))?
+            .to_string();
+        let kind_str = input
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Feature");
         let kind = match kind_str {
             "Feature" => ModificationKind::Feature,
             "BugFix" => ModificationKind::BugFix,
@@ -457,10 +472,19 @@ impl Tool for RecordModificationTool {
             "Config" => ModificationKind::Config,
             _ => ModificationKind::Feature,
         };
-        let description = input.get("description").and_then(|v| v.as_str())
-            .unwrap_or("").to_string();
-        let tests_passed = input.get("tests_passed").and_then(|v| v.as_bool()).unwrap_or(false);
-        let commit = input.get("commit").and_then(|v| v.as_str()).map(String::from);
+        let description = input
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let tests_passed = input
+            .get("tests_passed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let commit = input
+            .get("commit")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         let record = ModificationRecord {
             timestamp: chrono_lite_timestamp(),
@@ -538,11 +562,19 @@ impl Tool for ReflectModificationTool {
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
-        let file = input.get("file").and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'file' field"))?.to_string();
-        let lessons: Vec<String> = input.get("lessons")
+        let file = input
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'file' field"))?
+            .to_string();
+        let lessons: Vec<String> = input
+            .get("lessons")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let meta = MetaCognition::new();
@@ -557,34 +589,53 @@ fn chrono_lite_timestamp() -> String {
     let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let secs = duration.as_secs();
     let datetime = time_offset::from_unix_timestamp(secs as i64);
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        datetime.year, datetime.month, datetime.day,
-        datetime.hour, datetime.minute, datetime.second)
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        datetime.year,
+        datetime.month,
+        datetime.day,
+        datetime.hour,
+        datetime.minute,
+        datetime.second
+    )
 }
 
 mod time_offset {
-    pub struct DateTime { pub year: i32, pub month: u8, pub day: u8, pub hour: u8, pub minute: u8, pub second: u8 }
+    pub struct DateTime {
+        pub year: i32,
+        pub month: u8,
+        pub day: u8,
+        pub hour: u8,
+        pub minute: u8,
+        pub second: u8,
+    }
     pub fn from_unix_timestamp(ts: i64) -> DateTime {
         // Simple UTC conversion
         let days = ts / 86400;
         let secs = ts % 86400;
         let (year, month, day) = days_to_ymd(days as i32);
-        DateTime { year, month, day, hour: (secs / 3600) as u8, minute: ((secs % 3600) / 60) as u8, second: (secs % 60) as u8 }
+        DateTime {
+            year,
+            month,
+            day,
+            hour: (secs / 3600) as u8,
+            minute: ((secs % 3600) / 60) as u8,
+            second: (secs % 60) as u8,
+        }
     }
     fn days_to_ymd(mut days: i32) -> (i32, u8, u8) {
         days += 719163; // Days to year 0
         let era = (if days >= 0 { days } else { days - 146096 }) / 146097;
         let doe = days - era * 146097;
-        let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
         let y = yoe + era * 400;
-        let doy = doe - (365*yoe + yoe/4 - yoe/100);
-        let mp = (5*doy + 2)/153;
-        let d = doy - (153*mp+2)/5 + 1;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
         let m = mp + (if mp < 10 { 3 } else { -9 });
         (y + (if m <= 2 { 1 } else { 0 }), m as u8, d as u8)
     }
 }
-
 
 fn parse_ripgrep_json(output: &str) -> Vec<Value> {
     output

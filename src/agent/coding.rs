@@ -1,16 +1,15 @@
+use crate::agent::{
+    execute_tools_concurrent, validate_message_alternation, Agent, AgentCallbacks, AgentOutput,
+    AgentStatus, CancelToken, CompressionDecision, ContextCompressor, IterationBudget,
+    MetaCognition, ModificationKind, ModificationRecord, PromptBuilder, SessionStore,
+};
+use crate::llm::{AuxiliaryClient, FunctionDefinition, LlmClient, Message, ToolDefinition};
+use crate::tools::ToolRegistry;
+use crate::Result;
 use async_trait::async_trait;
 use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use crate::agent::{
-    Agent, AgentOutput, AgentCallbacks, AgentStatus,
-    IterationBudget, PromptBuilder, execute_tools_concurrent, validate_message_alternation,
-    SessionStore, ContextCompressor, CompressionDecision,
-    CancelToken, MetaCognition,
-};
-use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition, AuxiliaryClient};
-use crate::tools::ToolRegistry;
-use crate::Result;
 
 /// Hermes-style coding agent with iteration budget and callback support.
 pub struct CodingAgent {
@@ -107,8 +106,9 @@ impl Agent for CodingAgent {
         self.persist_message("user", instruction)?;
 
         // Generate session title in background if auxiliary available
-        if let (Some(store), Some(session_id), Some(aux)) = 
-            (&self.session_store, &self.session_id, &self.auxiliary) {
+        if let (Some(store), Some(session_id), Some(aux)) =
+            (&self.session_store, &self.session_id, &self.auxiliary)
+        {
             let store = store.clone();
             let sid = session_id.clone();
             let aux = aux.clone();
@@ -132,7 +132,10 @@ impl Agent for CodingAgent {
                 }
             }
 
-            match self.compressor.check_compression(self.compressor.estimate_tokens(&messages)) {
+            match self
+                .compressor
+                .check_compression(self.compressor.estimate_tokens(&messages))
+            {
                 CompressionDecision::Gateway => {
                     self.callbacks.fire_status(AgentStatus::Compressing);
                     messages = self.compress_messages(&messages).await?;
@@ -147,27 +150,39 @@ impl Agent for CodingAgent {
             }
 
             // Validate risky tool calls if auxiliary available
-            self.validate_tool_calls_before_execution(&messages, &tools).await?;
+            self.validate_tool_calls_before_execution(&messages, &tools)
+                .await?;
 
             // Use streaming API for real-time response
             // Clone messages and tools so stream can own them without blocking mutations
             self.callbacks.fire_status(AgentStatus::Thinking);
             let messages_snapshot = messages.clone();
             let tools_snapshot = tools.clone();
-            let response = self.stream_llm_call(&messages_snapshot, &tools_snapshot).await?;
+            let response = self
+                .stream_llm_call(&messages_snapshot, &tools_snapshot)
+                .await?;
             self.callbacks.fire_status(AgentStatus::Running);
 
             match response {
-                Message::ToolCall { role, content, tool_calls } => {
+                Message::ToolCall {
+                    role,
+                    content,
+                    tool_calls,
+                } => {
                     if let Some(content) = content.as_deref() {
                         self.persist_message("assistant", content)?;
                     }
                     // Add assistant message with tool calls to history
-                    messages.push(Message::ToolCall { role, content, tool_calls: tool_calls.clone() });
+                    messages.push(Message::ToolCall {
+                        role,
+                        content,
+                        tool_calls: tool_calls.clone(),
+                    });
 
                     // Execute tools
                     self.callbacks.fire_status(AgentStatus::ExecutingTool);
-                    let results = execute_tools_concurrent(&tool_calls, &self.tools, &self.callbacks).await;
+                    let results =
+                        execute_tools_concurrent(&tool_calls, &self.tools, &self.callbacks).await;
                     self.callbacks.fire_status(AgentStatus::Running);
 
                     // Process results
@@ -176,7 +191,29 @@ impl Agent for CodingAgent {
                         self.persist_tool_call(&tool_call)?;
                         let result_str = result.result_string();
                         messages.push(Message::tool_result(result.id, result_str));
-                        all_tool_calls.push(tool_call);
+                        all_tool_calls.push(tool_call.clone());
+
+                        // Record tool call outcome in meta-cognition for learning
+                        let success = result.result.is_ok();
+                        let description = format!(
+                            "Tool call: {} with args: {}",
+                            tool_call.name,
+                            tool_call.arguments.to_string()
+                        );
+                        let record = ModificationRecord {
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs()
+                                .to_string(),
+                            file: format!("tool:{}", tool_call.name),
+                            kind: ModificationKind::ToolCall,
+                            description,
+                            tests_passed: success,
+                            commit: None,
+                            lessons: vec![],
+                        };
+                        let _ = self.meta_cognition.record(record).await;
                     }
 
                     // Check if budget exceeded after iteration
@@ -214,18 +251,20 @@ impl Agent for CodingAgent {
 
 impl CodingAgent {
     fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tools.list().iter().filter_map(|name| {
-            self.tools.get(name).map(|tool| {
-                ToolDefinition {
+        self.tools
+            .list()
+            .iter()
+            .filter_map(|name| {
+                self.tools.get(name).map(|tool| ToolDefinition {
                     r#type: "function".to_string(),
                     function: FunctionDefinition {
                         name: tool.name().to_string(),
                         description: tool.description().to_string(),
-                        parameters: serde_json::json!({"type": "object", "properties": {}}),
+                        parameters: tool.parameters(),
                     },
-                }
+                })
             })
-        }).collect()
+            .collect()
     }
 
     fn persist_message(&self, role: &str, content: &str) -> Result<()> {
@@ -250,9 +289,13 @@ impl CodingAgent {
     /// Compress messages using auxiliary client if available, otherwise main LLM.
     async fn compress_messages(&self, messages: &[Message]) -> Result<Vec<Message>> {
         if let Some(aux) = &self.auxiliary {
-            self.compressor.compress_messages_with_auxiliary(messages, aux.as_ref()).await
+            self.compressor
+                .compress_messages_with_auxiliary(messages, aux.as_ref())
+                .await
         } else {
-            self.compressor.compress_messages(messages, self.llm.as_ref()).await
+            self.compressor
+                .compress_messages(messages, self.llm.as_ref())
+                .await
         }
     }
 
@@ -367,7 +410,8 @@ mod tests {
                 Message::Text { content, .. } => content.contains("Previous conversation summary"),
                 _ => false,
             });
-            self.saw_summary.store(saw_summary, std::sync::atomic::Ordering::SeqCst);
+            self.saw_summary
+                .store(saw_summary, std::sync::atomic::Ordering::SeqCst);
             Ok(Message::assistant("done".to_string()))
         }
     }
@@ -384,12 +428,17 @@ mod tests {
             },
         });
         let agent = CodingAgent::new(
-            Box::new(CompressionAwareLlm { saw_summary: saw_summary.clone() }),
+            Box::new(CompressionAwareLlm {
+                saw_summary: saw_summary.clone(),
+            }),
             ToolRegistry::new(),
         )
         .with_compressor(compressor);
 
-        let output = agent.execute("compress this before model call").await.unwrap();
+        let output = agent
+            .execute("compress this before model call")
+            .await
+            .unwrap();
         assert_eq!(output.response, "done");
         assert!(saw_summary.load(std::sync::atomic::Ordering::SeqCst));
     }

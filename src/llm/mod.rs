@@ -6,13 +6,13 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use futures::Stream;
 use crate::Result;
+use futures::Stream;
 
-pub mod openai;
-pub mod fallback;
-pub mod credential;
 pub mod auxiliary;
+pub mod credential;
+pub mod fallback;
+pub mod openai;
 pub mod streaming;
 
 /// Chat message
@@ -38,22 +38,35 @@ pub enum Message {
 impl Message {
     /// Create a system message
     pub fn system(content: String) -> Self {
-        Self::Text { role: "system".to_string(), content }
+        Self::Text {
+            role: "system".to_string(),
+            content,
+        }
     }
 
     /// Create a user message
     pub fn user(content: String) -> Self {
-        Self::Text { role: "user".to_string(), content }
+        Self::Text {
+            role: "user".to_string(),
+            content,
+        }
     }
 
     /// Create an assistant message
     pub fn assistant(content: String) -> Self {
-        Self::Text { role: "assistant".to_string(), content }
+        Self::Text {
+            role: "assistant".to_string(),
+            content,
+        }
     }
 
     /// Create a tool-result message
     pub fn tool_result(tool_call_id: String, content: String) -> Self {
-        Self::ToolResult { role: "tool".to_string(), tool_call_id, content }
+        Self::ToolResult {
+            role: "tool".to_string(),
+            tool_call_id,
+            content,
+        }
     }
 
     /// Create an assistant message with tool calls.
@@ -126,7 +139,9 @@ pub trait LlmClient: Send + Sync {
         &'a self,
         messages: &'a [Message],
     ) -> std::pin::Pin<Box<dyn Stream<Item = Result<String>> + Send + 'a>> {
-        Box::pin(futures::stream::once(async move { self.chat(messages).await }))
+        Box::pin(futures::stream::once(
+            async move { self.chat(messages).await },
+        ))
     }
 
     /// Send a streaming chat completion request with tool support
@@ -135,13 +150,15 @@ pub trait LlmClient: Send + Sync {
         messages: &'a [Message],
         tools: &'a [ToolDefinition],
     ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Message>> + Send + 'a>> {
-        Box::pin(futures::stream::once(async move { self.chat_with_tools(messages, tools).await }))
+        Box::pin(futures::stream::once(async move {
+            self.chat_with_tools(messages, tools).await
+        }))
     }
 }
 
-pub use fallback::{FallbackChain, FallbackConfig, ProviderEntry, ProviderStatus};
-pub use credential::{CredentialProvider, EnvCredential, RefreshableClient, StaticCredential};
 pub use auxiliary::{AuxiliaryBuilder, AuxiliaryClient, AuxiliaryConfig, AuxiliaryTask};
+pub use credential::{CredentialProvider, EnvCredential, RefreshableClient, StaticCredential};
+pub use fallback::{FallbackChain, FallbackConfig, ProviderEntry, ProviderStatus};
 pub use streaming::SseStream;
 
 /// Provider type for configuration
@@ -150,5 +167,7 @@ pub use streaming::SseStream;
 pub enum Provider {
     #[default]
     OpenAI,
-    Custom { url: String },
+    Custom {
+        url: String,
+    },
 }

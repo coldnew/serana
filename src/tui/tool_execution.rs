@@ -4,8 +4,8 @@
 //! tool-execution.ts component behavior.
 
 use crate::tui::component::{Component, Container};
-use crate::tui::style::{Color, Style};
 use crate::tui::components::{Spacer, Text};
+use crate::tui::style::{Color, Style};
 
 /// Spinner frames for running state (2fps = 500ms per frame)
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -126,7 +126,7 @@ impl ToolExecution {
     /// Rebuild the component tree
     fn rebuild(&mut self) {
         self.container.clear();
-        
+
         // Add spacer at top
         self.container.push(Spacer::new(1));
 
@@ -181,17 +181,20 @@ impl ToolExecution {
         };
 
         let color_code = match self.state {
-            ToolState::Pending => "\x1b[90m",      // dim gray
-            ToolState::Running => "\x1b[33m",      // yellow
-            ToolState::Success => "\x1b[32m",      // green
-            ToolState::Error => "\x1b[31m",        // red
+            ToolState::Pending => "\x1b[90m", // dim gray
+            ToolState::Running => "\x1b[33m", // yellow
+            ToolState::Success => "\x1b[32m", // green
+            ToolState::Error => "\x1b[31m",   // red
         };
 
         let reset = "\x1b[0m";
         let bold = "\x1b[1m";
-        
+
         // Format: icon tool_name
-        format!("{}{}{}{} {}{}", color_code, bold, icon, reset, self.tool_label, reset)
+        format!(
+            "{}{}{}{} {}{}",
+            color_code, bold, icon, reset, self.tool_label, reset
+        )
     }
 
     /// Check if this is an edit-like tool
@@ -202,7 +205,7 @@ impl ToolExecution {
     /// Build diff lines with syntax highlighting
     fn build_diff_lines(&self, diff: &str) -> Vec<Text> {
         let mut lines = Vec::new();
-        
+
         for line in diff.lines() {
             let styled = if line.starts_with('+') {
                 // Addition - green
@@ -256,7 +259,7 @@ mod tests {
     fn test_tool_execution_pending() {
         let mut tool = ToolExecution::new("read");
         tool.set_args("path: \"src/main.rs\"");
-        
+
         let lines = tool.render(80);
         assert!(!lines.is_empty());
         assert!(lines[1].contains("read"));
@@ -266,11 +269,11 @@ mod tests {
     fn test_tool_execution_running_spinner() {
         let mut tool = ToolExecution::new("bash");
         tool.set_state(ToolState::Running);
-        
+
         let lines1 = tool.render(80);
         tool.advance_spinner();
         let lines2 = tool.render(80);
-        
+
         // Spinner should change
         assert_ne!(lines1[1], lines2[1]);
     }
@@ -280,11 +283,11 @@ mod tests {
         let mut tool = ToolExecution::new("read");
         tool.set_state(ToolState::Success);
         tool.set_output("file contents here");
-        
+
         // Not expanded - should show hint
         let lines = tool.render(80);
         assert!(lines.iter().any(|l| l.contains("expand")));
-        
+
         // Expanded - should show output
         tool.set_expanded(true);
         let lines = tool.render(80);
@@ -296,7 +299,7 @@ mod tests {
         let mut tool = ToolExecution::new("bash");
         tool.set_state(ToolState::Error);
         tool.set_output("command failed");
-        
+
         tool.set_expanded(true);
         let lines = tool.render(80);
         assert!(lines.iter().any(|l| l.contains("command failed")));
@@ -309,7 +312,7 @@ mod tests {
             path: "src/main.rs".to_string(),
             diff: "@@ src/main.rs\n-old line\n+new line".to_string(),
         });
-        
+
         let lines = tool.render(80);
         // Should contain diff lines with colors
         assert!(!lines.is_empty());
@@ -319,7 +322,7 @@ mod tests {
     fn test_toggle_expanded() {
         let mut tool = ToolExecution::new("read");
         tool.set_output("test");
-        
+
         assert!(!tool.is_expanded());
         tool.toggle_expanded();
         assert!(tool.is_expanded());

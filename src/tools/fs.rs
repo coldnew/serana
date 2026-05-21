@@ -19,8 +19,22 @@ impl Tool for ReadFileTool {
         "Read contents of a file. Input: {\"path\": \"path/to/file\"}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to read"
+                }
+            },
+            "required": ["path"]
+        })
+    }
+
     async fn execute(&self, input: Value) -> Result<Value> {
-        let path = input.get("path")
+        let path = input
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
         let content = fs::read_to_string(path).await?;
@@ -38,11 +52,30 @@ impl Tool for WriteFileTool {
         "Write content to a file. Input: {\"path\": \"...\", \"content\": \"...\"}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to write"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write to the file"
+                }
+            },
+            "required": ["path", "content"]
+        })
+    }
+
     async fn execute(&self, input: Value) -> Result<Value> {
-        let path = input.get("path")
+        let path = input
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
-        let content = input.get("content")
+        let content = input
+            .get("content")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' field"))?;
         fs::write(path, content).await?;
@@ -61,13 +94,32 @@ impl Tool for EditFileTool {
          Edits use hashline format with line anchors like '41th|' for safe file modification."
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file to edit"
+                },
+                "edits": {
+                    "type": "string",
+                    "description": "Hashline format edits with line anchors (e.g., '41th|line content')"
+                }
+            },
+            "required": ["path", "edits"]
+        })
+    }
+
     async fn execute(&self, input: Value) -> Result<Value> {
         use crate::tools::hashline::{apply_hashline, parse_hashline};
 
-        let path = input.get("path")
+        let path = input
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
-        let edits = input.get("edits")
+        let edits = input
+            .get("edits")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'edits' field"))?;
 

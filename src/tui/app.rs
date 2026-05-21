@@ -113,10 +113,9 @@ impl App {
 
     fn handle_input_mode(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
-            KeyCode::Enter
-                if !self.input.is_empty() => {
-                    self.submit_message();
-                }
+            KeyCode::Enter if !self.input.is_empty() => {
+                self.submit_message();
+            }
             KeyCode::Esc => {
                 if self.input.is_empty() {
                     self.mode = AppMode::Normal;
@@ -125,23 +124,19 @@ impl App {
                     self.cursor = 0;
                 }
             }
-            KeyCode::Backspace
-                if self.cursor > 0 => {
-                    self.input.remove(self.cursor - 1);
-                    self.cursor -= 1;
-                }
-            KeyCode::Delete
-                if self.cursor < self.input.len() => {
-                    self.input.remove(self.cursor);
-                }
-            KeyCode::Left
-                if self.cursor > 0 => {
-                    self.cursor -= 1;
-                }
-            KeyCode::Right
-                if self.cursor < self.input.len() => {
-                    self.cursor += 1;
-                }
+            KeyCode::Backspace if self.cursor > 0 => {
+                self.input.remove(self.cursor - 1);
+                self.cursor -= 1;
+            }
+            KeyCode::Delete if self.cursor < self.input.len() => {
+                self.input.remove(self.cursor);
+            }
+            KeyCode::Left if self.cursor > 0 => {
+                self.cursor -= 1;
+            }
+            KeyCode::Right if self.cursor < self.input.len() => {
+                self.cursor += 1;
+            }
             KeyCode::Home => {
                 self.cursor = 0;
             }
@@ -194,7 +189,10 @@ impl App {
                     // Unknown command - show error
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: format!("Unknown command: {}. Type /help for available commands.", cmd),
+                        content: format!(
+                            "Unknown command: {}. Type /help for available commands.",
+                            cmd
+                        ),
                         tool_calls: Vec::new(),
                         thinking: None,
                     });
@@ -222,15 +220,15 @@ impl App {
     pub fn tick(&mut self) {
         self.tick_count += 1;
     }
-    
+
     pub fn add_status(&mut self, msg: impl Into<String>) {
         self.status_messages.push(msg.into());
     }
-    
+
     pub fn clear_status(&mut self) {
         self.status_messages.clear();
     }
-    
+
     pub fn add_btw(&mut self, note: impl Into<String>) {
         self.btw_notes.push(note.into());
     }

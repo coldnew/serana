@@ -1,16 +1,28 @@
 //! Meta-cognition for agent self-reflection and decision tracking.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use tokio::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 
 /// Type of modification or decision.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ModificationKind {
-    ToolCall, ContextCompression, Iteration, Cancellation, Error, Decision, Observation,
-    Feature, BugFix, Optimization, Refactor, TestAddition, Dependency, Config,
+    ToolCall,
+    ContextCompression,
+    Iteration,
+    Cancellation,
+    Error,
+    Decision,
+    Observation,
+    Feature,
+    BugFix,
+    Optimization,
+    Refactor,
+    TestAddition,
+    Dependency,
+    Config,
 }
 
 /// Full modification record with lessons.
@@ -78,7 +90,9 @@ impl MetaCognition {
     }
 
     fn load_persisted(path: &Path) -> Option<Vec<ModificationRecord>> {
-        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok())
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
     }
 
     async fn save_persisted(&self, records: &[ModificationRecord]) -> crate::Result<()> {
@@ -87,15 +101,31 @@ impl MetaCognition {
         Ok(())
     }
 
-    pub async fn add_record(&self, kind: ModificationKind, description: impl Into<String>, metadata: serde_json::Value) -> u64 {
+    pub async fn add_record(
+        &self,
+        kind: ModificationKind,
+        description: impl Into<String>,
+        metadata: serde_json::Value,
+    ) -> u64 {
         let mut next_id = self.next_id.lock().await;
         let id = *next_id;
         *next_id += 1;
         drop(next_id);
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-        let record = MetaRecord { id, kind, description: description.into(), timestamp, metadata };
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let record = MetaRecord {
+            id,
+            kind,
+            description: description.into(),
+            timestamp,
+            metadata,
+        };
         let mut records = self.records.lock().await;
-        if records.len() >= self.max_records { records.pop_front(); }
+        if records.len() >= self.max_records {
+            records.pop_front();
+        }
         records.push_back(record);
         id
     }
@@ -140,5 +170,7 @@ impl MetaCognition {
 }
 
 impl Default for MetaCognition {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

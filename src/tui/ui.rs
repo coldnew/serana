@@ -4,8 +4,8 @@ use super::app::{App, AppMode, ChatMessage, MessageRole, TodoItem, ToolCallStatu
 use super::component::Container;
 use super::components::{BoxWidget, Markdown, Spacer, Text};
 use super::style::{Colors, Style};
-use super::tui::Tui;
 use super::tool_execution::{ToolExecution, ToolState};
+use super::tui::Tui;
 
 /// Theme colors matching oh-my-pi dark theme.
 pub struct Theme {
@@ -68,26 +68,29 @@ fn gradient_logo(lines: &[&str]) -> Vec<String> {
     ];
     let reset = "\x1b[0m";
 
-    lines.iter().map(|line| {
-        let mut result = String::new();
-        let color_count = colors.len();
-        let step = (line.len() / color_count).max(1);
-        let mut color_idx = 0;
+    lines
+        .iter()
+        .map(|line| {
+            let mut result = String::new();
+            let color_count = colors.len();
+            let step = (line.len() / color_count).max(1);
+            let mut color_idx = 0;
 
-        for (i, char) in line.chars().enumerate() {
-            if i > 0 && i % step == 0 && color_idx < color_count - 1 {
-                color_idx += 1;
+            for (i, char) in line.chars().enumerate() {
+                if i > 0 && i % step == 0 && color_idx < color_count - 1 {
+                    color_idx += 1;
+                }
+                if char != ' ' {
+                    result.push_str(colors[color_idx]);
+                    result.push(char);
+                    result.push_str(reset);
+                } else {
+                    result.push(char);
+                }
             }
-            if char != ' ' {
-                result.push_str(colors[color_idx]);
-                result.push(char);
-                result.push_str(reset);
-            } else {
-                result.push(char);
-            }
-        }
-        result
-    }).collect()
+            result
+        })
+        .collect()
 }
 
 /// Render welcome screen with true two-column layout (oh-my-pi style).
@@ -109,7 +112,9 @@ fn render_welcome(container: &mut Container, version: &str, model: &str, provide
         .max(visible_width("Welcome back!"))
         .max(visible_width(model))
         .max(visible_width(provider));
-    let desired_left_col = preferred_left_col.min((dual_content_width as f64 * 0.35) as usize).max(min_left_col);
+    let desired_left_col = preferred_left_col
+        .min((dual_content_width as f64 * 0.35) as usize)
+        .max(min_left_col);
 
     let dual_left_col = if dual_content_width >= min_right_col + 1 {
         desired_left_col.min(dual_content_width - min_right_col)
@@ -118,8 +123,13 @@ fn render_welcome(container: &mut Container, version: &str, model: &str, provide
     };
     let dual_right_col = (dual_content_width - dual_left_col).max(1);
 
-    let show_right_column = dual_left_col >= left_min_content_width && dual_right_col >= min_right_col;
-    let left_col = if show_right_column { dual_left_col } else { box_width - 2 };
+    let show_right_column =
+        dual_left_col >= left_min_content_width && dual_right_col >= min_right_col;
+    let left_col = if show_right_column {
+        dual_left_col
+    } else {
+        box_width - 2
+    };
     let right_col = if show_right_column { dual_right_col } else { 0 };
 
     // Logo with gradient
@@ -143,25 +153,45 @@ fn render_welcome(container: &mut Container, version: &str, model: &str, provide
 
     // Right column content
     let mut right_lines: Vec<String> = Vec::new();
-    
+
     if show_right_column {
         let separator_width = (right_col - 2).max(0);
         let separator = format!(" {}", theme.dim.apply(&"─".repeat(separator_width)));
-        
+
         // Tips section
         right_lines.push(format!(" {}", theme.accent.apply("Tips")));
-        right_lines.push(format!(" {}{}", theme.dim.apply("?"), theme.muted.apply(" for keyboard shortcuts")));
-        right_lines.push(format!(" {}{}", theme.dim.apply("#"), theme.muted.apply(" for prompt actions")));
-        right_lines.push(format!(" {}{}", theme.dim.apply("/"), theme.muted.apply(" for commands")));
-        right_lines.push(format!(" {}{}", theme.dim.apply("!"), theme.muted.apply(" to run bash")));
-        right_lines.push(format!(" {}{}", theme.dim.apply("$"), theme.muted.apply(" to run python")));
+        right_lines.push(format!(
+            " {}{}",
+            theme.dim.apply("?"),
+            theme.muted.apply(" for keyboard shortcuts")
+        ));
+        right_lines.push(format!(
+            " {}{}",
+            theme.dim.apply("#"),
+            theme.muted.apply(" for prompt actions")
+        ));
+        right_lines.push(format!(
+            " {}{}",
+            theme.dim.apply("/"),
+            theme.muted.apply(" for commands")
+        ));
+        right_lines.push(format!(
+            " {}{}",
+            theme.dim.apply("!"),
+            theme.muted.apply(" to run bash")
+        ));
+        right_lines.push(format!(
+            " {}{}",
+            theme.dim.apply("$"),
+            theme.muted.apply(" to run python")
+        ));
         right_lines.push(separator.clone());
 
         // LSP Servers section
         right_lines.push(format!(" {}", theme.accent.apply("LSP Servers")));
         right_lines.push(format!("  {}", theme.dim.apply("○ No LSP servers")));
         right_lines.push(separator);
-        
+
         // Recent sessions section
         right_lines.push(format!(" {}", theme.accent.apply("Recent sessions")));
         right_lines.push(format!(" {}", theme.dim.apply(" • No recent sessions")));
@@ -183,15 +213,30 @@ fn render_welcome(container: &mut Container, version: &str, model: &str, provide
     // Top border with embedded title
     let title = format!(" Serana v{} ", version);
     let title_prefix = "───";
-    let title_styled = format!("{}{}", theme.dim.apply(title_prefix), theme.muted.apply(&title));
+    let title_styled = format!(
+        "{}{}",
+        theme.dim.apply(title_prefix),
+        theme.muted.apply(&title)
+    );
     let title_vis_len = title_prefix.chars().count() + title.chars().count();
     let title_space = box_width - 2;
-    
+
     if title_vis_len >= title_space {
-        lines.push(format!("{}{}{}", tl, truncate_to_width(&title_styled, title_space), tr));
+        lines.push(format!(
+            "{}{}{}",
+            tl,
+            truncate_to_width(&title_styled, title_space),
+            tr
+        ));
     } else {
         let after_title = title_space - title_vis_len;
-        lines.push(format!("{}{}{}{}", tl, title_styled, theme.dim.apply(&"─".repeat(after_title)), tr));
+        lines.push(format!(
+            "{}{}{}{}",
+            tl,
+            title_styled,
+            theme.dim.apply(&"─".repeat(after_title)),
+            tr
+        ));
     }
 
     // Content rows
@@ -200,7 +245,7 @@ fn render_welcome(container: &mut Container, version: &str, model: &str, provide
     } else {
         left_lines.len()
     };
-    
+
     for i in 0..max_rows {
         let left = fit_to_width(left_lines.get(i).cloned().unwrap_or_default(), left_col);
         if show_right_column {
@@ -213,7 +258,14 @@ fn render_welcome(container: &mut Container, version: &str, model: &str, provide
 
     // Bottom border
     if show_right_column {
-        lines.push(format!("{}{}{}{}{}", bl, h.repeat(left_col), tee_up, h.repeat(right_col), br));
+        lines.push(format!(
+            "{}{}{}{}{}",
+            bl,
+            h.repeat(left_col),
+            tee_up,
+            h.repeat(right_col),
+            br
+        ));
     } else {
         lines.push(format!("{}{}{}", bl, h.repeat(left_col), br));
     }
@@ -259,18 +311,18 @@ fn truncate_to_width(text: &str, width: usize) -> String {
     if vis_len <= width {
         return text.to_string();
     }
-    
+
     let ellipsis = "…";
     let max_width = width.saturating_sub(1);
     let mut result = String::new();
     let mut current_width = 0;
     let mut in_escape = false;
-    
+
     for char in text.chars() {
         if char == '\x1b' {
             in_escape = true;
         }
-        
+
         if in_escape {
             result.push(char);
             if char == 'm' {
@@ -281,7 +333,7 @@ fn truncate_to_width(text: &str, width: usize) -> String {
             current_width += 1;
         }
     }
-    
+
     format!("{}{}", result, ellipsis)
 }
 
@@ -350,13 +402,13 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
 /// Render pending/streaming messages with animated waiting indicator.
 fn render_pending(container: &mut Container, pending: &[String], tick: u64, is_streaming: bool) {
     let theme = Theme::default();
-    
+
     if pending.is_empty() {
         return;
     }
-    
+
     container.push(Spacer::new(1));
-    
+
     if is_streaming {
         // Active streaming - show spinner and "Responding..."
         let spinner = spinner_frame(tick);
@@ -372,7 +424,7 @@ fn render_pending(container: &mut Container, pending: &[String], tick: u64, is_s
             theme.warning,
         ));
     }
-    
+
     // Show streaming content
     for msg in pending {
         container.push(Text::styled(format!("    {}", msg), theme.dim));
@@ -382,11 +434,11 @@ fn render_pending(container: &mut Container, pending: &[String], tick: u64, is_s
 /// Render status messages.
 fn render_status(container: &mut Container, status: &[String]) {
     let theme = Theme::default();
-    
+
     if status.is_empty() {
         return;
     }
-    
+
     container.push(Spacer::new(1));
     for msg in status {
         container.push(Text::styled(format!("  → {}", msg), theme.info));
@@ -396,32 +448,39 @@ fn render_status(container: &mut Container, status: &[String]) {
 /// Render todo list.
 fn render_todo(container: &mut Container, todos: &[TodoItem]) {
     let theme = Theme::default();
-    
+
     if todos.is_empty() {
         return;
     }
-    
+
     container.push(Spacer::new(1));
     container.push(Text::styled("  Tasks", theme.accent));
-    
+
     for todo in todos {
         let check = if todo.done { "✓" } else { "○" };
-        let style = if todo.done { theme.dim } else { Style::default() };
-        container.push(Text::styled(format!("    {} {}", check, todo.content), style));
+        let style = if todo.done {
+            theme.dim
+        } else {
+            Style::default()
+        };
+        container.push(Text::styled(
+            format!("    {} {}", check, todo.content),
+            style,
+        ));
     }
 }
 
 /// Render btw notes.
 fn render_btw(container: &mut Container, notes: &[String]) {
     let theme = Theme::default();
-    
+
     if notes.is_empty() {
         return;
     }
-    
+
     container.push(Spacer::new(1));
     container.push(Text::styled("  By the way", theme.warning));
-    
+
     for note in notes {
         container.push(Text::styled(format!("    • {}", note), theme.dim));
     }
@@ -483,14 +542,22 @@ fn render_status_line(container: &mut Container, app: &App) {
         left_segments.push(theme.dim.apply(&format!("git:{}", branch)));
         if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
             let mut parts = Vec::new();
-            if app.git_staged > 0 { parts.push(format!("+{}", app.git_staged)); }
-            if app.git_unstaged > 0 { parts.push(format!("!{}", app.git_unstaged)); }
-            if app.git_untracked > 0 { parts.push(format!("?{}", app.git_untracked)); }
+            if app.git_staged > 0 {
+                parts.push(format!("+{}", app.git_staged));
+            }
+            if app.git_unstaged > 0 {
+                parts.push(format!("!{}", app.git_unstaged));
+            }
+            if app.git_untracked > 0 {
+                parts.push(format!("?{}", app.git_untracked));
+            }
             left_segments.push(theme.warning.apply(&format!(" ({})", parts.join(" "))));
         }
     }
 
-    let workspace_name = app.workspace.file_name()
+    let workspace_name = app
+        .workspace
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("workspace");
     left_segments.push(" ┆ ".to_string());
