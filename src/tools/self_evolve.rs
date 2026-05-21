@@ -9,6 +9,7 @@ use std::process::Command;
 use tokio::fs;
 
 use crate::tools::Tool;
+use crate::tools::ToolRegistry;
 use crate::Result;
 use crate::agent::{MetaCognition, ModificationKind, ModificationRecord};
 

@@ -39,6 +39,8 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     let (stream_tx, mut stream_rx) = mpsc::unbounded_channel::<String>();
     let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
     use crate::tools::self_evolve;
+    self_evolve::register_self_evolve_tools(&mut tools);
+    use crate::tools::self_evolve;
     let tools = ToolRegistry::new();
     let session_store = SessionStore::default_location();
     session_store.init()?;
@@ -155,6 +157,3 @@ fn run_app(
             }
         }
     }
-}
-        // Register self-evolution tools
-        self_evolve::register_self_evolve_tools(&mut tools);
