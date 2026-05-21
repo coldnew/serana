@@ -8,6 +8,7 @@ use crate::Result;
 pub mod fs;
 pub mod hashline;
 pub mod code_intel;
+pub mod self_evolve;
 
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -34,6 +35,12 @@ impl ToolRegistry {
         registry.register(Box::new(code_intel::LspDefinitionTool));
         registry.register(Box::new(code_intel::LspReferencesTool));
         registry.register(Box::new(code_intel::LspHoverTool));
+        registry.register(Box::new(self_evolve::ReadSelfTool));
+        registry.register(Box::new(self_evolve::EditSelfTool));
+        registry.register(Box::new(self_evolve::CargoTool));
+        registry.register(Box::new(self_evolve::GitTool));
+        registry.register(Box::new(self_evolve::SearchCodeTool));
+        registry.register(Box::new(self_evolve::WorkspaceRootTool));
         registry
     }
 
@@ -69,6 +76,17 @@ mod tests {
         assert!(registry.get("lsp_definition").is_some());
         assert!(registry.get("lsp_references").is_some());
         assert!(registry.get("lsp_hover").is_some());
+    }
+
+    #[test]
+    fn registers_self_evolution_tools() {
+        let registry = ToolRegistry::new();
+        assert!(registry.get("read_self").is_some());
+        assert!(registry.get("edit_self").is_some());
+        assert!(registry.get("cargo").is_some());
+        assert!(registry.get("git").is_some());
+        assert!(registry.get("search_code").is_some());
+        assert!(registry.get("workspace_root").is_some());
     }
 }
 
