@@ -525,6 +525,20 @@ fn render_status_line(container: &mut Container, app: &App) {
         }
     }
 
+    // Iteration progress
+    if app.iterations_max > 0 {
+        left_segments.push(" ┆ ".to_string());
+        let iter_text = format!("iter:{}/{}", app.iterations_used, app.iterations_max);
+        let iter_style = if app.iterations_used >= app.iterations_max {
+            theme.error
+        } else if app.iterations_used as f64 / app.iterations_max as f64 > 0.8 {
+            theme.warning
+        } else {
+            theme.dim
+        };
+        left_segments.push(iter_style.apply(&iter_text));
+    }
+
     // Right: help
     right_segments.push("Ctrl+D: quit".to_string());
 

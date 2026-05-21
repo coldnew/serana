@@ -37,6 +37,8 @@ pub struct App {
     pub git_staged: u32,
     pub git_unstaged: u32,
     pub git_untracked: u32,
+    pub iterations_used: u64,
+    pub iterations_max: u64,
 }
 
 /// Todo item for task tracking.
@@ -74,6 +76,8 @@ impl App {
             git_staged: 0,
             git_unstaged: 0,
             git_untracked: 0,
+            iterations_used: 0,
+            iterations_max: 30,
         }
     }
 
