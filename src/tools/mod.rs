@@ -41,6 +41,9 @@ impl ToolRegistry {
         registry.register(Box::new(self_evolve::GitTool));
         registry.register(Box::new(self_evolve::SearchCodeTool));
         registry.register(Box::new(self_evolve::WorkspaceRootTool));
+        registry.register(Box::new(self_evolve::RecordModificationTool));
+        registry.register(Box::new(self_evolve::ModificationStatsTool));
+        registry.register(Box::new(self_evolve::ReflectModificationTool));
         registry
     }
 

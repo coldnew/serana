@@ -22,6 +22,7 @@ pub mod session;
 pub mod compressor;
 pub mod tool_approval;
 pub mod subagent;
+pub mod meta_cognition;
 
 pub use iteration_budget::{IterationBudget, DEFAULT_MAX_ITERATIONS, DEFAULT_SUBAGENT_MAX_ITERATIONS};
 pub use callbacks::{AgentCallbacks, AgentStatus, CallbackState};
@@ -34,6 +35,7 @@ pub use session::{Session, SessionMeta, SessionStore, SearchResult, StoredMessag
 pub use compressor::{CompressionConfig, CompressionDecision, CompressionThresholds, ContextCompressor};
 pub use tool_approval::{ApprovalCallback, ApprovalDecision, ApprovalPolicy, ApprovalState, AutoApprove, RiskLevel};
 pub use subagent::{delegate_task, SubagentConfig, SubagentResult, SubagentSpawner, SubagentTask};
+pub use meta_cognition::{MetaCognition, ModificationKind, ModificationRecord};
 
 /// Core agent trait.
 #[async_trait]

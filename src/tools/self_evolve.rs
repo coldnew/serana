@@ -8,6 +8,7 @@ use tokio::fs;
 
 use crate::tools::Tool;
 use crate::Result;
+use crate::agent::{MetaCognition, ModificationKind, ModificationRecord};
 
 /// Read Serana's own source file.
 pub struct ReadSelfTool;
@@ -26,6 +27,15 @@ pub struct SearchCodeTool;
 
 /// Get Serana's workspace root path.
 pub struct WorkspaceRootTool;
+
+/// Record a self-modification for learning.
+pub struct RecordModificationTool;
+
+/// Get statistics about past self-modifications.
+pub struct ModificationStatsTool;
+
+/// Reflect on a modification and add lessons learned.
+pub struct ReflectModificationTool;
 
 const SERANA_ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -287,6 +297,134 @@ impl Tool for WorkspaceRootTool {
         }))
     }
 }
+
+#[async_trait]
+impl Tool for RecordModificationTool {
+    fn name(&self) -> &'static str {
+        "record_modification"
+    }
+
+    fn description(&self) -> &'static str {
+        "Record a self-modification for learning. Input: {\"file\": \"src/agent/coding.rs\", \"kind\": \"Feature\", \"description\": \"Added X\", \"tests_passed\": true, \"commit\": \"abc123\"}"
+    }
+
+    async fn execute(&self, input: Value) -> Result<Value> {
+        let file = input.get("file").and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'file' field"))?.to_string();
+        let kind_str = input.get("kind").and_then(|v| v.as_str()).unwrap_or("Feature");
+        let kind = match kind_str {
+            "Feature" => ModificationKind::Feature,
+            "BugFix" => ModificationKind::BugFix,
+            "Optimization" => ModificationKind::Optimization,
+            "Refactor" => ModificationKind::Refactor,
+            "TestAddition" => ModificationKind::TestAddition,
+            "Dependency" => ModificationKind::Dependency,
+            "Config" => ModificationKind::Config,
+            _ => ModificationKind::Feature,
+        };
+        let description = input.get("description").and_then(|v| v.as_str())
+            .unwrap_or("").to_string();
+        let tests_passed = input.get("tests_passed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let commit = input.get("commit").and_then(|v| v.as_str()).map(String::from);
+
+        let record = ModificationRecord {
+            timestamp: chrono_lite_timestamp(),
+            file,
+            kind,
+            description,
+            tests_passed,
+            commit,
+            lessons: vec![],
+        };
+
+        let mut meta = MetaCognition::new(PathBuf::from(SERANA_ROOT));
+        meta.record(record.clone()).await?;
+
+        Ok(json!({ "recorded": true, "timestamp": record.timestamp }))
+    }
+}
+
+#[async_trait]
+impl Tool for ModificationStatsTool {
+    fn name(&self) -> &'static str {
+        "modification_stats"
+    }
+
+    fn description(&self) -> &'static str {
+        "Get statistics about past self-modifications. Input: {}"
+    }
+
+    async fn execute(&self, _input: Value) -> Result<Value> {
+        let meta = MetaCognition::new(PathBuf::from(SERANA_ROOT));
+        let stats = meta.stats().await?;
+        Ok(json!({
+            "total": stats.total_modifications,
+            "successful": stats.successful_modifications,
+            "failed": stats.failed_modifications,
+            "by_kind": stats.by_kind,
+            "patterns": stats.common_patterns,
+        }))
+    }
+}
+
+#[async_trait]
+impl Tool for ReflectModificationTool {
+    fn name(&self) -> &'static str {
+        "reflect_modification"
+    }
+
+    fn description(&self) -> &'static str {
+        "Reflect on a modification and add lessons learned. Input: {\"file\": \"src/agent/coding.rs\", \"lessons\": [\"Test early\", \"Keep functions small\"]}"
+    }
+
+    async fn execute(&self, input: Value) -> Result<Value> {
+        let file = input.get("file").and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'file' field"))?.to_string();
+        let lessons: Vec<String> = input.get("lessons")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        let mut meta = MetaCognition::new(PathBuf::from(SERANA_ROOT));
+        meta.reflect(&file, lessons.clone()).await?;
+
+        Ok(json!({ "reflected": true, "file": file, "lessons_count": lessons.len() }))
+    }
+}
+
+fn chrono_lite_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let secs = duration.as_secs();
+    let datetime = time_offset::from_unix_timestamp(secs as i64);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        datetime.year, datetime.month, datetime.day,
+        datetime.hour, datetime.minute, datetime.second)
+}
+
+mod time_offset {
+    pub struct DateTime { pub year: i32, pub month: u8, pub day: u8, pub hour: u8, pub minute: u8, pub second: u8 }
+    pub fn from_unix_timestamp(ts: i64) -> DateTime {
+        // Simple UTC conversion
+        let days = ts / 86400;
+        let secs = ts % 86400;
+        let (year, month, day) = days_to_ymd(days as i32);
+        DateTime { year, month, day, hour: (secs / 3600) as u8, minute: ((secs % 3600) / 60) as u8, second: (secs % 60) as u8 }
+    }
+    fn days_to_ymd(mut days: i32) -> (i32, u8, u8) {
+        days += 719163; // Days to year 0
+        let era = (if days >= 0 { days } else { days - 146096 }) / 146097;
+        let doe = days - era * 146097;
+        let yoe = (doe - doe/1460 + doe/36524 - doe/146096) / 365;
+        let y = yoe + era * 400;
+        let doy = doe - (365*yoe + yoe/4 - yoe/100);
+        let mp = (5*doy + 2)/153;
+        let d = doy - (153*mp+2)/5 + 1;
+        let m = mp + (if mp < 10 { 3 } else { -9 });
+        (y + (if m <= 2 { 1 } else { 0 }), m as u8, d as u8)
+    }
+}
+
 
 fn parse_ripgrep_json(output: &str) -> Vec<Value> {
     output
