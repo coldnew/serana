@@ -25,7 +25,8 @@ textwrap = "0.16"
 strip-ansi-escapes = "0.2"
 pulldown-cmark = "0.12"
 pin-project-lite = "0.2"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = "0.32"
 
 [dev-dependencies]
 tempfile = "3.12"
