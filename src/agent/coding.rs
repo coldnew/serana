@@ -215,8 +215,8 @@ impl Agent for CodingAgent {
                         let success = result.result.is_ok();
                         let description = format!(
                             "Tool call: {} with args: {}",
-                            tool_call.function.name,
-                            tool_call.function.arguments.to_string()
+                            tool_call.name,
+                            tool_call.arguments.to_string()
                         );
                         let timestamp = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -239,49 +239,12 @@ impl Agent for CodingAgent {
                             let error_msg = result.result.err().map(|e| e.to_string()).unwrap_or_default();
                             let lesson = format!(
                                 "Failed to call {} with args {}: {}",
-                                tool_call.function.name,
-                                tool_call.function.arguments.to_string(),
+                                tool_call.name,
+                                tool_call.arguments.to_string(),
                                 error_msg
                             );
                             let _ = self.meta_cognition.add_lesson(&timestamp, lesson).await;
                         }
-                    }
-
-                    // Execute tools
-                    self.callbacks.fire_status(AgentStatus::ExecutingTool);
-                    let results =
-                        execute_tools_concurrent(&tool_calls, &self.tools, &self.callbacks).await;
-                    self.callbacks.fire_status(AgentStatus::Running);
-
-                    // Process results
-                    for result in results {
-                        let tool_call = result.to_tool_call();
-                        self.persist_tool_call(&tool_call)?;
-                        let result_str = result.result_string();
-                        messages.push(Message::tool_result(result.id, result_str));
-                        all_tool_calls.push(tool_call.clone());
-
-                        // Record tool call outcome in meta-cognition for learning
-                        let success = result.result.is_ok();
-                        let description = format!(
-                            "Tool call: {} with args: {}",
-                            tool_call.name,
-                            tool_call.arguments.to_string()
-                        );
-                        let record = ModificationRecord {
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs()
-                                .to_string(),
-                            file: format!("tool:{}", tool_call.name),
-                            kind: ModificationKind::ToolCall,
-                            description,
-                            tests_passed: success,
-                            commit: None,
-                            lessons: vec![],
-                        };
-                        let _ = self.meta_cognition.record(record).await;
                     }
 
                     // Check if budget exceeded after iteration
