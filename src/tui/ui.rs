@@ -117,8 +117,8 @@ fn render_welcome(container: &mut Container, version: &str, model: &str) {
         right_lines.push(format!(" {}{}", theme.dim.apply("/"), theme.muted.apply(" for commands")));
         right_lines.push(format!(" {}{}", theme.dim.apply("!"), theme.muted.apply(" to run bash")));
         right_lines.push(format!(" {}{}", theme.dim.apply("$"), theme.muted.apply(" to run python")));
-        right_lines.push(separator);
-        
+        right_lines.push(separator.clone());
+
         // LSP Servers section
         right_lines.push(format!(" {}", theme.accent.apply("LSP Servers")));
         right_lines.push(format!("  {}", theme.dim.apply("○ No LSP servers")));
@@ -137,7 +137,7 @@ fn render_welcome(container: &mut Container, version: &str, model: &str) {
     let tr = theme.dim.apply("┐");
     let bl = theme.dim.apply("└");
     let br = theme.dim.apply("┘");
-    let tee = theme.dim.apply("┬");
+    let _tee = theme.dim.apply("┬");
     let tee_up = theme.dim.apply("┴");
 
     let mut lines: Vec<String> = Vec::new();
