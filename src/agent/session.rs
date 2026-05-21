@@ -126,7 +126,7 @@ impl SessionStore {
 
     pub fn create_session(&self) -> crate::Result<Session> {
         let now = Utc::now();
-        let id = format!("sess_{}", now.format("%Y%m%d_%H%M%S_%3f"));
+        let id = format!("sess_{}", uuid::Uuid::new_v4());
         let conn = rusqlite::Connection::open(&self.db_path)?;
         conn.execute(
             "INSERT INTO sessions (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
