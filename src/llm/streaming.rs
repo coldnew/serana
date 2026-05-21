@@ -21,7 +21,7 @@ impl SseStream {
         }
     }
 
-    /// Parse SSE data from accumulated buffer and return next content chunk
+    /// Parse SSE data from accumulated buffer and return next JSON chunk
     fn parse_next(&mut self) -> Option<Result<String, anyhow::Error>> {
         // Find first newline
         let line_end = match self.buffer.find('\n') {
@@ -32,42 +32,34 @@ impl SseStream {
         let line = self.buffer[..line_end].trim().to_string();
         let processed = line_end + 1;
 
-        if line.is_empty() {
-            // Remove empty line and continue
+        // Safely remove processed portion
+        if processed <= self.buffer.len() {
             self.buffer = self.buffer[processed..].to_string();
-            return self.parse_next(); // tail recursion
+        } else {
+            self.buffer.clear();
+        }
+
+        if line.is_empty() {
+            // Empty line, continue parsing
+            return self.parse_next();
         }
 
         if let Some(data) = line.strip_prefix("data:") {
             let data = data.trim();
             if data == "[DONE]" {
-                self.buffer = self.buffer[processed..].to_string();
                 return None;
             }
             if !data.is_empty() {
-                // Parse JSON chunk and extract content
-                match serde_json::from_str::<serde_json::Value>(data) {
-                    Ok(chunk) => {
-                        let content = chunk["choices"][0]["delta"]["content"]
-                            .as_str()
-                            .or_else(|| chunk["choices"][0]["message"]["content"].as_str())
-                            .map(|s| s.to_string());
-                        self.buffer = self.buffer[processed..].to_string();
-                        if let Some(text) = content {
-                            return Some(Ok(text));
-                        }
-                    }
-                    Err(e) => {
-                        self.buffer = self.buffer[processed..].to_string();
-                        return Some(Err(e.into()));
-                    }
-                }
+                // Return the raw JSON data for caller to parse
+                return Some(Ok(data.to_string()));
             }
+        } else if line.starts_with(':') {
+            // Comment line, skip
+            return self.parse_next();
         }
 
-        // If we get here, the line didn't match expected SSE format; discard it
-        self.buffer = self.buffer[processed..].to_string();
-        self.parse_next() // continue
+        // Line didn't match expected SSE format; discard and continue
+        self.parse_next()
     }
 }
 
@@ -91,7 +83,9 @@ impl Stream for SseStream {
                     }
                     // Continue to next chunk
                 }
-                Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e.into()))),
+                Poll::Ready(Some(Err(e))) => {
+                    return Poll::Ready(Some(Err(e.into())));
+                }
                 Poll::Ready(None) => {
                     // End of stream, check buffer one last time
                     if let Some(chunk) = self.parse_next() {
@@ -118,6 +112,8 @@ mod tests {
             buffer: String::new(),
         };
         let chunks: Vec<String> = stream.map(|r| r.unwrap()).collect().await;
-        assert_eq!(chunks, vec!["Hello", " world"]);
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].contains("Hello"));
+        assert!(chunks[1].contains("world"));
     }
 }
