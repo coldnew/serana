@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::agent::{
     Agent, AgentOutput, AgentCallbacks, AgentStatus,
     IterationBudget, PromptBuilder, execute_tools_concurrent, validate_message_alternation,
+    SessionStore, ContextCompressor, CompressionDecision,
 };
 use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition};
 use crate::tools::ToolRegistry;
@@ -15,6 +16,9 @@ pub struct CodingAgent {
     budget: IterationBudget,
     callbacks: AgentCallbacks,
     prompt_builder: PromptBuilder,
+    session_store: Option<SessionStore>,
+    session_id: Option<String>,
+    compressor: ContextCompressor,
 }
 
 impl CodingAgent {
@@ -25,6 +29,9 @@ impl CodingAgent {
             budget: IterationBudget::default_parent(),
             callbacks: AgentCallbacks::new(),
             prompt_builder: PromptBuilder::new(PathBuf::from(".")),
+            session_store: None,
+            session_id: None,
+            compressor: ContextCompressor::with_defaults(),
         }
     }
 
@@ -43,6 +50,19 @@ impl CodingAgent {
     /// Set workspace path for prompt builder.
     pub fn with_workspace(mut self, workspace: PathBuf) -> Self {
         self.prompt_builder = PromptBuilder::new(workspace);
+        self
+    }
+
+    /// Enable session persistence.
+    pub fn with_session(mut self, store: SessionStore, session_id: String) -> Self {
+        self.session_store = Some(store);
+        self.session_id = Some(session_id);
+        self
+    }
+
+    /// Set custom context compressor.
+    pub fn with_compressor(mut self, compressor: ContextCompressor) -> Self {
+        self.compressor = compressor;
         self
     }
 }
@@ -65,11 +85,26 @@ impl Agent for CodingAgent {
             Message::system(system_prompt),
             Message::user(instruction.to_string()),
         ];
+        self.persist_message("user", instruction)?;
+
 
         let mut all_tool_calls = Vec::new();
 
         // Use iteration budget instead of hardcoded limit
         while self.budget.remaining() > 0 {
+            match self.compressor.check_compression(self.compressor.estimate_tokens(&messages)) {
+                CompressionDecision::Gateway => {
+                    if let Some(cb) = &self.callbacks.status {
+                        cb(AgentStatus::Compressing);
+                    }
+                    messages = self.compressor.compress_messages(&messages, self.llm.as_ref()).await?;
+                    if let Some(cb) = &self.callbacks.status {
+                        cb(AgentStatus::Running);
+                    }
+                }
+                CompressionDecision::Preflight | CompressionDecision::None => {}
+            }
+
             // Validate message alternation before each LLM call
             if let Err(e) = validate_message_alternation(&messages) {
                 anyhow::bail!("Message alternation error: {}", e);
@@ -79,6 +114,9 @@ impl Agent for CodingAgent {
 
             match response {
                 Message::ToolCall { role, content, tool_calls } => {
+                    if let Some(content) = content.as_deref() {
+                        self.persist_message("assistant", content)?;
+                    }
                     // Add assistant message with tool calls to history
                     messages.push(Message::ToolCall { role, content, tool_calls: tool_calls.clone() });
 
@@ -88,6 +126,7 @@ impl Agent for CodingAgent {
                     // Process results
                     for result in results {
                         let tool_call = result.to_tool_call();
+                        self.persist_tool_call(&tool_call)?;
                         let result_str = result.result_string();
                         messages.push(Message::tool_result(result.id, result_str));
                         all_tool_calls.push(tool_call);
@@ -103,6 +142,7 @@ impl Agent for CodingAgent {
                 }
                 Message::Text { role: _, content } => {
                     // Final response - no more tool calls
+                    self.persist_message("assistant", &content)?;
                     if let Some(cb) = &self.callbacks.status {
                         cb(AgentStatus::Complete);
                     }
@@ -145,5 +185,115 @@ impl CodingAgent {
                 }
             })
         }).collect()
+    }
+
+    fn persist_message(&self, role: &str, content: &str) -> Result<()> {
+        if let (Some(store), Some(session_id)) = (&self.session_store, &self.session_id) {
+            store.save_message(session_id, role, content)?;
+        }
+        Ok(())
+    }
+
+    fn persist_tool_call(&self, tool_call: &crate::agent::ToolCall) -> Result<()> {
+        if let (Some(store), Some(session_id)) = (&self.session_store, &self.session_id) {
+            store.save_tool_call(
+                session_id,
+                &tool_call.name,
+                &tool_call.arguments,
+                tool_call.result.as_ref(),
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use tempfile::tempdir;
+
+    struct MockLlm;
+
+    #[async_trait]
+    impl LlmClient for MockLlm {
+        async fn chat(&self, _messages: &[Message]) -> Result<String> {
+            Ok("compressed".to_string())
+        }
+
+        async fn chat_with_tools(
+            &self,
+            _messages: &[Message],
+            _tools: &[ToolDefinition],
+        ) -> Result<Message> {
+            Ok(Message::assistant("hello from agent".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn persists_user_and_assistant_messages_when_session_enabled() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::new(dir.path().join("sessions.db"));
+        store.init().unwrap();
+        let session = store.create_session().unwrap();
+
+        let agent = CodingAgent::new(Box::new(MockLlm), ToolRegistry::new())
+            .with_session(store.clone(), session.meta.id.clone());
+
+        let output = agent.execute("say hello").await.unwrap();
+        assert_eq!(output.response, "hello from agent");
+
+        let loaded = store.load_session(&session.meta.id).unwrap().unwrap();
+        assert_eq!(loaded.messages.len(), 2);
+        assert_eq!(loaded.messages[0].role, "user");
+        assert_eq!(loaded.messages[0].content, "say hello");
+        assert_eq!(loaded.messages[1].role, "assistant");
+        assert_eq!(loaded.messages[1].content, "hello from agent");
+    }
+
+    struct CompressionAwareLlm {
+        saw_summary: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait]
+    impl LlmClient for CompressionAwareLlm {
+        async fn chat(&self, _messages: &[Message]) -> Result<String> {
+            Ok("important prior context".to_string())
+        }
+
+        async fn chat_with_tools(
+            &self,
+            messages: &[Message],
+            _tools: &[ToolDefinition],
+        ) -> Result<Message> {
+            let saw_summary = messages.iter().any(|message| match message {
+                Message::Text { content, .. } => content.contains("Previous conversation summary"),
+                _ => false,
+            });
+            self.saw_summary.store(saw_summary, std::sync::atomic::Ordering::SeqCst);
+            Ok(Message::assistant("done".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn compresses_context_before_llm_gateway_call() {
+        let saw_summary = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let compressor = ContextCompressor::new(crate::agent::CompressionConfig {
+            max_tokens: 1,
+            protect_last_n: 0,
+            thresholds: crate::agent::CompressionThresholds {
+                preflight: 0.0,
+                gateway: 0.0,
+            },
+        });
+        let agent = CodingAgent::new(
+            Box::new(CompressionAwareLlm { saw_summary: saw_summary.clone() }),
+            ToolRegistry::new(),
+        )
+        .with_compressor(compressor);
+
+        let output = agent.execute("compress this before model call").await.unwrap();
+        assert_eq!(output.response, "done");
+        assert!(saw_summary.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

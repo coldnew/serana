@@ -14,7 +14,7 @@ pub mod tui;
 pub mod ui;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::agent::{Agent, coding::CodingAgent};
+use crate::agent::{Agent, coding::CodingAgent, SessionStore};
 use crate::llm::{LlmClient, openai::OpenAiClient};
 use crate::tools::ToolRegistry;
 use crate::config::Config;
@@ -30,13 +30,21 @@ use crate::Result;
 /// Run the TUI application.
 pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) -> Result<()> {
     let mut tui = Tui::new()?;
+    let workspace_for_agent = workspace.clone();
     let mut app = App::with_model(workspace, model, provider);
     let events = event::EventHandler::new(Duration::from_millis(16));
 
     let (response_tx, mut response_rx) = mpsc::unbounded_channel::<AgentResponse>();
     let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
     let tools = ToolRegistry::new();
-    let agent = Arc::new(CodingAgent::new(llm, tools));
+    let session_store = SessionStore::default_location();
+    session_store.init()?;
+    let session = session_store.create_session()?;
+    let agent = Arc::new(
+        CodingAgent::new(llm, tools)
+            .with_workspace(workspace_for_agent)
+            .with_session(session_store, session.meta.id),
+    );
 
     tui.clear_screen()?;
     tui.hide_cursor()?;
