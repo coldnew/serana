@@ -19,6 +19,7 @@ pub mod message_validation;
 pub mod prompt_builder;
 pub mod tool_executor;
 pub mod session;
+pub mod compressor;
 
 pub use iteration_budget::{IterationBudget, DEFAULT_MAX_ITERATIONS, DEFAULT_SUBAGENT_MAX_ITERATIONS};
 pub use callbacks::{AgentCallbacks, AgentStatus, CallbackState};
@@ -28,6 +29,7 @@ pub use prompt_builder::PromptBuilder;
 
 pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
 pub use session::{Session, SessionMeta, SessionStore, SearchResult, StoredMessage, StoredToolCall};
+pub use compressor::{CompressionConfig, CompressionDecision, CompressionThresholds, ContextCompressor};
 
 /// Core agent trait.
 #[async_trait]
