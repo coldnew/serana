@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn test_valid_sequence() {
         let messages = vec![
-            Message::system("You are helpful."),
+            Message::system("You are helpful.".to_string()),
             Message::user("Hello".to_string()),
             Message::assistant("Hi there!".to_string()),
             Message::user("How are you?".to_string()),
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn test_invalid_consecutive_user() {
         let messages = vec![
-            Message::system("You are helpful."),
+            Message::system("You are helpful.".to_string()),
             Message::user("Hello".to_string()),
             Message::user("Are you there?".to_string()),
         ];
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn test_fix_consecutive_user() {
         let messages = vec![
-            Message::system("You are helpful."),
+            Message::system("You are helpful.".to_string()),
             Message::user("Hello".to_string()),
             Message::user("Are you there?".to_string()),
         ];

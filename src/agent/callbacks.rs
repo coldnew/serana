@@ -30,9 +30,12 @@ pub type StatusCallback = Arc<dyn Fn(AgentStatus) + Send + Sync>;
 pub enum AgentStatus {
     Idle,
     Thinking,
+    Running,
     ExecutingTool,
     WaitingForInput,
     Compressing,
+    Complete,
+    BudgetExhausted,
     Error,
 }
 

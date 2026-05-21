@@ -40,7 +40,7 @@ impl IterationBudget {
     /// Increment the iteration count. Returns true if budget exceeded.
     pub fn increment(&self) -> bool {
         let prev = self.current.fetch_add(1, Ordering::SeqCst);
-        prev >= self.max
+        prev.saturating_add(1) >= self.max
     }
 
     /// Check if budget is exceeded without incrementing.

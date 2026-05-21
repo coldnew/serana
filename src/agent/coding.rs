@@ -1,17 +1,49 @@
 use async_trait::async_trait;
-use crate::agent::{Agent, AgentOutput, ToolCall};
+use std::path::PathBuf;
+use crate::agent::{
+    Agent, AgentOutput, AgentCallbacks, AgentStatus,
+    IterationBudget, PromptBuilder, execute_tools_concurrent, validate_message_alternation,
+};
 use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition};
-use crate::tools::{ToolRegistry};
+use crate::tools::ToolRegistry;
 use crate::Result;
 
+/// Hermes-style coding agent with iteration budget and callback support.
 pub struct CodingAgent {
     llm: Box<dyn LlmClient>,
     tools: ToolRegistry,
+    budget: IterationBudget,
+    callbacks: AgentCallbacks,
+    prompt_builder: PromptBuilder,
 }
 
 impl CodingAgent {
     pub fn new(llm: Box<dyn LlmClient>, tools: ToolRegistry) -> Self {
-        Self { llm, tools }
+        Self {
+            llm,
+            tools,
+            budget: IterationBudget::default_parent(),
+            callbacks: AgentCallbacks::new(),
+            prompt_builder: PromptBuilder::new(PathBuf::from(".")),
+        }
+    }
+
+    /// Set callbacks for progress notifications.
+    pub fn with_callbacks(mut self, callbacks: AgentCallbacks) -> Self {
+        self.callbacks = callbacks;
+        self
+    }
+
+    /// Set custom iteration budget.
+    pub fn with_budget(mut self, budget: IterationBudget) -> Self {
+        self.budget = budget;
+        self
+    }
+
+    /// Set workspace path for prompt builder.
+    pub fn with_workspace(mut self, workspace: PathBuf) -> Self {
+        self.prompt_builder = PromptBuilder::new(workspace);
+        self
     }
 }
 
@@ -22,7 +54,12 @@ impl Agent for CodingAgent {
     }
 
     async fn execute(&self, instruction: &str) -> Result<AgentOutput> {
-        let system_prompt = self.build_system_prompt();
+        // Notify status
+        if let Some(cb) = &self.callbacks.status {
+            cb(AgentStatus::Running);
+        }
+
+        let system_prompt = self.prompt_builder.build();
         let tools = self.build_tool_definitions();
         let mut messages = vec![
             Message::system(system_prompt),
@@ -30,9 +67,14 @@ impl Agent for CodingAgent {
         ];
 
         let mut all_tool_calls = Vec::new();
-        let max_iterations = 10;
 
-        for _ in 0..max_iterations {
+        // Use iteration budget instead of hardcoded limit
+        while self.budget.remaining() > 0 {
+            // Validate message alternation before each LLM call
+            if let Err(e) = validate_message_alternation(&messages) {
+                anyhow::bail!("Message alternation error: {}", e);
+            }
+
             let response = self.llm.chat_with_tools(&messages, &tools).await?;
 
             match response {
@@ -40,26 +82,30 @@ impl Agent for CodingAgent {
                     // Add assistant message with tool calls to history
                     messages.push(Message::ToolCall { role, content, tool_calls: tool_calls.clone() });
 
-                    // Execute each tool call
-                    for tc in tool_calls {
-                        let result = self.execute_tool(&tc.function.name, &tc.function.arguments).await;
-                        let result_str = match result {
-                            Ok(v) => serde_json::to_string(&v).unwrap_or_else(|_| "null".to_string()),
-                            Err(e) => format!("{{\"error\": \"{}\"}}", e),
-                        };
+                    // Execute tools
+                    let results = execute_tools_concurrent(&tool_calls, &self.tools, &self.callbacks).await;
 
-                        all_tool_calls.push(ToolCall {
-                            name: tc.function.name.clone(),
-                            arguments: serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::Value::Null),
-                            result: Some(serde_json::from_str(&result_str).unwrap_or(serde_json::Value::Null)),
-                        });
+                    // Process results
+                    for result in results {
+                        let tool_call = result.to_tool_call();
+                        let result_str = result.result_string();
+                        messages.push(Message::tool_result(result.id, result_str));
+                        all_tool_calls.push(tool_call);
+                    }
 
-                        // Add tool result to messages
-                        messages.push(Message::tool_result(tc.id, result_str));
+                    // Check if budget exceeded after iteration
+                    if self.budget.increment() {
+                        if let Some(cb) = &self.callbacks.status {
+                            cb(AgentStatus::BudgetExhausted);
+                        }
+                        break;
                     }
                 }
                 Message::Text { role: _, content } => {
                     // Final response - no more tool calls
+                    if let Some(cb) = &self.callbacks.status {
+                        cb(AgentStatus::Complete);
+                    }
                     return Ok(AgentOutput {
                         response: content,
                         tool_calls: all_tool_calls,
@@ -67,13 +113,16 @@ impl Agent for CodingAgent {
                     });
                 }
                 Message::ToolResult { .. } => {
-                    // Shouldn't happen - tool results come from us, not LLM
                     anyhow::bail!("Unexpected tool result message from LLM");
                 }
             }
         }
 
-        anyhow::bail!("Exceeded maximum tool call iterations");
+        if let Some(cb) = &self.callbacks.status {
+            cb(AgentStatus::BudgetExhausted);
+        }
+
+        anyhow::bail!("Exceeded iteration budget")
     }
 
     async fn chat(&self, message: &str) -> Result<String> {
@@ -83,17 +132,6 @@ impl Agent for CodingAgent {
 }
 
 impl CodingAgent {
-    fn build_system_prompt(&self) -> String {
-        let tool_descriptions = self.tools.describe_all();
-        format!(
-            "You are Serana, a coding agent that helps with programming tasks.\\n\\n\
-             Available tools:\\n{}\\n\\n\
-             When you need to perform an action, use the provided tools. \
-             Analyze the results and continue until the task is complete.",
-            tool_descriptions
-        )
-    }
-
     fn build_tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools.list().iter().filter_map(|name| {
             self.tools.get(name).map(|tool| {
@@ -107,13 +145,5 @@ impl CodingAgent {
                 }
             })
         }).collect()
-    }
-
-    async fn execute_tool(&self, name: &str, arguments: &str) -> Result<serde_json::Value> {
-        let tool = self.tools.get(name)
-            .ok_or_else(|| anyhow::anyhow!("Unknown tool: {}", name))?;
-        let args: serde_json::Value = serde_json::from_str(arguments)
-            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-        tool.execute(args).await
     }
 }

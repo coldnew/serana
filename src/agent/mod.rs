@@ -17,12 +17,15 @@ pub mod callbacks;
 pub mod interruptible;
 pub mod message_validation;
 pub mod prompt_builder;
+pub mod tool_executor;
 
 pub use iteration_budget::{IterationBudget, DEFAULT_MAX_ITERATIONS, DEFAULT_SUBAGENT_MAX_ITERATIONS};
 pub use callbacks::{AgentCallbacks, AgentStatus, CallbackState};
 pub use interruptible::{CancelToken, InterruptibleApiCall};
 pub use message_validation::{validate_message_alternation, fix_message_alternation};
 pub use prompt_builder::PromptBuilder;
+
+pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
 
 /// Core agent trait.
 #[async_trait]
