@@ -107,9 +107,13 @@ impl Config {
     /// Falls back to defaults if file doesn't exist.
     pub fn load() -> anyhow::Result<Self> {
         let config_path = Self::config_path();
-        
+        tracing::info!("Looking for config at {:?}", config_path);
+
         if config_path.exists() {
-            Self::load_from_path(&config_path)
+            tracing::info!("Config file found, loading...");
+            let config = Self::load_from_path(&config_path)?;
+            tracing::info!("Loaded config: model={}, provider={}", config.model(), config.provider.name);
+            Ok(config)
         } else {
             tracing::info!("No config file found at {:?}, using defaults", config_path);
             Ok(Self::default())
@@ -153,8 +157,16 @@ impl Config {
         Ok(config)
     }
     
-    /// Get the configuration file path: ~/.serana/config.toml
+    /// Get the configuration file path.
+    /// Prioritizes ~/.serana/config.toml for compatibility with Serana's documented config.
     pub fn config_path() -> PathBuf {
+        let legacy = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".serana")
+            .join("config.toml");
+        if legacy.exists() {
+            return legacy;
+        }
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("serana")

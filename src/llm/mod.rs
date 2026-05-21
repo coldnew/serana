@@ -11,6 +11,7 @@ use crate::Result;
 pub mod openai;
 pub mod fallback;
 pub mod credential;
+pub mod auxiliary;
 
 /// Chat message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,6 +122,7 @@ pub trait LlmClient: Send + Sync {
 
 pub use fallback::{FallbackChain, FallbackConfig, ProviderEntry, ProviderStatus};
 pub use credential::{CredentialProvider, EnvCredential, RefreshableClient, StaticCredential};
+pub use auxiliary::{AuxiliaryBuilder, AuxiliaryClient, AuxiliaryConfig, AuxiliaryTask};
 
 /// Provider type for configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
