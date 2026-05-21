@@ -47,6 +47,14 @@ const PI_LOGO: &[&str] = &[
     " ▄███▄  ▄███▄ ",
 ];
 
+/// Spinner frames for waiting indicator
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// Get current spinner frame based on tick count
+fn spinner_frame(tick: u64) -> &'static str {
+    SPINNER_FRAMES[(tick % SPINNER_FRAMES.len() as u64) as usize]
+}
+
 /// Apply magenta→cyan gradient to logo (matching oh-my-pi)
 fn gradient_logo(lines: &[&str]) -> Vec<String> {
     // 256-color gradient: bright magenta → bright cyan
@@ -339,8 +347,8 @@ fn render_messages(container: &mut Container, messages: &[ChatMessage]) {
     }
 }
 
-/// Render pending/streaming messages.
-fn render_pending(container: &mut Container, pending: &[String]) {
+/// Render pending/streaming messages with animated waiting indicator.
+fn render_pending(container: &mut Container, pending: &[String], tick: u64, is_streaming: bool) {
     let theme = Theme::default();
     
     if pending.is_empty() {
@@ -348,8 +356,24 @@ fn render_pending(container: &mut Container, pending: &[String]) {
     }
     
     container.push(Spacer::new(1));
-    container.push(Text::styled("  ◐ Working...", theme.warning));
     
+    if is_streaming {
+        // Active streaming - show spinner and "Responding..."
+        let spinner = spinner_frame(tick);
+        container.push(Text::styled(
+            format!("  {} Responding...", spinner),
+            theme.accent,
+        ));
+    } else {
+        // Waiting for response - show different indicator
+        let spinner = spinner_frame(tick);
+        container.push(Text::styled(
+            format!("  {} Waiting for response...", spinner),
+            theme.warning,
+        ));
+    }
+    
+    // Show streaming content
     for msg in pending {
         container.push(Text::styled(format!("    {}", msg), theme.dim));
     }
@@ -425,7 +449,7 @@ fn render_input(container: &mut Container, app: &App) {
 
     let content = if app.input.is_empty() {
         match app.mode {
-            AppMode::Processing => Text::styled("Processing...", theme.dim),
+            AppMode::Processing => Text::styled("Waiting for AI response...", theme.dim),
             AppMode::Input => Text::styled("Type your message...", theme.dim),
             AppMode::Normal => Text::styled("Type to start...", theme.dim),
         }
@@ -445,12 +469,12 @@ fn render_status_line(container: &mut Container, app: &App) {
     let mut right_segments = Vec::new();
 
     // Left: mode, model, git branch, workspace, token usage
-    let mode_text = match app.mode {
-        AppMode::Normal => "NORMAL",
-        AppMode::Input => "INPUT",
-        AppMode::Processing => "BUSY",
+    let (mode_text, mode_style) = match app.mode {
+        AppMode::Normal => ("NORMAL", Style::new().fg(Colors::BRIGHT_GREEN)),
+        AppMode::Input => ("INPUT", Style::new().fg(Colors::BRIGHT_BLUE)),
+        AppMode::Processing => ("BUSY", Style::new().fg(Colors::BRIGHT_YELLOW).bold()),
     };
-    left_segments.push(Style::new().fg(Colors::BRIGHT_GREEN).apply(mode_text));
+    left_segments.push(mode_style.apply(mode_text));
     left_segments.push(" ┆ ".to_string());
     left_segments.push(theme.info.apply(&app.model));
 
@@ -522,8 +546,9 @@ pub fn draw(tui: &mut Tui, app: &App) -> crate::Result<()> {
         render_messages(root, &app.messages);
     }
 
-    // 2. Pending messages (streaming)
-    render_pending(root, &app.pending_messages);
+    // 2. Pending messages (streaming) - with animated indicator
+    let is_streaming = !app.pending_messages.is_empty() && app.mode == AppMode::Processing;
+    render_pending(root, &app.pending_messages, app.tick_count, is_streaming);
     // 3. Status messages
     render_status(root, &app.status_messages);
     // 4. Todo list
