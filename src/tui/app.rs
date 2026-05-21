@@ -168,6 +168,37 @@ impl App {
     fn submit_message(&mut self) {
         let content = std::mem::take(&mut self.input);
         self.cursor = 0;
+
+        // Handle slash commands
+        if content.starts_with('/') {
+            let cmd = content.trim();
+            match cmd {
+                "/quit" | "/exit" | "/q" => {
+                    self.should_quit = true;
+                    return;
+                }
+                "/help" | "/?" => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Available commands:\n  /quit, /exit, /q - Exit the application\n  /help, /? - Show this help".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                    return;
+                }
+                _ => {
+                    // Unknown command - show error
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Unknown command: {}. Type /help for available commands.", cmd),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                    return;
+                }
+            }
+        }
+
         self.show_welcome = false;
 
         self.messages.push(ChatMessage {
