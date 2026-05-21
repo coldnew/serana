@@ -38,10 +38,9 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     let (response_tx, mut response_rx) = mpsc::unbounded_channel::<AgentResponse>();
     let (stream_tx, mut stream_rx) = mpsc::unbounded_channel::<String>();
     let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
-    use crate::tools::self_evolve;
+    let mut tools = ToolRegistry::new();
+    // Register self-evolution tools
     self_evolve::register_self_evolve_tools(&mut tools);
-    use crate::tools::self_evolve;
-    let tools = ToolRegistry::new();
     let session_store = SessionStore::default_location();
     session_store.init()?;
     let session = session_store.create_session()?;
@@ -85,7 +84,7 @@ fn run_app(
     app: &mut App,
     mut events: event::EventHandler,
     agent: Arc<CodingAgent>,
-    cancel_token: CancelToken,
+    _cancel_token: CancelToken,
     response_tx: mpsc::UnboundedSender<AgentResponse>,
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
     stream_rx: &mut mpsc::UnboundedReceiver<String>,
@@ -157,3 +156,4 @@ fn run_app(
             }
         }
     }
+}
