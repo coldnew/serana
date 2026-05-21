@@ -24,6 +24,18 @@ impl Tool for AstOutlineTool {
         "Parse a source file with tree-sitter and return functions, types/classes, and imports. Input: {\"path\": \"src/main.rs\"}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the source file to parse"
+                }
+            },
+            "required": ["path"]
+        })
+    }
     async fn execute(&self, input: Value) -> Result<Value> {
         let (path, content) = read_source(input).await?;
         let manager = ParserManager::new();
@@ -47,6 +59,18 @@ impl Tool for AstFunctionsTool {
         "Parse a source file with tree-sitter and return function/method definitions. Input: {\"path\": \"src/main.rs\"}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the source file to parse"
+                }
+            },
+            "required": ["path"]
+        })
+    }
     async fn execute(&self, input: Value) -> Result<Value> {
         let (path, content) = read_source(input).await?;
         let manager = ParserManager::new();
@@ -68,6 +92,18 @@ impl Tool for AstImportsTool {
         "Parse a source file with tree-sitter and return import/use statements. Input: {\"path\": \"src/main.rs\"}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the source file to parse"
+                }
+            },
+            "required": ["path"]
+        })
+    }
     async fn execute(&self, input: Value) -> Result<Value> {
         let (path, content) = read_source(input).await?;
         let manager = ParserManager::new();
@@ -89,6 +125,18 @@ impl Tool for LspDefinitionTool {
         "Use a language server to find definition locations. Input: {\"path\": \"src/main.rs\", \"line\": 0, \"character\": 5} (line/character are 0-based)"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the source file"},
+                "line": {"type": "integer", "description": "0-based line number"},
+                "character": {"type": "integer", "description": "0-based character offset"},
+                "workspace": {"type": "string", "description": "Workspace root (optional)"}
+            },
+            "required": ["path", "line", "character"]
+        })
+    }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut manager = LspManager::new(request.workspace);
@@ -108,6 +156,18 @@ impl Tool for LspReferencesTool {
         "Use a language server to find references. Input: {\"path\": \"src/main.rs\", \"line\": 0, \"character\": 5} (line/character are 0-based)"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the source file"},
+                "line": {"type": "integer", "description": "0-based line number"},
+                "character": {"type": "integer", "description": "0-based character offset"},
+                "workspace": {"type": "string", "description": "Workspace root (optional)"}
+            },
+            "required": ["path", "line", "character"]
+        })
+    }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut manager = LspManager::new(request.workspace);
@@ -127,6 +187,18 @@ impl Tool for LspHoverTool {
         "Use a language server to get hover/type info. Input: {\"path\": \"src/main.rs\", \"line\": 0, \"character\": 5} (line/character are 0-based)"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the source file"},
+                "line": {"type": "integer", "description": "0-based line number"},
+                "character": {"type": "integer", "description": "0-based character offset"},
+                "workspace": {"type": "string", "description": "Workspace root (optional)"}
+            },
+            "required": ["path", "line", "character"]
+        })
+    }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut manager = LspManager::new(request.workspace);

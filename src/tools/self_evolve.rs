@@ -56,6 +56,19 @@ impl Tool for ReadSelfTool {
         "Read a file from Serana's own source code. Input: {\"path\": \"src/agent/coding.rs\"}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path to the source file within Serana's codebase"
+                }
+            },
+            "required": ["path"]
+        })
+    }
+
     async fn execute(&self, input: Value) -> Result<Value> {
         let relative = input
             .get("path")
@@ -85,6 +98,35 @@ impl Tool for EditSelfTool {
 
     fn description(&self) -> &'static str {
         "Edit a file in Serana's own source code. Input: {\"path\": \"src/agent/coding.rs\", \"edits\": [{\"old\": \"fn old()\", \"new\": \"fn new()\"}]} or {\"path\": \"...\", \"content\": \"full new content\"}"
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path to the source file within Serana's codebase"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Full file content to write (replaces entire file)"
+                },
+                "edits": {
+                    "type": "array",
+                    "description": "Array of find-replace edits to apply",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "old": {"type": "string", "description": "String to find"},
+                            "new": {"type": "string", "description": "Replacement string"}
+                        },
+                        "required": ["old", "new"]
+                    }
+                }
+            },
+            "required": ["path"]
+        })
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
@@ -150,6 +192,24 @@ impl Tool for CargoTool {
         "Run cargo commands on Serana's codebase. Input: {\"command\": \"test\"} or {\"command\": \"build\", \"args\": [\"--release\"]}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Cargo subcommand (e.g., test, build, check, clippy)"
+                },
+                "args": {
+                    "type": "array",
+                    "description": "Additional arguments for the cargo command",
+                    "items": {"type": "string"}
+                }
+            },
+            "required": ["command"]
+        })
+    }
+
     async fn execute(&self, input: Value) -> Result<Value> {
         let cmd = input
             .get("command")
@@ -190,6 +250,24 @@ impl Tool for GitTool {
 
     fn description(&self) -> &'static str {
         "Run git commands on Serana's repository. Input: {\"command\": \"status\"} or {\"command\": \"commit\", \"args\": [\"-m\", \"message\"]}"
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "Git subcommand (allowed: status, diff, log, add, commit, branch, checkout, stash, reset, show)"
+                },
+                "args": {
+                    "type": "array",
+                    "description": "Additional arguments for the git command",
+                    "items": {"type": "string"}
+                }
+            },
+            "required": ["command"]
+        })
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
@@ -237,6 +315,23 @@ impl Tool for SearchCodeTool {
 
     fn description(&self) -> &'static str {
         "Search Serana's source code using regex pattern. Input: {\"pattern\": \"fn execute\", \"path\": \"src/agent\"}"
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Relative path to search within (defaults to 'src')"
+                }
+            },
+            "required": ["pattern"]
+        })
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
@@ -293,6 +388,13 @@ impl Tool for WorkspaceRootTool {
         "Get the absolute path to Serana's workspace root. Input: {}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
     async fn execute(&self, _input: Value) -> Result<Value> {
         Ok(json!({
             "root": SERANA_ROOT,
@@ -309,6 +411,36 @@ impl Tool for RecordModificationTool {
 
     fn description(&self) -> &'static str {
         "Record a self-modification for learning. Input: {\"file\": \"src/agent/coding.rs\", \"kind\": \"Feature\", \"description\": \"Added X\", \"tests_passed\": true, \"commit\": \"abc123\"}"
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": "Path to the modified file"
+                },
+                "kind": {
+                    "type": "string",
+                    "description": "Type of modification",
+                    "enum": ["Feature", "BugFix", "Optimization", "Refactor", "TestAddition", "Dependency", "Config"]
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of what was changed"
+                },
+                "tests_passed": {
+                    "type": "boolean",
+                    "description": "Whether tests passed after the modification"
+                },
+                "commit": {
+                    "type": "string",
+                    "description": "Git commit hash (optional)"
+                }
+            },
+            "required": ["file"]
+        })
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
@@ -357,6 +489,13 @@ impl Tool for ModificationStatsTool {
         "Get statistics about past self-modifications. Input: {}"
     }
 
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
     async fn execute(&self, _input: Value) -> Result<Value> {
         let meta = MetaCognition::new();
         let stats = meta.stats().await?;
@@ -378,6 +517,24 @@ impl Tool for ReflectModificationTool {
 
     fn description(&self) -> &'static str {
         "Reflect on a modification and add lessons learned. Input: {\"file\": \"src/agent/coding.rs\", \"lessons\": [\"Test early\", \"Keep functions small\"]}"
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": "Path to the file being reflected on"
+                },
+                "lessons": {
+                    "type": "array",
+                    "description": "List of lessons learned from the modification",
+                    "items": {"type": "string"}
+                }
+            },
+            "required": ["file", "lessons"]
+        })
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
