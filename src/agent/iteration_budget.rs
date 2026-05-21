@@ -1,79 +1,118 @@
-//! Iteration budget tracking for agent loops.
+//! Iteration budget management for preventing infinite loops.
 //!
-//! Prevents infinite loops by capping the number of agent turns.
+//! Tracks the number of agent iterations and enforces configurable limits.
 
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Default maximum iterations for a parent agent.
-pub const DEFAULT_MAX_ITERATIONS: u32 = 90;
+/// Default maximum iterations for parent agents.
+pub const DEFAULT_MAX_ITERATIONS: usize = 50;
 
-/// Default maximum iterations for a delegated subagent.
-pub const DEFAULT_SUBAGENT_MAX_ITERATIONS: u32 = 50;
+/// Default maximum iterations for subagents.
+pub const DEFAULT_SUBAGENT_MAX_ITERATIONS: usize = 20;
 
-/// Tracks iteration count with atomic operations for thread safety.
-#[derive(Debug, Clone)]
+/// Token cost tracking for budget calculations.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenCost {
+    pub input: usize,
+    pub output: usize,
+    pub cache_read: usize,
+}
+
+impl TokenCost {
+    pub fn total(&self) -> usize {
+        self.input + self.output + self.cache_read
+    }
+}
+
+/// Iteration budget configuration and state.
+/// Uses interior mutability for use in async contexts with `&self`.
+#[derive(Debug)]
 pub struct IterationBudget {
-    current: Arc<AtomicU32>,
-    max: u32,
+    max_iterations: usize,
+    current: AtomicUsize,
+    enabled: bool,
 }
 
 impl IterationBudget {
-    /// Create a new budget with the given maximum.
-    pub fn new(max: u32) -> Self {
+    /// Create a new iteration budget with the given limit.
+    pub fn new(max_iterations: usize) -> Self {
         Self {
-            current: Arc::new(AtomicU32::new(0)),
-            max,
+            max_iterations,
+            current: AtomicUsize::new(0),
+            enabled: true,
         }
     }
 
-    /// Create a budget with default parent agent limits.
+    /// Create a budget with default parent agent settings.
     pub fn default_parent() -> Self {
         Self::new(DEFAULT_MAX_ITERATIONS)
     }
 
-    /// Create a budget with default subagent limits.
+    /// Create a budget with default subagent settings.
     pub fn default_subagent() -> Self {
         Self::new(DEFAULT_SUBAGENT_MAX_ITERATIONS)
     }
 
-    /// Increment the iteration count. Returns true if budget exceeded.
+    /// Create an unlimited budget (for testing or manual control).
+    pub fn unlimited() -> Self {
+        Self {
+            max_iterations: usize::MAX,
+            current: AtomicUsize::new(0),
+            enabled: false,
+        }
+    }
+
+    /// Check if the budget allows another iteration.
+    pub fn can_continue(&self) -> bool {
+        !self.enabled || self.current.load(Ordering::SeqCst) < self.max_iterations
+    }
+
     pub fn increment(&self) -> bool {
-        let prev = self.current.fetch_add(1, Ordering::SeqCst);
-        prev.saturating_add(1) >= self.max
+        let new_val = self.current.fetch_add(1, Ordering::SeqCst) + 1;
+        new_val >= self.max_iterations
     }
 
-    /// Check if budget is exceeded without incrementing.
-    pub fn is_exceeded(&self) -> bool {
-        self.current.load(Ordering::SeqCst) >= self.max
-    }
-
-    /// Get current iteration count.
-    pub fn current(&self) -> u32 {
+    /// Get the current iteration count.
+    pub fn current(&self) -> usize {
         self.current.load(Ordering::SeqCst)
     }
 
-    /// Get maximum allowed iterations.
-    pub fn max(&self) -> u32 {
-        self.max
+    /// Get the maximum iteration limit.
+    pub fn max(&self) -> usize {
+        self.max_iterations
     }
 
     /// Get remaining iterations.
-    pub fn remaining(&self) -> u32 {
-        self.max.saturating_sub(self.current())
+    pub fn remaining(&self) -> usize {
+        self.max_iterations.saturating_sub(self.current.load(Ordering::SeqCst))
     }
 
-    /// Get percentage of budget used (0-100).
-    pub fn percentage(&self) -> u32 {
-        if self.max == 0 {
-            return 100;
-        }
-        (self.current() * 100 / self.max).min(100)
+    /// Check if budget is exhausted.
+    pub fn is_exhausted(&self) -> bool {
+        self.enabled && self.current.load(Ordering::SeqCst) >= self.max_iterations
     }
 
-    /// Reset the budget (for reuse).
+    /// Reset the budget (for new sessions).
     pub fn reset(&self) {
         self.current.store(0, Ordering::SeqCst);
+    }
+
+    /// Get a progress ratio (0.0 to 1.0).
+    pub fn progress(&self) -> f64 {
+        if self.max_iterations == 0 {
+            return 1.0;
+        }
+        (self.current.load(Ordering::SeqCst) as f64) / (self.max_iterations as f64)
+    }
+}
+
+impl Clone for IterationBudget {
+    fn clone(&self) -> Self {
+        Self {
+            max_iterations: self.max_iterations,
+            current: AtomicUsize::new(self.current.load(Ordering::SeqCst)),
+            enabled: self.enabled,
+        }
     }
 }
 
@@ -82,41 +121,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_budget_tracking() {
+    fn budget_allows_iterations_within_limit() {
         let budget = IterationBudget::new(5);
-        assert_eq!(budget.current(), 0);
-        assert!(!budget.is_exceeded());
-
-        for i in 1..=4 {
-            assert!(!budget.increment(), "Should not exceed at iteration {}", i);
+        
+        for _ in 0..4 {
+            assert!(budget.can_continue());
+            assert!(!budget.increment());
         }
-        assert_eq!(budget.current(), 4);
-        assert!(!budget.is_exceeded());
-
-        assert!(budget.increment(), "Should exceed at iteration 5");
-        assert!(budget.is_exceeded());
+        
+        // Last iteration exhausts the budget
+        assert!(budget.increment());
+        assert!(!budget.can_continue());
+        assert!(budget.is_exhausted());
     }
 
     #[test]
-    fn test_percentage() {
-        let budget = IterationBudget::new(100);
-        assert_eq!(budget.percentage(), 0);
+    fn unlimited_budget_never_exhausts() {
+        let budget = IterationBudget::unlimited();
+        
+        for _ in 0..1000 {
+            assert!(budget.can_continue());
+            assert!(!budget.increment());
+        }
+        
+        assert!(!budget.is_exhausted());
+    }
 
+    #[test]
+    fn reset_clears_state() {
+        let budget = IterationBudget::new(5);
+        
         budget.increment();
-        assert_eq!(budget.percentage(), 1);
+        budget.increment();
+        
+        budget.reset();
+        
+        assert_eq!(budget.current(), 0);
+        assert!(budget.can_continue());
+    }
 
-        for _ in 0..49 {
+    #[test]
+    fn calculates_progress() {
+        let budget = IterationBudget::new(10);
+        
+        assert_eq!(budget.progress(), 0.0);
+        
+        for _ in 0..5 {
             budget.increment();
         }
-        assert_eq!(budget.percentage(), 50);
-    }
-
-    #[test]
-    fn test_default_budgets() {
-        let parent = IterationBudget::default_parent();
-        assert_eq!(parent.max(), DEFAULT_MAX_ITERATIONS);
-
-        let subagent = IterationBudget::default_subagent();
-        assert_eq!(subagent.max(), DEFAULT_SUBAGENT_MAX_ITERATIONS);
+        
+        assert_eq!(budget.progress(), 0.5);
+        
+        for _ in 0..5 {
+            budget.increment();
+        }
+        
+        assert_eq!(budget.progress(), 1.0);
     }
 }
