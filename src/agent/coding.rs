@@ -6,6 +6,7 @@ use crate::agent::{
     Agent, AgentOutput, AgentCallbacks, AgentStatus,
     IterationBudget, PromptBuilder, execute_tools_concurrent, validate_message_alternation,
     SessionStore, ContextCompressor, CompressionDecision,
+    CancelToken,
 };
 use crate::llm::{LlmClient, Message, ToolDefinition, FunctionDefinition, AuxiliaryClient};
 use crate::tools::ToolRegistry;
@@ -22,6 +23,7 @@ pub struct CodingAgent {
     session_store: Option<SessionStore>,
     session_id: Option<String>,
     compressor: ContextCompressor,
+    cancel_token: Option<CancelToken>,
 }
 
 impl CodingAgent {
@@ -36,6 +38,7 @@ impl CodingAgent {
             session_store: None,
             session_id: None,
             compressor: ContextCompressor::with_defaults(),
+            cancel_token: None,
         }
     }
 
@@ -71,6 +74,11 @@ impl CodingAgent {
     }
 
     /// Set auxiliary client for background tasks (compression, validation, etc).
+    /// Set cancel token for interruptible execution.
+    pub fn with_cancel_token(mut self, token: CancelToken) -> Self {
+        self.cancel_token = Some(token);
+        self
+    }
     pub fn with_auxiliary(mut self, auxiliary: AuxiliaryClient) -> Self {
         self.auxiliary = Some(Arc::new(auxiliary));
         self
@@ -112,7 +120,15 @@ impl Agent for CodingAgent {
         let mut all_tool_calls = Vec::new();
 
         // Use iteration budget instead of hardcoded limit
+        // Check for cancellation
         while self.budget.remaining() > 0 {
+            if let Some(token) = &self.cancel_token {
+                if token.is_cancelled() {
+                    self.callbacks.fire_status(AgentStatus::Idle);
+                    anyhow::bail!("Execution cancelled by user");
+                }
+            }
+
             match self.compressor.check_compression(self.compressor.estimate_tokens(&messages)) {
                 CompressionDecision::Gateway => {
                     self.callbacks.fire_status(AgentStatus::Compressing);

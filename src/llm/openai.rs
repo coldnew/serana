@@ -5,7 +5,6 @@ use futures::stream::Stream;
 use futures::StreamExt;
 use reqwest::Client;
 use serde_json::json;
-use serde_json::json;
 use std::pin::Pin;
 
 use crate::config::Config;

@@ -14,7 +14,7 @@ pub mod tui;
 pub mod ui;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::agent::{Agent, AgentCallbacks, coding::CodingAgent, SessionStore};
+use crate::agent::{Agent, AgentCallbacks, coding::CodingAgent, SessionStore, CancelToken};
 use crate::llm::{LlmClient, openai::OpenAiClient};
 use crate::tools::ToolRegistry;
 use crate::config::Config;
@@ -48,18 +48,22 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
         .with_stream_delta(Arc::new(move |delta| {
             let _ = stream_tx_clone.send(delta.to_string());
         }));
+    // Create cancel token for interruptible execution
+    let cancel_token = CancelToken::new();
+    let agent_cancel_token = cancel_token.clone();
     
     let agent = Arc::new(
         CodingAgent::new(llm, tools)
             .with_callbacks(callbacks)
             .with_workspace(workspace_for_agent)
-            .with_session(session_store, session.meta.id),
+            .with_session(session_store, session.meta.id)
+            .with_cancel_token(agent_cancel_token),
     );
 
     tui.clear_screen()?;
     tui.hide_cursor()?;
 
-    let result = run_app(&mut tui, &mut app, events, agent, response_tx, &mut response_rx, &mut stream_rx);
+    let result = run_app(&mut tui, &mut app, events, agent, cancel_token, response_tx, &mut response_rx, &mut stream_rx);
 
     tui.show_cursor()?;
     tui.restore()?;
@@ -77,6 +81,7 @@ fn run_app(
     app: &mut App,
     mut events: event::EventHandler,
     agent: Arc<CodingAgent>,
+    cancel_token: CancelToken,
     response_tx: mpsc::UnboundedSender<AgentResponse>,
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
     stream_rx: &mut mpsc::UnboundedReceiver<String>,
