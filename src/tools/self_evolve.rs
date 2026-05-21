@@ -1,3 +1,5 @@
+//! Self-evolution tools for Serana
+
 //! Tools for Serana to modify herself and manage her own codebase.
 
 use async_trait::async_trait;
@@ -468,4 +470,17 @@ mod tests {
         let results = parse_ripgrep_json(output);
         assert_eq!(results.len(), 1);
     }
+}
+
+// Register all self-evolution tools
+pub fn register_self_evolve_tools(registry: &mut ToolRegistry) {
+    registry.register(Box::new(ReadSelfTool));
+    registry.register(Box::new(EditSelfTool));
+    registry.register(Box::new(CargoTool));
+    registry.register(Box::new(GitTool));
+    registry.register(Box::new(SearchCodeTool));
+    registry.register(Box::new(WorkspaceRootTool));
+    registry.register(Box::new(RecordModificationTool));
+    registry.register(Box::new(ModificationStatsTool));
+    registry.register(Box::new(ReflectModificationTool));
 }

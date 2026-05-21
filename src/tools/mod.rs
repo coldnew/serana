@@ -98,3 +98,4 @@ impl Default for ToolRegistry {
         Self::new()
     }
 }
+pub use self_evolve::register_self_evolve_tools;
