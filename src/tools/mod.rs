@@ -7,6 +7,7 @@ use crate::Result;
 
 pub mod fs;
 pub mod hashline;
+pub mod code_intel;
 
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -27,6 +28,12 @@ impl ToolRegistry {
         registry.register(Box::new(fs::ReadFileTool));
         registry.register(Box::new(fs::WriteFileTool));
         registry.register(Box::new(fs::EditFileTool));
+        registry.register(Box::new(code_intel::AstOutlineTool));
+        registry.register(Box::new(code_intel::AstFunctionsTool));
+        registry.register(Box::new(code_intel::AstImportsTool));
+        registry.register(Box::new(code_intel::LspDefinitionTool));
+        registry.register(Box::new(code_intel::LspReferencesTool));
+        registry.register(Box::new(code_intel::LspHoverTool));
         registry
     }
 
@@ -46,6 +53,22 @@ impl ToolRegistry {
         let mut descriptions: Vec<&str> = self.tools.values().map(|t| t.description()).collect();
         descriptions.sort();
         descriptions.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registers_code_intelligence_tools() {
+        let registry = ToolRegistry::new();
+        assert!(registry.get("ast_outline").is_some());
+        assert!(registry.get("ast_functions").is_some());
+        assert!(registry.get("ast_imports").is_some());
+        assert!(registry.get("lsp_definition").is_some());
+        assert!(registry.get("lsp_references").is_some());
+        assert!(registry.get("lsp_hover").is_some());
     }
 }
 

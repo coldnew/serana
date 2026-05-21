@@ -34,6 +34,16 @@ impl LanguageId {
         }
     }
 
+    pub fn lsp_language_id(&self) -> &'static str {
+        match self {
+            Self::Rust => "rust",
+            Self::TypeScript => "typescript",
+            Self::JavaScript => "javascript",
+            Self::Python => "python",
+            Self::Go => "go",
+        }
+    }
+
     pub fn server_command(&self) -> &'static str {
         match self {
             Self::Rust => "rust-analyzer",
@@ -87,6 +97,44 @@ impl LspManager {
         languages
     }
 
+    pub async fn definition(&mut self, path: &std::path::Path, position: types::Position) -> Result<Vec<types::Location>> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .definition(path, position)
+            .await
+    }
+
+    pub async fn references(&mut self, path: &std::path::Path, position: types::Position) -> Result<Vec<types::Location>> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .references(path, position)
+            .await
+    }
+
+    pub async fn hover(&mut self, path: &std::path::Path, position: types::Position) -> Result<Option<String>> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .hover(path, position)
+            .await
+    }
+
+    async fn ensure_server(&mut self, lang: LanguageId) -> Result<()> {
+        if !self.servers.contains_key(&lang) {
+            self.start_server(lang).await?;
+        }
+        Ok(())
+    }
+
+
     /// Start a language server for the given language
     pub async fn start_server(&mut self, lang: LanguageId) -> Result<()> {
         let command = lang.server_command();
@@ -112,6 +160,15 @@ impl LspManager {
         }
         Ok(())
     }
+}
+
+fn language_for_path(path: &std::path::Path) -> Result<LanguageId> {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .ok_or_else(|| anyhow::anyhow!("missing file extension for {}", path.display()))?;
+    LanguageId::from_extension(ext)
+        .ok_or_else(|| anyhow::anyhow!("unsupported source language: {}", path.display()))
 }
 
 #[cfg(test)]
