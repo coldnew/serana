@@ -9,6 +9,7 @@ pub mod tool_execution;
 pub mod tui;
 pub mod status_line;
 pub mod editor;
+pub mod image;
 pub mod ui;
 
 use std::path::PathBuf;

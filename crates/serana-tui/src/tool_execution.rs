@@ -21,7 +21,7 @@ pub fn render_tool_call(
     let (icon, style) = tool_status_style(tool.status, symbols, &theme);
     let header = format!("  {} {}", icon, tool.name);
 
-    match tool.name.as_str() {
+    let mut lines = match tool.name.as_str() {
         "read_file" | "read" | "read_self" => {
             render_read_file(tool, header, style, width, symbols)
         }
@@ -41,7 +41,27 @@ pub fn render_tool_call(
             render_ast(tool, header, style, symbols)
         }
         _ => render_generic(tool, header, style, &theme),
+    };
+
+    // Check for image output in tool results
+    if let Some(ref result) = tool.result {
+        if let Some(image_path) = crate::image::detect_image_in_result(result, &tool.name) {
+            let protocol = crate::image::ImageProtocol::detect();
+            if protocol.is_supported() {
+                lines.push(Line::from(Span::styled(
+                    format!("  {} Image: {}", symbols.expand, image_path),
+                    Style::new().fg(theme::AQUAMARINE),
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    format!("  {} Image detected: {} (terminal does not support inline images)", symbols.info, image_path),
+                    theme.dim,
+                )));
+            }
+        }
     }
+
+    lines
 }
 
 fn tool_status_style<'a>(
