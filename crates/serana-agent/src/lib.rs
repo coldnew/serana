@@ -7,6 +7,8 @@ pub mod subagent;
 pub mod tool_executor;
 pub mod compactor;
 pub mod gatherer;
+pub mod stream_rules;
+
 
 pub use coding::CodingAgent;
 pub use compressor::ContextCompressor;
@@ -17,3 +19,4 @@ pub use subagent::{delegate_task, SubagentConfig, SubagentResult, SubagentSpawne
 pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
 pub use compactor::ContextCompactor;
 pub use gatherer::ContextGatherer;
+pub use stream_rules::{StreamRule, StreamRuleEngine};
