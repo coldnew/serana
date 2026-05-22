@@ -2,16 +2,27 @@ use std::collections::HashMap;
 
 use serana_core::Tool;
 
+pub mod browser;
+pub mod checkpoint;
+pub mod clipboard;
 pub mod code_intel;
+pub mod conflict;
+pub mod dap;
 pub mod eval;
 pub mod fs;
 pub mod git_ops;
 pub mod github;
 pub mod hashline;
+pub mod mcp;
 pub mod memory;
 pub mod recipe;
+pub mod review;
+pub mod rules;
+pub mod search_native;
 pub mod self_evolve;
+pub mod shell;
 pub mod ssh;
+pub mod stats;
 pub mod web_search;
 
 pub struct ToolRegistry {
@@ -62,6 +73,31 @@ impl ToolRegistry {
         registry.register(Box::new(git_ops::GitDiffTool));
         registry.register(Box::new(git_ops::GitLogTool));
         registry.register(Box::new(git_ops::GitCommitTool));
+        // DAP debugger tool
+        registry.register(Box::new(dap::DebugTool::new()));
+        // Browser tool
+        registry.register(Box::new(browser::BrowserTool));
+        // Conflict resolution tool
+        registry.register(Box::new(conflict::ConflictResolveTool));
+        // Checkpoint & rewind tools
+        registry.register(Box::new(checkpoint::CheckpointTool));
+        registry.register(Box::new(checkpoint::RewindTool));
+        // Code review tool
+        registry.register(Box::new(review::CodeReviewTool));
+        // Rules info tool
+        registry.register(Box::new(rules::RulesInfoTool));
+        // Stats tool
+        registry.register(Box::new(stats::StatsTool::new()));
+        // MCP client tool
+        registry.register(Box::new(mcp::McpTool::new()));
+        // Clipboard tools
+        registry.register(Box::new(clipboard::ClipboardCopyTool));
+        registry.register(Box::new(clipboard::ClipboardPasteTool));
+        // Persistent shell tool
+        registry.register(Box::new(shell::ShellTool::new()));
+        // In-process search tools
+        registry.register(Box::new(search_native::FindTool));
+        registry.register(Box::new(search_native::SearchTool));
         // Memory tools (init store, register tools)
         if let Err(e) = memory::register_memory_tools(&mut registry) {
             tracing::warn!("Failed to initialize memory store: {}", e);
@@ -141,5 +177,19 @@ mod tests {
         assert!(registry.get("retain").is_some());
         assert!(registry.get("recall").is_some());
         assert!(registry.get("reflect").is_some());
+        assert!(registry.get("debug").is_some());
+        assert!(registry.get("browser").is_some());
+        assert!(registry.get("conflict_resolve").is_some());
+        assert!(registry.get("checkpoint").is_some());
+        assert!(registry.get("rewind").is_some());
+        assert!(registry.get("code_review").is_some());
+        assert!(registry.get("rules_info").is_some());
+        assert!(registry.get("stats").is_some());
+        assert!(registry.get("mcp").is_some());
+        assert!(registry.get("clipboard_copy").is_some());
+        assert!(registry.get("clipboard_paste").is_some());
+        assert!(registry.get("shell").is_some());
+        assert!(registry.get("find").is_some());
+        assert!(registry.get("search").is_some());
     }
 }
