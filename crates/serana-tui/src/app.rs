@@ -1,6 +1,7 @@
 //! Application state machine.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -79,6 +80,13 @@ pub struct App {
     pub git_untracked: u32,
     pub iterations_used: u64,
     pub iterations_max: u64,
+    // Session tracking
+    pub session_start: Instant,
+    pub hostname: String,
+    pub thinking_level: ThinkingLevel,
+    // Cost tracking ($/M tokens)
+    pub input_cost_per_mtok: f64,
+    pub output_cost_per_mtok: f64,
 }
 
 /// Todo item for task tracking.
@@ -121,6 +129,15 @@ impl App {
             git_untracked: 0,
             iterations_used: 0,
             iterations_max: 30,
+            session_start: Instant::now(),
+            hostname: std::env::var("HOSTNAME").unwrap_or_else(|_| {
+                std::fs::read_to_string("/etc/hostname")
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|_| "localhost".to_string())
+            }),
+            thinking_level: ThinkingLevel::Off,
+            input_cost_per_mtok: 2.50,
+            output_cost_per_mtok: 10.00,
         }
     }
 
@@ -434,6 +451,44 @@ impl App {
         self.tick_count += 1;
     }
 
+    /// Elapsed session time as mm:ss or hh:mm:ss.
+    pub fn session_elapsed(&self) -> String {
+        let secs = self.session_start.elapsed().as_secs();
+        let h = secs / 3600;
+        let m = (secs % 3600) / 60;
+        let s = secs % 60;
+        if h > 0 {
+            format!("{}:{:02}:{:02}", h, m, s)
+        } else {
+            format!("{}:{:02}", m, s)
+        }
+    }
+
+    /// Estimated cost in dollars based on token usage and per-model rates.
+    pub fn cost_estimate(&self) -> f64 {
+        let input_cost = (self.tokens_input + self.tokens_cache_read) as f64
+            * self.input_cost_per_mtok
+            / 1_000_000.0;
+        let output_cost = self.tokens_output as f64 * self.output_cost_per_mtok / 1_000_000.0;
+        input_cost + output_cost
+    }
+
+    /// Token output rate (tokens/sec) over the session lifetime.
+    pub fn token_rate(&self) -> f64 {
+        let elapsed = self.session_start.elapsed().as_secs_f64();
+        if elapsed < 1.0 {
+            return 0.0;
+        }
+        self.tokens_output as f64 / elapsed
+    }
+
+    /// Progress bar string for percentage-based metrics (context, iterations).
+    pub fn progress_bar(pct: u32, width: usize) -> String {
+        let filled = (pct as usize * width / 100).min(width);
+        let empty = width - filled;
+        format!("{}{}", "█".repeat(filled), "░".repeat(empty))
+    }
+
     pub fn add_status(&mut self, msg: impl Into<String>) {
         self.status_messages.push(msg.into());
     }
@@ -494,6 +549,15 @@ pub enum AppMode {
     Normal,
     Input,
     Processing,
+}
+
+/// Thinking/reasoning level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingLevel {
+    Off,
+    Low,
+    Medium,
+    High,
 }
 
 /// Chat message.

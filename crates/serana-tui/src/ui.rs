@@ -4,7 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoStatus, ToolCallStatus};
+use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoStatus};
 use crate::markdown::render_markdown;
 use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
@@ -192,29 +192,9 @@ fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: 
             }
 
             for tool in &msg.tool_calls {
-                lines.push(Line::from(""));
-                let icon = match tool.status {
-                    ToolCallStatus::Pending => symbols.pending,
-                    ToolCallStatus::Running => symbols.running,
-                    ToolCallStatus::Success => symbols.success,
-                    ToolCallStatus::Error => symbols.error,
-                };
-                let tool_style = match tool.status {
-                    ToolCallStatus::Pending => theme.dim,
-                    ToolCallStatus::Running => theme.accent,
-                    ToolCallStatus::Success => theme.success,
-                    ToolCallStatus::Error => theme.error,
-                };
-                lines.push(Line::from(Span::styled(
-                    format!("  {} {}", icon, tool.name),
-                    tool_style,
-                )));
-                if let Some(ref result) = tool.result {
-                    lines.push(Line::from(Span::styled(
-                        format!("    {}", result.lines().next().unwrap_or("")),
-                        theme.muted,
-                    )));
-                }
+                let tool_lines =
+                    crate::tool_execution::render_tool_call(tool, symbols, width.saturating_sub(2));
+                lines.extend(tool_lines);
             }
         }
         MessageRole::System => {
@@ -370,8 +350,10 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
     let s = app.symbols;
 
-    let mut left_segments = Vec::new();
+    let mut segments = Vec::new();
+    let sep = format!(" {} ", s.sep_thin);
 
+    // Mode
     let (mode_text, mode_style) = match app.mode {
         AppMode::Normal => ("NORMAL", Style::new().fg(theme::SEAFOAM_GREEN)),
         AppMode::Input => ("INPUT", Style::new().fg(theme::AQUAMARINE)),
@@ -379,78 +361,106 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
             ("BUSY", Style::new().fg(theme::CORAL).add_modifier(ratatui::style::Modifier::BOLD))
         }
     };
-    left_segments.push(Span::styled(mode_text.to_string(), mode_style));
-    let sep = format!(" {} ", s.sep_thin);
-    left_segments.push(Span::styled(sep.clone(), theme.dim));
+    segments.push(Span::styled(mode_text.to_string(), mode_style));
+    segments.push(Span::styled(sep.clone(), theme.dim));
 
-    left_segments.push(Span::styled(app.model.clone(), theme.info));
-    left_segments.push(Span::styled(sep.clone(), theme.dim));
+    // Model + provider
+    segments.push(Span::styled(format!("{}/{}", app.provider, app.model), theme.info));
+    segments.push(Span::styled(sep.clone(), theme.dim));
 
+    // Hostname
+    segments.push(Span::styled(&app.hostname, theme.dim));
+    segments.push(Span::styled(sep.clone(), theme.dim));
+
+    // Git
     if let Some(ref branch) = app.git_branch {
-        left_segments.push(Span::styled(
-            format!("git:{}", branch),
-            theme.dim,
-        ));
+        segments.push(Span::styled(format!("git:{}", branch), theme.dim));
         if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
             let mut parts = Vec::new();
-            if app.git_staged > 0 {
-                parts.push(format!("+{}", app.git_staged));
-            }
-            if app.git_unstaged > 0 {
-                parts.push(format!("!{}", app.git_unstaged));
-            }
-            if app.git_untracked > 0 {
-                parts.push(format!("?{}", app.git_untracked));
-            }
-            left_segments.push(Span::styled(
-                format!(" ({})", parts.join(" ")),
-                theme.warning,
-            ));
+            if app.git_staged > 0 { parts.push(format!("+{}", app.git_staged)); }
+            if app.git_unstaged > 0 { parts.push(format!("!{}", app.git_unstaged)); }
+            if app.git_untracked > 0 { parts.push(format!("?{}", app.git_untracked)); }
+            segments.push(Span::styled(format!(" ({})", parts.join(" ")), theme.warning));
         }
-        left_segments.push(Span::styled(sep.clone(), theme.dim));
+        segments.push(Span::styled(sep.clone(), theme.dim));
     }
 
+    // Workspace
     let workspace_name = app
         .workspace
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("workspace");
-    left_segments.push(Span::styled(workspace_name.to_string(), theme.dim));
+    segments.push(Span::styled(workspace_name.to_string(), theme.dim));
 
+    // Token usage
     if app.tokens_input > 0 || app.tokens_output > 0 {
         let total_input = app.tokens_input + app.tokens_cache_read;
-        if total_input > 0 || app.tokens_output > 0 {
-            left_segments.push(Span::styled(sep.clone(), theme.dim));
-            let usage = format!("in:{} out:{}", total_input, app.tokens_output);
-            left_segments.push(Span::styled(usage, theme.dim));
+        segments.push(Span::styled(sep.clone(), theme.dim));
+        segments.push(Span::styled(
+            format!("{}k/{}k", total_input / 1000, app.tokens_output / 1000),
+            theme.dim,
+        ));
+
+        // Token rate
+        let rate = app.token_rate();
+        if rate > 0.0 {
+            segments.push(Span::styled(
+                format!(" @{:.0}t/s", rate),
+                theme.dim,
+            ));
         }
+
+        // Context %
         if app.context_window > 0 {
             let total_tokens = total_input + app.tokens_output;
-            let pct = if app.context_window > 0 {
-                (total_tokens as f64 / app.context_window as f64 * 100.0) as u32
-            } else {
-                0
-            };
+            let pct = (total_tokens as f64 / app.context_window as f64 * 100.0) as u32;
             if pct > 0 {
-                left_segments.push(Span::styled(sep.clone(), theme.dim));
-                let ctx_str = format!("ctx:{}%", pct);
+                segments.push(Span::styled(sep.clone(), theme.dim));
                 let ctx_style = if pct >= 90 {
                     theme.error
                 } else if pct >= 70 {
                     theme.warning
-                } else if pct >= 50 {
-                    Style::new().fg(theme::TEAL)
                 } else {
                     theme.dim
                 };
-                left_segments.push(Span::styled(ctx_str, ctx_style));
+                segments.push(Span::styled(format!("ctx:{}%", pct), ctx_style));
             }
+        }
+
+        // Cost
+        let cost = app.cost_estimate();
+        if cost > 0.0 {
+            segments.push(Span::styled(sep.clone(), theme.dim));
+            segments.push(Span::styled(
+                format!("${:.2}", cost),
+                Style::new().fg(theme::DIFF_YELLOW),
+            ));
         }
     }
 
+    // Session time
+    segments.push(Span::styled(sep.clone(), theme.dim));
+    segments.push(Span::styled(format!("⏱{}", app.session_elapsed()), theme.dim));
+
+    // Thinking level (show if not Off)
+    if app.thinking_level != crate::app::ThinkingLevel::Off {
+        segments.push(Span::styled(sep.clone(), theme.dim));
+        let think_label = match app.thinking_level {
+            crate::app::ThinkingLevel::Low => "think:low",
+            crate::app::ThinkingLevel::Medium => "think:med",
+            crate::app::ThinkingLevel::High => "think:high",
+            _ => "",
+        };
+        segments.push(Span::styled(
+            think_label,
+            Style::new().fg(theme::AQUAMARINE),
+        ));
+    }
+
+    // Iterations
     if app.iterations_max > 0 {
-        left_segments.push(Span::styled(sep.clone(), theme.dim));
-        let iter_text = format!("iter:{}/{}", app.iterations_used, app.iterations_max);
+        segments.push(Span::styled(sep.clone(), theme.dim));
         let iter_style = if app.iterations_used >= app.iterations_max {
             theme.error
         } else if app.iterations_used as f64 / app.iterations_max as f64 > 0.8 {
@@ -458,15 +468,15 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
         } else {
             theme.dim
         };
-        left_segments.push(Span::styled(iter_text, iter_style));
+        segments.push(Span::styled(
+            format!("iter:{}/{}", app.iterations_used, app.iterations_max),
+            iter_style,
+        ));
     }
 
-    let right_text = Span::styled(" Ctrl+Q: quit", theme.dim);
+    segments.push(Span::raw(" "));
 
-    left_segments.push(Span::raw(" "));
-    left_segments.push(right_text);
-
-    let line = Line::from(left_segments);
+    let line = Line::from(segments);
     let para = Paragraph::new(line);
     frame.render_widget(para, area);
 }
