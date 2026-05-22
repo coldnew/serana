@@ -1,212 +1,568 @@
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use crate::app::{ToolCall, ToolCallStatus};
+use crate::diff;
 use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolState {
-    Pending,
-    Running,
-    Success,
-    Error,
-}
+/// Number of preview lines for command output.
+const PREVIEW_LINES: usize = 10;
+/// Max output lines when expanded.
+const MAX_OUTPUT_LINES: usize = 200;
 
-#[derive(Debug, Clone)]
-pub struct DiffPreview {
-    pub path: String,
-    pub diff: String,
-}
+/// Render a tool call with tool-specific formatting.
+pub fn render_tool_call(
+    tool: &ToolCall,
+    symbols: &Symbols,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let (icon, style) = tool_status_style(tool.status, symbols, &theme);
+    let header = format!("  {} {}", icon, tool.name);
 
-pub struct ToolExecution {
-    tool_name: String,
-    state: ToolState,
-    args: Option<String>,
-    output: Option<String>,
-    diff_preview: Option<DiffPreview>,
-    expanded: bool,
-    spinner_tick: u64,
-}
-
-impl ToolExecution {
-    pub fn new(tool_name: impl Into<String>) -> Self {
-        Self {
-            tool_name: tool_name.into(),
-            state: ToolState::Pending,
-            args: None,
-            output: None,
-            diff_preview: None,
-            expanded: false,
-            spinner_tick: 0,
+    match tool.name.as_str() {
+        "read_file" | "read" | "read_self" => {
+            render_read_file(tool, header, style, width, symbols)
         }
+        "edit_file" | "edit" | "edit_self" | "apply_patch" => {
+            render_edit_diff(tool, header, style, width, symbols)
+        }
+        "write_file" | "write" => {
+            render_write_file(tool, header, style, width, symbols)
+        }
+        "bash" | "cargo" | "git" | "verify_self" => {
+            render_command(tool, header, style, width, symbols)
+        }
+        n if n.starts_with("lsp_") => {
+            render_lsp(tool, header, style, symbols)
+        }
+        n if n.starts_with("ast_") => {
+            render_ast(tool, header, style, symbols)
+        }
+        _ => render_generic(tool, header, style, &theme),
     }
+}
 
-    pub fn with_label(self, _label: impl Into<String>) -> Self {
-        self
+fn tool_status_style<'a>(
+    status: ToolCallStatus,
+    symbols: &'a Symbols,
+    theme: &Theme,
+) -> (&'a str, Style) {
+    match status {
+        ToolCallStatus::Pending => (symbols.pending, theme.dim),
+        ToolCallStatus::Running => (symbols.running, theme.accent),
+        ToolCallStatus::Success => (symbols.success, theme.success),
+        ToolCallStatus::Error => (symbols.error, theme.error),
     }
+}
 
-    pub fn set_state(&mut self, state: ToolState) {
-        self.state = state;
-    }
+/// Render file content with line numbers.
+fn render_read_file(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    width: usize,
+    _symbols: &Symbols,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header.clone(), header_style)));
 
-    pub fn set_args(&mut self, args: impl Into<String>) {
-        self.args = Some(args.into());
-    }
-
-    pub fn set_output(&mut self, output: impl Into<String>) {
-        self.output = Some(output.into());
-    }
-
-    pub fn set_diff_preview(&mut self, preview: DiffPreview) {
-        self.diff_preview = Some(preview);
-    }
-
-    pub fn toggle_expanded(&mut self) {
-        self.expanded = !self.expanded;
-    }
-
-    pub fn set_expanded(&mut self, expanded: bool) {
-        self.expanded = expanded;
-    }
-
-    pub fn advance_spinner(&mut self) {
-        self.spinner_tick = self.spinner_tick.wrapping_add(1);
-    }
-
-    pub fn state(&self) -> ToolState {
-        self.state
-    }
-
-    pub fn is_expanded(&self) -> bool {
-        self.expanded
-    }
-
-    pub fn render_lines(&self, _width: usize, symbols: &Symbols) -> Vec<Line<'static>> {
-        let theme = Theme::default();
-        let mut lines = Vec::new();
-
-        lines.push(Line::from(""));
-
-        let icon = match self.state {
-            ToolState::Pending => symbols.pending,
-            ToolState::Running => {
-                let frames = symbols.spinner;
-                frames[(self.spinner_tick as usize) % frames.len()]
-            }
-            ToolState::Success => symbols.success,
-            ToolState::Error => symbols.error,
-        };
-
-        let tool_style = match self.state {
-            ToolState::Pending => theme.dim,
-            ToolState::Running => theme.accent,
-            ToolState::Success => theme.success,
-            ToolState::Error => theme.error,
-        };
-
+    let path = extract_arg(tool, "path").unwrap_or_default();
+    let content = tool.result.as_deref().unwrap_or("");
+    if !path.is_empty() {
         lines.push(Line::from(Span::styled(
-            format!("  {} {}", icon, self.tool_name),
-            tool_style,
+            format!("  File: {}", path),
+            Style::default().fg(theme::DIM_TEAL),
         )));
+    }
 
-        if let Some(ref args) = self.args {
-            if self.state == ToolState::Pending || self.state == ToolState::Running {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", args),
-                    Style::default().fg(theme::MUTED_TEAL),
-                )));
-            }
+    if let Some((ref diff_path, ref diff_text)) = tool.diff_preview {
+        if !diff_path.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Diff: {}", diff_path),
+                Style::default().fg(theme::DIM_TEAL),
+            )));
         }
-
-        if let Some(ref preview) = self.diff_preview {
-            if self.is_edit_tool() {
-                let diff_lines = crate::diff::render_diff(&preview.diff, _width);
-                lines.extend(diff_lines);
-            }
+        let diff_lines = diff::render_diff(diff_text, width.saturating_sub(4));
+        for dl in diff_lines {
+            let mut prefixed = vec![Span::raw("  ")];
+            prefixed.extend(dl.spans);
+            lines.push(Line::from(prefixed));
         }
+    } else if !content.is_empty() {
+        for text_line in content.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", text_line),
+                theme.dim,
+            )));
+        }
+        if content.lines().count() > PREVIEW_LINES {
+            lines.push(Line::from(Span::styled(
+                format!("  ... ({} lines total)", content.lines().count()),
+                theme.dim,
+            )));
+        }
+    }
+    lines
+}
 
-        if let Some(ref output) = self.output {
-            if self.expanded {
-                let out_style = match self.state {
-                    ToolState::Error => Style::new().fg(theme::BRIGHT_CORAL),
-                    _ => Style::new().fg(theme::MUTED_TEAL),
-                };
-                for out_line in output.lines().take(50) {
+/// Render edit/patch with inline diff.
+fn render_edit_diff(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    width: usize,
+    _symbols: &Symbols,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+
+    let path = extract_arg(tool, "path").unwrap_or_default();
+    if !path.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("  File: {}", path),
+            Style::default().fg(theme::DIM_TEAL),
+        )));
+    }
+
+    if let Some((ref diff_path, ref diff_text)) = tool.diff_preview {
+        if !diff_path.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("  Diff: {}", diff_path),
+                Style::default().fg(theme::DIM_TEAL),
+            )));
+        }
+        let diff_lines = diff::render_diff(diff_text, width.saturating_sub(4));
+        for dl in diff_lines {
+            let mut prefixed = vec![Span::raw("  ")];
+            prefixed.extend(dl.spans);
+            lines.push(Line::from(prefixed));
+        }
+    } else {
+        let content = tool.result.as_deref().unwrap_or("");
+        for text_line in content.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", text_line),
+                theme.dim,
+            )));
+        }
+    }
+    lines
+}
+
+/// Render write_file confirmation.
+fn render_write_file(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    width: usize,
+    symbols: &Symbols,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+
+    let path = extract_arg(tool, "path").unwrap_or_default();
+    let content = tool.result.as_deref().unwrap_or("");
+    if !content.is_empty() {
+        let h = symbols.box_sharp.horizontal;
+        let file_width = width.saturating_sub(6);
+        let title = if path.is_empty() { " written " } else { &format!(" {} ", path) };
+        let title_len = title.len() as i32;
+        let border_len = (file_width as i32).saturating_sub(title_len).max(2) as usize;
+        lines.push(Line::from(Span::styled(
+            format!(
+                "  {}{}{}{}",
+                symbols.box_sharp.tee_right,
+                h.repeat(border_len / 2),
+                title,
+                h.repeat(border_len - border_len / 2),
+            ),
+            Style::from(theme::MUTED_TEAL),
+        )));
+        for text_line in content.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {} {}", symbols.box_sharp.vertical, text_line),
+                Style::default().fg(theme::MUTED_TEAL),
+            )));
+        }
+        if content.lines().count() > PREVIEW_LINES {
+            lines.push(Line::from(Span::styled(
+                format!("  {} ... ({} lines)", symbols.box_sharp.vertical, content.lines().count()),
+                theme.dim,
+            )));
+        }
+        lines.push(Line::from(Span::styled(
+            format!("  {}{}", symbols.box_sharp.tee_left, h.repeat(file_width)),
+            Style::from(theme::MUTED_TEAL),
+        )));
+    }
+    lines
+}
+
+/// Render command output (bash, cargo, git, etc.).
+fn render_command(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    _width: usize,
+    symbols: &Symbols,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+
+    let cmd = extract_arg(tool, "command").or_else(|| extract_arg(tool, "args"));
+    if let Some(ref cmd_text) = cmd {
+        lines.push(Line::from(Span::styled(
+            format!("  {} {}", symbols.arrow, cmd_text),
+            Style::default().fg(theme::DIM_TEAL),
+        )));
+    }
+
+    let content = tool.result.as_deref().unwrap_or("");
+    if !content.is_empty() {
+        let status_icon = match tool.status {
+            ToolCallStatus::Success => symbols.success,
+            ToolCallStatus::Error => symbols.error,
+            _ => symbols.info,
+        };
+        let status_style = match tool.status {
+            ToolCallStatus::Success => theme.success,
+            ToolCallStatus::Error => theme.error,
+            _ => theme.dim,
+        };
+        let lines_count = content.lines().count();
+        for text_line in content.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", text_line),
+                theme.dim,
+            )));
+        }
+        if lines_count > PREVIEW_LINES {
+            lines.push(Line::from(Span::styled(
+                format!("  ... ({} lines total, enter to expand)", lines_count),
+                theme.dim,
+            )));
+        }
+        lines.push(Line::from(Span::styled(
+            format!("  {} exit: 0", status_icon),
+            status_style,
+        )));
+    }
+    lines
+}
+
+/// Render LSP results.
+fn render_lsp(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    symbols: &Symbols,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+
+    let content = tool.result.as_deref().unwrap_or("");
+    if content.is_empty() {
+        return lines;
+    }
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+        match &val {
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    let item_str = format_item(item);
                     lines.push(Line::from(Span::styled(
-                        format!("  {}", out_line),
-                        out_style,
+                        format!("  {} {}", symbols.bullet, item_str),
+                        theme.dim,
                     )));
                 }
-            } else {
+            }
+            serde_json::Value::Object(map) => {
+                for (k, v) in map {
+                    let v_str = match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("  {} ", symbols.bullet), theme.dim),
+                        Span::styled(format!("{}: ", k), Style::default().fg(theme::DIM_TEAL)),
+                        Span::styled(v_str, theme.dim),
+                    ]));
+                }
+            }
+            _ => {
                 lines.push(Line::from(Span::styled(
-                    "  [Enter to expand]",
-                    Style::new().fg(theme::MUTED_TEAL),
+                    format!("  {}", val),
+                    theme.dim,
                 )));
             }
         }
-
-        lines
+    } else {
+        for text_line in content.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", text_line),
+                theme.dim,
+            )));
+        }
     }
+    lines
+}
 
-    fn is_edit_tool(&self) -> bool {
-        self.tool_name == "edit" || self.tool_name == "apply_patch"
+/// Render AST results.
+fn render_ast(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    symbols: &Symbols,
+) -> Vec<Line<'static>> {
+    let theme = Theme::default();
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+
+    let content = tool.result.as_deref().unwrap_or("");
+    if content.is_empty() {
+        return lines;
+    }
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+        match &val {
+            serde_json::Value::Object(map) => {
+                for (k, v) in map {
+                    let label = k.replace('_', " ");
+                    let label = label[..1].to_uppercase() + &label[1..];
+                    lines.push(Line::from(Span::styled(
+                        format!("  {}", label),
+                        Style::default().fg(theme::DIM_TEAL).add_modifier(Modifier::BOLD),
+                    )));
+                    if let serde_json::Value::Array(items) = v {
+                        for item in items {
+                            let item_str = format_item(item);
+                            lines.push(Line::from(Span::styled(
+                                format!("  {} {}", symbols.bullet, item_str),
+                                theme.dim,
+                            )));
+                        }
+                    } else {
+                        lines.push(Line::from(Span::styled(
+                            format!("  {} {}", symbols.bullet, v),
+                            theme.dim,
+                        )));
+                    }
+                }
+            }
+            _ => {
+                lines.push(Line::from(Span::styled(
+                    format!("  {}", val),
+                    theme.dim,
+                )));
+            }
+        }
+    } else {
+        for text_line in content.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", text_line),
+                theme.dim,
+            )));
+        }
+    }
+    lines
+}
+
+/// Generic fallback renderer.
+fn render_generic(
+    tool: &ToolCall,
+    header: String,
+    header_style: Style,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(header, header_style)));
+
+    if !tool.args.is_empty() {
+        let truncated = truncate(&tool.args, 80);
+        lines.push(Line::from(Span::styled(
+            format!("  args: {}", truncated),
+            theme.dim,
+        )));
+    }
+    if let Some(ref result) = tool.result {
+        let result_style = match tool.status {
+            ToolCallStatus::Error => theme.error,
+            _ => theme.dim,
+        };
+        for text_line in result.lines().take(PREVIEW_LINES) {
+            lines.push(Line::from(Span::styled(
+                format!("  {}", text_line),
+                result_style,
+            )));
+        }
+        if result.lines().count() > PREVIEW_LINES {
+            lines.push(Line::from(Span::styled(
+                format!("  ... ({} lines)", result.lines().count()),
+                theme.dim,
+            )));
+        }
+    }
+    lines
+}
+
+/// Extract a named argument from the tool's args JSON.
+fn extract_arg(tool: &ToolCall, name: &str) -> Option<String> {
+    if tool.args.is_empty() {
+        return None;
+    }
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&tool.args) {
+        if let Some(v) = val.get(name) {
+            if let Some(s) = v.as_str() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Format a JSON value as a concise string.
+fn format_item(item: &serde_json::Value) -> String {
+    match item {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Object(map) => {
+            let name = map
+                .get("name")
+                .or_else(|| map.get("label"))
+                .or_else(|| map.get("id"))
+                .and_then(|v| v.as_str());
+            let detail = map
+                .get("signature")
+                .or_else(|| map.get("detail"))
+                .or_else(|| map.get("kind"))
+                .and_then(|v| v.as_str());
+            match (name, detail) {
+                (Some(n), Some(d)) => format!("{} ({})", n, d),
+                (Some(n), None) => n.to_string(),
+                (None, Some(d)) => d.to_string(),
+                (None, None) => serde_json::to_string(item).unwrap_or_default(),
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            arr.iter()
+                .map(format_item)
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+        other => other.to_string(),
+    }
+}
+
+/// Truncate a string to fit within max_len.
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", s.chars().take(max_len.saturating_sub(1)).collect::<String>())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::{ToolCall, ToolCallStatus};
     use crate::symbols;
 
-    #[test]
-    fn test_tool_execution_pending() {
-        let tool = ToolExecution::new("read");
-        let lines = tool.render_lines(80, &symbols::UNICODE);
-        assert!(!lines.is_empty());
+    fn make_tool(name: &str, status: ToolCallStatus, args: &str, result: Option<&str>) -> ToolCall {
+        ToolCall {
+            name: name.to_string(),
+            args: args.to_string(),
+            result: result.map(|s| s.to_string()),
+            status,
+            diff_preview: None,
+        }
     }
 
     #[test]
-    fn test_tool_execution_success() {
-        let mut tool = ToolExecution::new("read");
-        tool.set_state(ToolState::Success);
-        tool.set_output("file contents here");
-        let lines = tool.render_lines(80, &symbols::UNICODE);
-        assert!(lines.iter().any(|l| l.to_string().contains("expand")));
-
-        tool.set_expanded(true);
-        let lines = tool.render_lines(80, &symbols::UNICODE);
-        assert!(lines.iter().any(|l| l.to_string().contains("file contents")));
+    fn test_render_read_file() {
+        let tool = make_tool(
+            "read_file",
+            ToolCallStatus::Success,
+            r#"{"path":"src/main.rs"}"#,
+            Some("fn main() {\n    println!(\"hello\");\n}"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        assert!(lines.iter().any(|l| l.to_string().contains("src/main.rs")));
+        assert!(lines.iter().any(|l| l.to_string().contains("fn main()")));
     }
 
     #[test]
-    fn test_tool_execution_error() {
-        let mut tool = ToolExecution::new("bash");
-        tool.set_state(ToolState::Error);
-        tool.set_output("command failed");
-        tool.set_expanded(true);
-        let lines = tool.render_lines(80, &symbols::UNICODE);
+    fn test_render_edit_diff() {
+        let mut tool = make_tool(
+            "edit_file",
+            ToolCallStatus::Success,
+            r#"{"path":"src/main.rs"}"#,
+            Some("applied edits"),
+        );
+        tool.diff_preview = Some((
+            "src/main.rs".to_string(),
+            "@@ src/main.rs\n-old\n+new".to_string(),
+        ));
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        assert!(lines.len() > 2);
+    }
+
+    #[test]
+    fn test_render_bash() {
+        let tool = make_tool(
+            "bash",
+            ToolCallStatus::Success,
+            r#"{"command":"cargo test"}"#,
+            Some("running 1 test\ntest result: ok"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        assert!(lines.iter().any(|l| l.to_string().contains("cargo test")));
+    }
+
+    #[test]
+    fn test_render_lsp() {
+        let tool = make_tool(
+            "lsp_definition",
+            ToolCallStatus::Success,
+            r#"{}"#,
+            Some(r#"[{"name":"main","kind":"function","signature":"fn main()"}]"#),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        assert!(lines.iter().any(|l| l.to_string().contains("main")));
+    }
+
+    #[test]
+    fn test_render_generic() {
+        let tool = make_tool(
+            "unknown_tool",
+            ToolCallStatus::Success,
+            r#"{"key":"val"}"#,
+            Some("result line"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        assert!(lines.iter().any(|l| l.to_string().contains("result line")));
+    }
+
+    #[test]
+    fn test_render_error() {
+        let tool = make_tool(
+            "bash",
+            ToolCallStatus::Error,
+            r#"{"command":"false"}"#,
+            Some("command failed with exit code 1"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
         assert!(lines.iter().any(|l| l.to_string().contains("command failed")));
-    }
-
-    #[test]
-    fn test_diff_preview() {
-        let mut tool = ToolExecution::new("edit");
-        tool.set_diff_preview(DiffPreview {
-            path: "src/main.rs".to_string(),
-            diff: "@@ src/main.rs\n-old line\n+new line".to_string(),
-        });
-        let lines = tool.render_lines(80, &symbols::UNICODE);
-        assert!(!lines.is_empty());
-    }
-
-    #[test]
-    fn test_toggle_expanded() {
-        let mut tool = ToolExecution::new("read");
-        tool.set_output("test");
-        assert!(!tool.is_expanded());
-        tool.toggle_expanded();
-        assert!(tool.is_expanded());
-        tool.toggle_expanded();
-        assert!(!tool.is_expanded());
     }
 }
