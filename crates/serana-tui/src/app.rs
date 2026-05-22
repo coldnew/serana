@@ -87,6 +87,8 @@ pub struct App {
     // Cost tracking ($/M tokens)
     pub input_cost_per_mtok: f64,
     pub output_cost_per_mtok: f64,
+    // Status line preset
+    pub status_preset: String,
 }
 
 /// Todo item for task tracking.
@@ -138,6 +140,7 @@ impl App {
             thinking_level: ThinkingLevel::Off,
             input_cost_per_mtok: 2.50,
             output_cost_per_mtok: 10.00,
+            status_preset: "default".to_string(),
         }
     }
 

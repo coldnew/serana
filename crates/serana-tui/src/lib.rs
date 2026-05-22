@@ -7,6 +7,7 @@ pub mod syntax;
 pub mod theme;
 pub mod tool_execution;
 pub mod tui;
+pub mod status_line;
 pub mod ui;
 
 use std::path::PathBuf;

@@ -349,136 +349,123 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
 fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
     let s = app.symbols;
-
-    let mut segments = Vec::new();
     let sep = format!(" {} ", s.sep_thin);
 
-    // Mode
-    let (mode_text, mode_style) = match app.mode {
-        AppMode::Normal => ("NORMAL", Style::new().fg(theme::SEAFOAM_GREEN)),
-        AppMode::Input => ("INPUT", Style::new().fg(theme::AQUAMARINE)),
-        AppMode::Processing => {
-            ("BUSY", Style::new().fg(theme::CORAL).add_modifier(ratatui::style::Modifier::BOLD))
-        }
-    };
-    segments.push(Span::styled(mode_text.to_string(), mode_style));
-    segments.push(Span::styled(sep.clone(), theme.dim));
+    let preset_segments = crate::status_line::resolve_preset(&app.status_preset);
+    let mut spans: Vec<Span<'static>> = Vec::new();
 
-    // Model + provider
-    segments.push(Span::styled(format!("{}/{}", app.provider, app.model), theme.info));
-    segments.push(Span::styled(sep.clone(), theme.dim));
-
-    // Hostname
-    segments.push(Span::styled(&app.hostname, theme.dim));
-    segments.push(Span::styled(sep.clone(), theme.dim));
-
-    // Git
-    if let Some(ref branch) = app.git_branch {
-        segments.push(Span::styled(format!("git:{}", branch), theme.dim));
-        if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
-            let mut parts = Vec::new();
-            if app.git_staged > 0 { parts.push(format!("+{}", app.git_staged)); }
-            if app.git_unstaged > 0 { parts.push(format!("!{}", app.git_unstaged)); }
-            if app.git_untracked > 0 { parts.push(format!("?{}", app.git_untracked)); }
-            segments.push(Span::styled(format!(" ({})", parts.join(" ")), theme.warning));
-        }
-        segments.push(Span::styled(sep.clone(), theme.dim));
-    }
-
-    // Workspace
-    let workspace_name = app
-        .workspace
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("workspace");
-    segments.push(Span::styled(workspace_name.to_string(), theme.dim));
-
-    // Token usage
-    if app.tokens_input > 0 || app.tokens_output > 0 {
-        let total_input = app.tokens_input + app.tokens_cache_read;
-        segments.push(Span::styled(sep.clone(), theme.dim));
-        segments.push(Span::styled(
-            format!("{}k/{}k", total_input / 1000, app.tokens_output / 1000),
-            theme.dim,
-        ));
-
-        // Token rate
-        let rate = app.token_rate();
-        if rate > 0.0 {
-            segments.push(Span::styled(
-                format!(" @{:.0}t/s", rate),
-                theme.dim,
-            ));
-        }
-
-        // Context %
-        if app.context_window > 0 {
-            let total_tokens = total_input + app.tokens_output;
-            let pct = (total_tokens as f64 / app.context_window as f64 * 100.0) as u32;
-            if pct > 0 {
-                segments.push(Span::styled(sep.clone(), theme.dim));
-                let ctx_style = if pct >= 90 {
-                    theme.error
-                } else if pct >= 70 {
-                    theme.warning
-                } else {
-                    theme.dim
-                };
-                segments.push(Span::styled(format!("ctx:{}%", pct), ctx_style));
-            }
-        }
-
-        // Cost
-        let cost = app.cost_estimate();
-        if cost > 0.0 {
-            segments.push(Span::styled(sep.clone(), theme.dim));
-            segments.push(Span::styled(
-                format!("${:.2}", cost),
-                Style::new().fg(theme::DIFF_YELLOW),
-            ));
+    for seg in &preset_segments {
+        let maybe_span = render_status_segment(*seg, app, &theme, &sep);
+        if let Some(sp) = maybe_span {
+            spans.push(sp);
         }
     }
 
-    // Session time
-    segments.push(Span::styled(sep.clone(), theme.dim));
-    segments.push(Span::styled(format!("⏱{}", app.session_elapsed()), theme.dim));
-
-    // Thinking level (show if not Off)
-    if app.thinking_level != crate::app::ThinkingLevel::Off {
-        segments.push(Span::styled(sep.clone(), theme.dim));
-        let think_label = match app.thinking_level {
-            crate::app::ThinkingLevel::Low => "think:low",
-            crate::app::ThinkingLevel::Medium => "think:med",
-            crate::app::ThinkingLevel::High => "think:high",
-            _ => "",
-        };
-        segments.push(Span::styled(
-            think_label,
-            Style::new().fg(theme::AQUAMARINE),
-        ));
-    }
-
-    // Iterations
-    if app.iterations_max > 0 {
-        segments.push(Span::styled(sep.clone(), theme.dim));
-        let iter_style = if app.iterations_used >= app.iterations_max {
-            theme.error
-        } else if app.iterations_used as f64 / app.iterations_max as f64 > 0.8 {
-            theme.warning
-        } else {
-            theme.dim
-        };
-        segments.push(Span::styled(
-            format!("iter:{}/{}", app.iterations_used, app.iterations_max),
-            iter_style,
-        ));
-    }
-
-    segments.push(Span::raw(" "));
-
-    let line = Line::from(segments);
+    spans.push(Span::raw(" "));
+    let line = Line::from(spans);
     let para = Paragraph::new(line);
     frame.render_widget(para, area);
+}
+
+fn render_status_segment(
+    seg: crate::status_line::StatusSegment,
+    app: &App,
+    theme: &Theme,
+    sep: &str,
+) -> Option<Span<'static>> {
+    use crate::status_line::StatusSegment::*;
+    match seg {
+        Mode => {
+            let (text, style) = match app.mode {
+                AppMode::Normal => ("NORMAL", Style::new().fg(theme::SEAFOAM_GREEN)),
+                AppMode::Input => ("INPUT", Style::new().fg(theme::AQUAMARINE)),
+                AppMode::Processing => ("BUSY", Style::new().fg(theme::CORAL).add_modifier(ratatui::style::Modifier::BOLD)),
+            };
+            Some(Span::styled(format!("{}{}", text, sep), style))
+        }
+        Model => Some(Span::styled(format!("{}/{}{}", app.provider, app.model, sep), theme.info)),
+        Hostname => Some(Span::styled(format!("{}{}", app.hostname, sep), theme.dim)),
+        Git => {
+            app.git_branch.as_ref().map(|branch| {
+                let mut text = format!("git:{}", branch);
+                if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
+                    let mut parts = Vec::new();
+                    if app.git_staged > 0 { parts.push(format!("+{}", app.git_staged)); }
+                    if app.git_unstaged > 0 { parts.push(format!("!{}", app.git_unstaged)); }
+                    if app.git_untracked > 0 { parts.push(format!("?{}", app.git_untracked)); }
+                    text.push_str(&format!(" ({})", parts.join(" ")));
+                }
+                text.push_str(sep);
+                Span::styled(text, theme.dim)
+            })
+        }
+        Workspace => {
+            let name = app.workspace.file_name().and_then(|n| n.to_str()).unwrap_or("workspace");
+            Some(Span::styled(format!("{}{}", name, sep), theme.dim))
+        }
+        Tokens => {
+            let total_in = app.tokens_input + app.tokens_cache_read;
+            if total_in > 0 || app.tokens_output > 0 {
+                Some(Span::styled(format!("{}k/{}k{}", total_in / 1000, app.tokens_output / 1000, sep), theme.dim))
+            } else {
+                None
+            }
+        }
+        TokenRate => {
+            let rate = app.token_rate();
+            if rate > 0.0 {
+                Some(Span::styled(format!("@{:.0}t/s{}", rate, sep), theme.dim))
+            } else {
+                None
+            }
+        }
+        ContextPct => {
+            let total_in = app.tokens_input + app.tokens_cache_read;
+            let total_tokens = total_in + app.tokens_output;
+            if app.context_window > 0 && total_tokens > 0 {
+                let pct = (total_tokens as f64 / app.context_window as f64 * 100.0) as u32;
+                if pct > 0 {
+                    let style = if pct >= 90 { theme.error }
+                        else if pct >= 70 { theme.warning }
+                        else { theme.dim };
+                    return Some(Span::styled(format!("ctx:{}%{}", pct, sep), style));
+                }
+            }
+            None
+        }
+        Cost => {
+            let cost = app.cost_estimate();
+            if cost > 0.0 {
+                Some(Span::styled(format!("${:.2}{}", cost, sep), Style::new().fg(theme::DIFF_YELLOW)))
+            } else {
+                None
+            }
+        }
+        SessionTime => Some(Span::styled(format!("⏱{}{}", app.session_elapsed(), sep), theme.dim)),
+        ThinkingLevel => {
+            if app.thinking_level != crate::app::ThinkingLevel::Off {
+                let label = match app.thinking_level {
+                    crate::app::ThinkingLevel::Low => "think:low",
+                    crate::app::ThinkingLevel::Medium => "think:med",
+                    crate::app::ThinkingLevel::High => "think:high",
+                    _ => return None,
+                };
+                Some(Span::styled(format!("{}{}", label, sep), Style::new().fg(theme::AQUAMARINE)))
+            } else {
+                None
+            }
+        }
+        Iterations => {
+            if app.iterations_max > 0 {
+                let style = if app.iterations_used >= app.iterations_max { theme.error }
+                    else if app.iterations_used as f64 / app.iterations_max as f64 > 0.8 { theme.warning }
+                    else { theme.dim };
+                Some(Span::styled(format!("iter:{}/{}{}", app.iterations_used, app.iterations_max, sep), style))
+            } else {
+                None
+            }
+        }
+    }
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
