@@ -209,6 +209,170 @@ impl Editor {
     }
 }
 
+/// Find the longest common prefix among a set of strings.
+fn common_prefix(strings: &[String]) -> String {
+    if strings.is_empty() {
+        return String::new();
+    }
+    let first = &strings[0];
+    let mut end = first.len();
+    for s in &strings[1..] {
+        end = end.min(
+            first
+                .char_indices()
+                .zip(s.chars())
+                .take_while(|((_, a), b)| a == b)
+                .last()
+                .map(|((i, c), _)| i + c.len_utf8())
+                .unwrap_or(0),
+        );
+    }
+    first[..end].to_string()
+}
+
+impl Editor {
+    /// Attempt path completion at the cursor position.
+    /// Returns true if a completion was applied.
+    pub fn complete_path(&mut self, workspace: &std::path::Path) -> bool {
+        let line = &self.lines[self.row];
+        let before_cursor = &line[..self.col];
+
+        // Find the start of the path-like word (contains '/' or starts with '.' or '~')
+        let word_start = before_cursor
+            .rfind(|c: char| c.is_whitespace())
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let word = &before_cursor[word_start..];
+
+        if word.is_empty() || (!word.contains('/') && !word.starts_with('.') && !word.starts_with('~')) {
+            return false;
+        }
+
+        // Resolve the directory to search in
+        let (search_dir, prefix) = if let Some(slash_pos) = word.rfind('/') {
+            let dir_part = &word[..=slash_pos];
+            let prefix = &word[slash_pos + 1..];
+            let expanded = if dir_part.starts_with('~') {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(dir_part.strip_prefix("~/").unwrap_or(""))
+                } else {
+                    workspace.join(dir_part)
+                }
+            } else if dir_part.starts_with('/') {
+                std::path::PathBuf::from(dir_part)
+            } else {
+                workspace.join(dir_part)
+            };
+            (expanded, prefix.to_string())
+        } else {
+            (workspace.to_path_buf(), word.to_string())
+        };
+
+        // Read directory entries
+        let entries = match std::fs::read_dir(&search_dir) {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+
+        let mut matches: Vec<String> = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) && !name.starts_with('.') {
+                let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+                if is_dir {
+                    matches.push(format!("{}/", name));
+                } else {
+                    matches.push(name);
+                }
+            }
+        }
+
+        matches.sort();
+
+        if matches.is_empty() {
+            return false;
+        }
+
+        // If exactly one match, insert it
+        if matches.len() == 1 {
+            let completion = &matches[0][prefix.len()..];
+            self.save_undo();
+            for ch in completion.chars() {
+                self.lines[self.row].insert(self.col, ch);
+                self.col += ch.len_utf8();
+            }
+            return true;
+        }
+
+        // Multiple matches: find common prefix and insert it
+        let common = common_prefix(&matches);
+        let to_insert = &common[prefix.len()..];
+        if !to_insert.is_empty() {
+            self.save_undo();
+            for ch in to_insert.chars() {
+                self.lines[self.row].insert(self.col, ch);
+                self.col += ch.len_utf8();
+            }
+        }
+
+        true
+    }
+
+    /// Get path completion candidates for display in a status/popup.
+    pub fn path_completions(&self, workspace: &std::path::Path) -> Vec<String> {
+        let line = &self.lines[self.row];
+        let before_cursor = &line[..self.col];
+        let word_start = before_cursor
+            .rfind(|c: char| c.is_whitespace())
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let word = &before_cursor[word_start..];
+
+        if word.is_empty() || (!word.contains('/') && !word.starts_with('.') && !word.starts_with('~')) {
+            return Vec::new();
+        }
+
+        let (search_dir, prefix) = if let Some(slash_pos) = word.rfind('/') {
+            let dir_part = &word[..=slash_pos];
+            let prefix = &word[slash_pos + 1..];
+            let expanded = if dir_part.starts_with('~') {
+                if let Some(home) = dirs::home_dir() {
+                    home.join(dir_part.strip_prefix("~/").unwrap_or(""))
+                } else {
+                    workspace.join(dir_part)
+                }
+            } else if dir_part.starts_with('/') {
+                std::path::PathBuf::from(dir_part)
+            } else {
+                workspace.join(dir_part)
+            };
+            (expanded, prefix.to_string())
+        } else {
+            (workspace.to_path_buf(), word.to_string())
+        };
+
+        let entries = match std::fs::read_dir(&search_dir) {
+            Ok(e) => e,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut matches: Vec<String> = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) && !name.starts_with('.') {
+                let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+                if is_dir {
+                    matches.push(format!("{}/", name));
+                } else {
+                    matches.push(name);
+                }
+            }
+        }
+        matches.sort();
+        matches
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,8 +403,12 @@ mod tests {
         e.insert_newline();
         e.insert_char('b');
         assert_eq!(e.content(), "a\nb");
-        e.delete_backward(); // merge 'b' into empty space, removes newline
-        assert_eq!(e.content(), "ab");
+        // First backspace deletes 'b' (now "a\n")
+        e.delete_backward();
+        assert_eq!(e.content(), "a\n");
+        // Second backspace merges the empty line into 'a' (now "a")
+        e.delete_backward();
+        assert_eq!(e.content(), "a");
     }
 
     #[test]

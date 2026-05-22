@@ -200,6 +200,9 @@ impl App {
             KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.editor.undo();
             }
+            KeyCode::Tab => {
+                self.editor.complete_path(&self.workspace);
+            }
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'd' {
                     self.should_quit = true;
