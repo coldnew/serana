@@ -299,49 +299,87 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
+    let editor = &app.editor;
 
-    let (border_style, title) = match app.mode {
-        AppMode::Normal => (Style::new().fg(theme::MUTED_TEAL), " Input "),
-        AppMode::Input => (Style::new().fg(theme::AQUAMARINE), " Input "),
-        AppMode::Processing => (Style::new().fg(theme::CORAL), " Working "),
-    };
-
-    let content = if app.input.is_empty() {
-        match app.mode {
-            AppMode::Processing => {
-                Line::from(Span::styled("Waiting for AI response...", theme.dim))
-            }
-            _ => Line::from(Span::styled("Type your message...", theme.dim)),
-        }
-    } else {
-        let mut spans = Vec::new();
-        for (i, ch) in app.input.char_indices() {
-            if i == app.cursor.min(app.input.len()) {
-                spans.push(Span::styled(
-                    ch.to_string(),
-                    Style::default().add_modifier(ratatui::style::Modifier::REVERSED),
-                ));
+    let (border_style, title): (Style, String) = match app.mode {
+        AppMode::Normal => (Style::new().fg(theme::MUTED_TEAL), " Input ".to_string()),
+        AppMode::Input => {
+            let lines_hint = if editor.line_count() > 1 {
+                format!(" Input ({} lines, Shift+Enter: newline) ", editor.line_count())
             } else {
-                spans.push(Span::raw(ch.to_string()));
-            }
+                " Input (Shift+Enter: newline) ".to_string()
+            };
+            (Style::new().fg(theme::AQUAMARINE), lines_hint)
         }
-        if app.cursor >= app.input.len() {
-            spans.push(Span::styled(
-                " ",
-                Style::default().add_modifier(ratatui::style::Modifier::REVERSED),
-            ));
-        }
-        Line::from(spans)
+        AppMode::Processing => (Style::new().fg(theme::CORAL), " Working ".to_string()),
     };
 
-    let para = Paragraph::new(content)
+    let mut text_lines: Vec<Line<'static>> = Vec::new();
+
+    if editor.is_empty() && editor.line_count() <= 1 {
+        let placeholder = match app.mode {
+            AppMode::Processing => "Waiting for AI response...",
+            _ => "Type your message... (Shift+Enter for newline)",
+        };
+        text_lines.push(Line::from(Span::styled(placeholder, theme.dim)));
+    } else {
+        for row in 0..editor.line_count() {
+            let line_text = editor.line(row);
+            let mut spans = Vec::new();
+
+            if row == editor.row() {
+                // Current line — render with cursor
+                let col = editor.col();
+                let mut byte_pos = 0;
+                for ch in line_text.chars() {
+                    if byte_pos == col {
+                        // Cursor position (before this char)
+                        spans.push(Span::styled(
+                            "▏",
+                            Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD),
+                        ));
+                    }
+                    if byte_pos >= col && byte_pos < col + ch.len_utf8() {
+                        // Character at cursor gets highlight
+                        spans.push(Span::styled(
+                            ch.to_string(),
+                            Style::default().add_modifier(ratatui::style::Modifier::REVERSED),
+                        ));
+                    } else {
+                        spans.push(Span::raw(ch.to_string()));
+                    }
+                    byte_pos += ch.len_utf8();
+                }
+                // Cursor at end of line
+                if col >= line_text.len() {
+                    spans.push(Span::styled(
+                        "▏",
+                        Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD),
+                    ));
+                }
+            } else {
+                // Non-current line
+                spans.push(Span::raw(line_text.to_string()));
+            }
+
+            text_lines.push(Line::from(spans));
+        }
+    }
+
+    let line_count = text_lines.len().max(1);
+    let height = (line_count as u16 + 2).min(area.height); // +2 for borders
+    let para = Paragraph::new(text_lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(border_style)
                 .title(title),
         )
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((
+            (editor.row() as u16 + 1).saturating_sub(height.saturating_sub(2)),
+            0,
+        ));
 
     frame.render_widget(para, area);
 }

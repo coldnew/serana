@@ -56,8 +56,7 @@ pub struct App {
     pub todo_reminder_count: u32,
     pub btw_entries: Vec<BtwEntry>,
     pub btw_notes: Vec<String>,
-    pub input: String,
-    pub cursor: usize,
+    pub editor: crate::editor::Editor,
     pub scroll: usize,
     pub mode: AppMode,
     pub model: String,
@@ -110,8 +109,7 @@ impl App {
             todo_reminder_count: 0,
             btw_entries: Vec::new(),
             btw_notes: Vec::new(),
-            input: String::new(),
-            cursor: 0,
+            editor: crate::editor::Editor::new(),
             scroll: 0,
             mode: AppMode::Normal,
             model: "gpt-4o".to_string(),
@@ -166,53 +164,48 @@ impl App {
                 self.should_quit = true;
                 return Ok(false);
             }
-            // Any character starts typing immediately
             self.mode = AppMode::Input;
-            self.input.insert(self.cursor, c);
-            self.cursor += 1;
+            self.editor.insert_char(c);
         }
         Ok(true)
     }
 
     fn handle_input_mode(&mut self, key: KeyEvent) -> Result<bool> {
         match key.code {
-            KeyCode::Enter if !self.input.is_empty() => {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                self.editor.insert_newline();
+            }
+            KeyCode::Enter if !self.editor.is_empty() => {
                 self.submit_message();
             }
             KeyCode::Esc => {
-                if self.input.is_empty() {
+                if self.editor.is_empty() {
                     self.mode = AppMode::Normal;
                 } else {
-                    self.input.clear();
-                    self.cursor = 0;
+                    self.editor.clear();
                 }
             }
-            KeyCode::Backspace if self.cursor > 0 => {
-                self.input.remove(self.cursor - 1);
-                self.cursor -= 1;
+            KeyCode::Backspace => {
+                self.editor.delete_backward();
             }
-            KeyCode::Delete if self.cursor < self.input.len() => {
-                self.input.remove(self.cursor);
+            KeyCode::Delete => {
+                self.editor.delete_forward();
             }
-            KeyCode::Left if self.cursor > 0 => {
-                self.cursor -= 1;
-            }
-            KeyCode::Right if self.cursor < self.input.len() => {
-                self.cursor += 1;
-            }
-            KeyCode::Home => {
-                self.cursor = 0;
-            }
-            KeyCode::End => {
-                self.cursor = self.input.len();
+            KeyCode::Left => self.editor.move_left(),
+            KeyCode::Right => self.editor.move_right(),
+            KeyCode::Up => self.editor.move_up(),
+            KeyCode::Down => self.editor.move_down(),
+            KeyCode::Home => self.editor.move_home(),
+            KeyCode::End => self.editor.move_end(),
+            KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.editor.undo();
             }
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'd' {
                     self.should_quit = true;
                     return Ok(false);
                 }
-                self.input.insert(self.cursor, c);
-                self.cursor += 1;
+                self.editor.insert_char(c);
             }
             _ => {}
         }
@@ -227,8 +220,8 @@ impl App {
     }
 
     fn submit_message(&mut self) {
-        let content = std::mem::take(&mut self.input);
-        self.cursor = 0;
+        let content = self.editor.content();
+        self.editor.clear();
 
         if content.starts_with('/') {
             let cmd = content.trim();
