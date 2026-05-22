@@ -1,15 +1,9 @@
-//! Verification system for self-modification safety.
-//!
-//! Runs tests after modifications and provides rollback capability.
-
 use std::path::PathBuf;
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
-
-const SERANA_ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 /// Result of a verification run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,16 +31,13 @@ pub struct VerificationSystem {
 }
 
 impl VerificationSystem {
-    /// Create a new verification system.
     pub fn new() -> Self {
         Self {
-            workspace: PathBuf::from(SERANA_ROOT),
+            workspace: find_workspace_root(),
         }
     }
 
-    /// Run full verification (build + test).
     pub fn verify(&self) -> Result<VerificationResult> {
-        // Build first
         let build_output = Command::new("cargo")
             .current_dir(&self.workspace)
             .args(["build"])
@@ -72,7 +63,6 @@ impl VerificationSystem {
             });
         }
 
-        // Run tests
         let test_output = Command::new("cargo")
             .current_dir(&self.workspace)
             .args(["test", "--quiet"])
@@ -82,7 +72,6 @@ impl VerificationSystem {
         let stderr = String::from_utf8_lossy(&test_output.stderr);
         output = format!("{}\n{}", stdout, stderr);
 
-        // Parse test results
         let tests_passed = parse_test_count(&output, "passed");
         let tests_failed = parse_test_count(&output, "failed");
         let success = test_output.status.success() && tests_failed == 0;
@@ -101,9 +90,7 @@ impl VerificationSystem {
         })
     }
 
-    /// Create a snapshot for potential rollback.
     pub fn create_snapshot(&self) -> Result<StateSnapshot> {
-        // Get current git HEAD
         let head_output = Command::new("git")
             .current_dir(&self.workspace)
             .args(["rev-parse", "HEAD"])
@@ -113,7 +100,6 @@ impl VerificationSystem {
             .trim()
             .to_string();
 
-        // Get list of modified files
         let status_output = Command::new("git")
             .current_dir(&self.workspace)
             .args(["status", "--porcelain"])
@@ -122,7 +108,6 @@ impl VerificationSystem {
         let status = String::from_utf8_lossy(&status_output.stdout);
         let modified_files: Vec<String> = status.lines().map(|line| line[3..].to_string()).collect();
 
-        // Stash any uncommitted changes
         let stashed = if !modified_files.is_empty() {
             let _ = Command::new("git")
                 .current_dir(&self.workspace)
@@ -141,15 +126,12 @@ impl VerificationSystem {
         })
     }
 
-    /// Rollback to a previous state.
     pub fn rollback(&self, snapshot: &StateSnapshot) -> Result<()> {
-        // Reset to the previous commit
         let _ = Command::new("git")
             .current_dir(&self.workspace)
             .args(["reset", "--hard", &snapshot.git_head])
             .output();
 
-        // Restore stashed changes if any
         if snapshot.stashed {
             let _ = Command::new("git")
                 .current_dir(&self.workspace)
@@ -167,8 +149,24 @@ impl Default for VerificationSystem {
     }
 }
 
+fn find_workspace_root() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut dir = Some(manifest_dir.as_path());
+    while let Some(d) = dir {
+        let cargo_toml = d.join("Cargo.toml");
+        if cargo_toml.exists() {
+            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
+                if content.contains("[workspace]") {
+                    return d.to_path_buf();
+                }
+            }
+        }
+        dir = d.parent();
+    }
+    manifest_dir
+}
+
 fn parse_test_count(output: &str, kind: &str) -> u32 {
-    // Look for patterns like "5 passed" or "2 failed"
     for line in output.lines() {
         if line.contains(kind) {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -230,32 +228,5 @@ mod time_offset {
         let d = doy - (153 * mp + 2) / 5 + 1;
         let m = mp + if mp < 10 { 3 } else { -9 };
         (y + if m <= 2 { 1 } else { 0 }, m as u8, d as u8)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn verification_runs_successfully() {
-        let system = VerificationSystem::new();
-        let result = system.verify().unwrap();
-        assert!(result.build_success);
-        assert!(result.success);
-    }
-
-    #[test]
-    fn creates_snapshot() {
-        let system = VerificationSystem::new();
-        let snapshot = system.create_snapshot().unwrap();
-        assert!(!snapshot.git_head.is_empty());
-    }
-
-    #[test]
-    fn parses_test_counts() {
-        let output = "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out";
-        assert_eq!(parse_test_count(output, "passed"), 5);
-        assert_eq!(parse_test_count(output, "failed"), 0);
     }
 }

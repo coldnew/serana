@@ -1,0 +1,25 @@
+[package]
+name = "serana-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serana-core = { path = "../serana-core" }
+serana-llm = { path = "../serana-llm" }
+serana-tools = { path = "../serana-tools" }
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+rusqlite.workspace = true
+uuid.workspace = true
+dirs.workspace = true

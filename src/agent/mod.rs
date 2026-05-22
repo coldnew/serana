@@ -23,6 +23,7 @@ pub mod session;
 pub mod subagent;
 pub mod tool_approval;
 pub mod tool_executor;
+pub mod verification;
 pub use callbacks::{AgentCallbacks, AgentStatus, CallbackState};
 pub use interruptible::{CancelToken, InterruptibleApiCall};
 pub use iteration_budget::{
@@ -43,6 +44,7 @@ pub use session::{
 pub use subagent::{delegate_task, SubagentConfig, SubagentResult, SubagentSpawner, SubagentTask};
 pub use tool_approval::{ApprovalDecision, ApprovalMode, RiskLevel, ToolApproval};
 pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
+pub use verification::{StateSnapshot, VerificationResult, VerificationSystem};
 
 /// Core agent trait.
 #[async_trait]

@@ -1,0 +1,20 @@
+[package]
+name = "serana-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serana-core = { path = "../serana-core" }
+serana-lsp = { path = "../serana-lsp" }
+serana-tree-sitter = { path = "../serana-tree-sitter" }
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

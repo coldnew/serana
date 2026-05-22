@@ -1,0 +1,26 @@
+[package]
+name = "serana-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serana-core = { path = "../serana-core" }
+serana-llm = { path = "../serana-llm" }
+serana-agent = { path = "../serana-agent" }
+serana-tools = { path = "../serana-tools" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+crossterm.workspace = true
+parking_lot.workspace = true
+textwrap.workspace = true
+strip-ansi-escapes.workspace = true
+pulldown-cmark.workspace = true
+ratatui.workspace = true
+tracing.workspace = true

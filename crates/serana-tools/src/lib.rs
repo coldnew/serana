@@ -1,25 +1,11 @@
 use std::collections::HashMap;
 
-use async_trait::async_trait;
-use serde_json::Value;
-
-use crate::Result;
+use serana_core::Tool;
 
 pub mod code_intel;
 pub mod fs;
 pub mod hashline;
 pub mod self_evolve;
-
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn description(&self) -> &'static str;
-    /// JSON Schema for tool parameters (optional, defaults to empty object)
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object", "properties": {}})
-    }
-    async fn execute(&self, input: Value) -> Result<Value>;
-}
 
 pub struct ToolRegistry {
     tools: HashMap<&'static str, Box<dyn Tool>>,
@@ -70,6 +56,14 @@ impl ToolRegistry {
     }
 }
 
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub use self_evolve::register_self_evolve_tools;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,10 +91,3 @@ mod tests {
         assert!(registry.get("workspace_root").is_some());
     }
 }
-
-impl Default for ToolRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-pub use self_evolve::register_self_evolve_tools;

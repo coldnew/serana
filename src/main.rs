@@ -1,9 +1,9 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use serana::agent::{coding::CodingAgent, Agent};
-use serana::config::Config;
-use serana::llm::{openai::OpenAiClient, LlmClient};
-use serana::tools::ToolRegistry;
+use serana_agent::CodingAgent;
+use serana_core::{Agent, Config, LlmClient};
+use serana_llm::OpenAiClient;
+use serana_tools::ToolRegistry;
 use std::io::IsTerminal;
 
 #[derive(Parser)]
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Config { sample }) => {
             if sample {
-                println!("{}", serana::config::generate_sample_config());
+                println!("{}", serana_core::config::generate_sample_config());
             } else {
                 println!("Config path: {:?}", Config::config_path());
                 println!("\nResolved configuration:");
@@ -90,13 +90,11 @@ async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
 }
 
 async fn run_interactive(config: Config) -> anyhow::Result<()> {
-    // Check if we have a proper terminal for TUI
     if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
         let model = config.model().to_string();
         let provider = config.provider.name.clone();
-        serana::tui::run(config.workspace.clone(), model, provider, config.clone())?;
+        serana_tui::run(config.workspace.clone(), model, provider, config.clone())?;
     } else {
-        // Fallback to simple REPL if no TTY
         println!("Serana interactive mode (Ctrl+C to exit)");
         println!("(No TTY detected - using simple REPL)");
         loop {

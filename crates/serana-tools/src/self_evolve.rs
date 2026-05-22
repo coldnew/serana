@@ -8,12 +8,12 @@ use std::path::PathBuf;
 use std::process::Command;
 use tokio::fs;
 
-use crate::agent::{
-    MetaCognition, ModificationKind, ModificationRecord, VerificationResult, VerificationSystem,
+use serana_core::{
+    MetaCognition, ModificationKind, ModificationRecord, Result, Tool, VerificationResult,
+    VerificationSystem,
 };
-use crate::tools::Tool;
-use crate::tools::ToolRegistry;
-use crate::Result;
+
+use crate::ToolRegistry;
 
 /// Read Serana's own source file.
 pub struct ReadSelfTool;
@@ -561,7 +561,7 @@ impl Tool for ModificationStatsTool {
 
     async fn execute(&self, _input: Value) -> Result<Value> {
         let meta = MetaCognition::new();
-        let stats = meta.stats().await?;
+        let stats = meta.get_stats().await;
         Ok(json!({
             "total": stats.total_modifications,
             "successful": stats.successful_modifications,
