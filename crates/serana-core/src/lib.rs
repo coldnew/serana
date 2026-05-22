@@ -11,6 +11,8 @@ pub mod meta_cognition;
 pub mod tool;
 pub mod tool_approval;
 pub mod verification;
+pub mod token_counter;
+
 
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
@@ -31,3 +33,4 @@ pub use meta_cognition::{
 pub use tool::Tool;
 pub use tool_approval::{ApprovalDecision, ApprovalMode, RiskLevel, ToolApproval};
 pub use verification::{StateSnapshot, VerificationResult, VerificationSystem};
+pub use token_counter::TokenCounter;
