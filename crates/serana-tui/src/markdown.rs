@@ -2,6 +2,7 @@ use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
+use crate::syntax::SyntaxHighlighter;
 use crate::theme;
 
 pub struct MarkdownTheme {
@@ -58,6 +59,8 @@ struct MarkdownRenderer<'a> {
     style_stack: Vec<Style>,
     current_style: Option<Style>,
     in_code_block: bool,
+    code_block_lang: String,
+    code_block_lines: Vec<String>,
     code_block_indent: usize,
     in_blockquote: bool,
     in_list: bool,
@@ -77,6 +80,8 @@ impl<'a> MarkdownRenderer<'a> {
             style_stack: Vec::new(),
             current_style: None,
             in_code_block: false,
+            code_block_lang: String::new(),
+            code_block_lines: Vec::new(),
             code_block_indent: 2,
             in_blockquote: false,
             in_list: false,
@@ -100,14 +105,7 @@ impl<'a> MarkdownRenderer<'a> {
             Event::End(tag) => self.handle_end_tag(tag),
             Event::Text(text) => {
                 if self.in_code_block {
-                    let indent = " ".repeat(self.code_block_indent);
-                    for line in text.lines() {
-                        self.push_styled(
-                            &format!("{}{}", indent, line),
-                            self.theme.code_block,
-                        );
-                        self.flush_line();
-                    }
+                    self.code_block_lines.push(text.to_string());
                 } else {
                     self.push_text(&text);
                 }
@@ -154,17 +152,18 @@ impl<'a> MarkdownRenderer<'a> {
             }
             Tag::CodeBlock(kind) => {
                 self.in_code_block = true;
-                let lang = match kind {
+                self.code_block_lang = match kind {
                     pulldown_cmark::CodeBlockKind::Fenced(l) => l.to_string(),
                     _ => String::new(),
                 };
-                let fence = if lang.is_empty() {
+                self.code_block_lines.clear();
+                let fence = if self.code_block_lang.is_empty() {
                     "```".to_string()
                 } else {
-                    format!("```{}", lang)
+                    format!("```{}", self.code_block_lang)
                 };
                 self.lines
-                    .push(Line::from(Span::styled(fence.to_string(), self.theme.code_block)));
+                    .push(Line::from(Span::styled(fence, self.theme.code_block)));
             }
             Tag::List(ordered) => {
                 if self.in_list {
@@ -232,6 +231,41 @@ impl<'a> MarkdownRenderer<'a> {
             }
             TagEnd::CodeBlock => {
                 self.in_code_block = false;
+                let indent = " ".repeat(self.code_block_indent);
+                let code = self.code_block_lines.join("");
+                let has_lang = !self.code_block_lang.is_empty();
+                let mut rendered_lines: Vec<Vec<Span<'static>>> = Vec::new();
+                if has_lang {
+                    let highlighted = SyntaxHighlighter::global()
+                        .highlight_lines(&code, &self.code_block_lang);
+                    if !highlighted.is_empty() {
+                        rendered_lines = highlighted;
+                    }
+                }
+                if rendered_lines.is_empty() {
+                    for line in code.lines() {
+                        let display = if line.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{}{}", indent, line)
+                        };
+                        rendered_lines.push(vec![Span::styled(
+                            display,
+                            self.theme.code_block,
+                        )]);
+                    }
+                } else {
+                    for spans in &mut rendered_lines {
+                        if !spans.is_empty() {
+                            spans.insert(0, Span::styled(indent.clone(), self.theme.code_block));
+                        }
+                    }
+                }
+                for spans in rendered_lines {
+                    self.lines.push(Line::from(spans));
+                }
+                self.code_block_lines.clear();
+                self.code_block_lang.clear();
                 self.lines
                     .push(Line::from(Span::styled("```", self.theme.code_block)));
                 self.lines.push(Line::from(""));

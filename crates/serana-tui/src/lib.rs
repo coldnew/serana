@@ -3,6 +3,7 @@ pub mod diff;
 pub mod event;
 pub mod markdown;
 pub mod symbols;
+pub mod syntax;
 pub mod theme;
 pub mod tool_execution;
 pub mod tui;
