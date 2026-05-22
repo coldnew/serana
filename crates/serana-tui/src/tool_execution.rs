@@ -9,7 +9,6 @@ use crate::theme::{self, Theme};
 /// Number of preview lines for command output.
 const PREVIEW_LINES: usize = 10;
 /// Max output lines when expanded.
-const MAX_OUTPUT_LINES: usize = 200;
 
 /// Render a tool call with tool-specific formatting.
 pub fn render_tool_call(
