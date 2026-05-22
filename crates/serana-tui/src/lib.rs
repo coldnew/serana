@@ -1,4 +1,5 @@
 pub mod app;
+pub mod diff;
 pub mod event;
 pub mod markdown;
 pub mod symbols;

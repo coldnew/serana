@@ -120,21 +120,8 @@ impl ToolExecution {
 
         if let Some(ref preview) = self.diff_preview {
             if self.is_edit_tool() {
-                for diff_line in preview.diff.lines() {
-                    let diff_style = if diff_line.starts_with('+') {
-                        Style::new().fg(theme::SEAFOAM_GREEN)
-                    } else if diff_line.starts_with('-') {
-                        Style::new().fg(theme::BRIGHT_CORAL)
-                    } else if diff_line.starts_with("@@") {
-                        Style::new().fg(theme::AQUAMARINE)
-                    } else {
-                        Style::default()
-                    };
-                    lines.push(Line::from(Span::styled(
-                        diff_line.to_string(),
-                        diff_style,
-                    )));
-                }
+                let diff_lines = crate::diff::render_diff(&preview.diff, _width);
+                lines.extend(diff_lines);
             }
         }
 
@@ -174,7 +161,7 @@ mod tests {
     #[test]
     fn test_tool_execution_pending() {
         let tool = ToolExecution::new("read");
-        let lines = tool.render_lines(80, symbols::UNICODE);
+        let lines = tool.render_lines(80, &symbols::UNICODE);
         assert!(!lines.is_empty());
     }
 
@@ -183,11 +170,11 @@ mod tests {
         let mut tool = ToolExecution::new("read");
         tool.set_state(ToolState::Success);
         tool.set_output("file contents here");
-        let lines = tool.render_lines(80, symbols::UNICODE);
+        let lines = tool.render_lines(80, &symbols::UNICODE);
         assert!(lines.iter().any(|l| l.to_string().contains("expand")));
 
         tool.set_expanded(true);
-        let lines = tool.render_lines(80, symbols::UNICODE);
+        let lines = tool.render_lines(80, &symbols::UNICODE);
         assert!(lines.iter().any(|l| l.to_string().contains("file contents")));
     }
 
@@ -197,7 +184,7 @@ mod tests {
         tool.set_state(ToolState::Error);
         tool.set_output("command failed");
         tool.set_expanded(true);
-        let lines = tool.render_lines(80, symbols::UNICODE);
+        let lines = tool.render_lines(80, &symbols::UNICODE);
         assert!(lines.iter().any(|l| l.to_string().contains("command failed")));
     }
 
@@ -208,7 +195,7 @@ mod tests {
             path: "src/main.rs".to_string(),
             diff: "@@ src/main.rs\n-old line\n+new line".to_string(),
         });
-        let lines = tool.render_lines(80, symbols::UNICODE);
+        let lines = tool.render_lines(80, &symbols::UNICODE);
         assert!(!lines.is_empty());
     }
 
