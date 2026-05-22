@@ -1,2 +1,2 @@
-// This file is intentionally minimal - all modules have been extracted to workspace crates.
-// The main entrypoint is in main.rs which re-exports.
+// This crate only provides the binary entrypoint (main.rs).
+// All library modules live under crates/* as workspace members.
