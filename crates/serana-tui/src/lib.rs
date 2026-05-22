@@ -104,6 +104,15 @@ fn run_app(
             app.clear_pending_response();
             streaming_content.clear();
             pending_request = None;
+
+            if let Some(reminder) = app.todo_reminder_message() {
+                app.messages.push(app::ChatMessage {
+                    role: app::MessageRole::System,
+                    content: reminder,
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
         }
 
         match events.next()? {

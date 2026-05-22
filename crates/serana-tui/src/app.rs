@@ -8,6 +8,41 @@ use serana_core::Result;
 
 use crate::symbols::{self, Symbols};
 
+/// Todo status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TodoStatus {
+    Pending,
+    InProgress,
+    Done,
+    Abandoned,
+}
+
+/// BTW entry (question + answer).
+#[derive(Debug, Clone)]
+pub struct BtwEntry {
+    pub question: String,
+    pub answer: Option<String>,
+    pub state: BtwState,
+}
+
+impl BtwEntry {
+    pub fn new(question: String) -> Self {
+        Self {
+            question,
+            answer: None,
+            state: BtwState::Pending,
+        }
+    }
+}
+
+/// BTW query state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BtwState {
+    Pending,
+    Responding,
+    Complete,
+}
+
 /// Application state.
 #[derive(Debug)]
 pub struct App {
@@ -17,6 +52,8 @@ pub struct App {
     pub pending_messages: Vec<String>,
     pub status_messages: Vec<String>,
     pub todo_items: Vec<TodoItem>,
+    pub todo_reminder_count: u32,
+    pub btw_entries: Vec<BtwEntry>,
     pub btw_notes: Vec<String>,
     pub input: String,
     pub cursor: usize,
@@ -48,7 +85,7 @@ pub struct App {
 #[derive(Debug, Clone)]
 pub struct TodoItem {
     pub content: String,
-    pub done: bool,
+    pub status: TodoStatus,
 }
 
 impl App {
@@ -60,6 +97,8 @@ impl App {
             pending_messages: Vec::new(),
             status_messages: Vec::new(),
             todo_items: Vec::new(),
+            todo_reminder_count: 0,
+            btw_entries: Vec::new(),
             btw_notes: Vec::new(),
             input: String::new(),
             cursor: 0,
@@ -179,9 +218,54 @@ impl App {
                     return;
                 }
                 "/help" | "/?" => {
+                    let help = concat!(
+                        "Available commands:\n",
+                        "  /quit, /exit, /q - Exit\n",
+                        "  /help, /? - Show this help\n",
+                        "  /todo add <task> - Add a todo item\n",
+                        "  /todo done <n> - Mark todo #n as done\n",
+                        "  /todo drop <n> - Drop todo #n\n",
+                        "  /todo clear - Clear completed todos\n",
+                        "  /btw <note> - Add a BTW note\n",
+                        "  /btw clear - Clear all BTW notes",
+                    );
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: "Available commands:\n  /quit, /exit, /q - Exit the application\n  /help, /? - Show this help".to_string(),
+                        content: help.to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                    return;
+                }
+                _ if cmd.starts_with("/todo ") => {
+                    self.handle_todo_cmd(cmd);
+                    return;
+                }
+                _ if cmd.starts_with("/btw ") => {
+                    let note = cmd.trim_start_matches("/btw ");
+                    self.btw_notes.push(note.to_string());
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("📌 BTW note added: {}", note),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                    return;
+                }
+                "/btw clear" | "/btwc" => {
+                    self.btw_notes.clear();
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "BTW notes cleared.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                    return;
+                }
+                _ if cmd.starts_with("/btw") => {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Usage: /btw <note> or /btw clear".to_string(),
                         tool_calls: Vec::new(),
                         thinking: None,
                     });
@@ -212,6 +296,135 @@ impl App {
         });
 
         self.mode = AppMode::Processing;
+    }
+
+    fn handle_todo_cmd(&mut self, cmd: &str) {
+        let rest = cmd.strip_prefix("/todo ").unwrap_or("");
+        let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+        let sub = parts.first().copied().unwrap_or("");
+
+        match sub {
+            "add" => {
+                let task = parts.get(1).copied().unwrap_or("").trim();
+                if task.is_empty() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Usage: /todo add <task description>".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                    return;
+                }
+                self.todo_items.push(TodoItem {
+                    content: task.to_string(),
+                    status: TodoStatus::Pending,
+                });
+                self.todo_reminder_count = 0;
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("✅ Todo added: {}", task),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            "done" => {
+                let idx = parts
+                    .get(1)
+                    .and_then(|s| s.trim().parse::<usize>().ok())
+                    .and_then(|n| n.checked_sub(1));
+                match idx {
+                    Some(i) if i < self.todo_items.len() => {
+                        let task = self.todo_items[i].content.clone();
+                        self.todo_items[i].status = TodoStatus::Done;
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!("✅ Completed: {}", task),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                    _ => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!(
+                                "Invalid todo number. Use 1-{}.",
+                                self.todo_items.len()
+                            ),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                }
+            }
+            "drop" => {
+                let idx = parts
+                    .get(1)
+                    .and_then(|s| s.trim().parse::<usize>().ok())
+                    .and_then(|n| n.checked_sub(1));
+                match idx {
+                    Some(i) if i < self.todo_items.len() => {
+                        let task = self.todo_items[i].content.clone();
+                        self.todo_items[i].status = TodoStatus::Abandoned;
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!("🗑️ Dropped: {}", task),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                    _ => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!(
+                                "Invalid todo number. Use 1-{}.",
+                                self.todo_items.len()
+                            ),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                }
+            }
+            "clear" => {
+                let before = self.todo_items.len();
+                self.todo_items
+                    .retain(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress);
+                let cleared = before - self.todo_items.len();
+                if cleared > 0 {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("🧹 Cleared {} completed/dropped todos.", cleared),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "No completed todos to clear.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            _ => {
+                let count = self.todo_items.len();
+                let done = self
+                    .todo_items
+                    .iter()
+                    .filter(|t| t.status == TodoStatus::Done || t.status == TodoStatus::Abandoned)
+                    .count();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "Usage: /todo add|done|drop|clear\nPending: {}/{} todos.",
+                        count - done,
+                        count
+                    ),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+        }
     }
 
     pub fn handle_resize(&mut self, _width: u16, _height: u16) {
@@ -245,6 +458,33 @@ impl App {
     /// Clear streaming response content
     pub fn clear_pending_response(&mut self) {
         self.pending_messages.clear();
+    }
+
+    /// Generate a todo reminder message if there are incomplete todos
+    pub fn todo_reminder_message(&mut self) -> Option<String> {
+        let incomplete: Vec<&TodoItem> = self
+            .todo_items
+            .iter()
+            .filter(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress)
+            .collect();
+        if incomplete.is_empty() {
+            return None;
+        }
+        self.todo_reminder_count += 1;
+        let max_reminders = 3;
+        if self.todo_reminder_count > max_reminders {
+            return None;
+        }
+        let count = incomplete.len();
+        let label = if count == 1 { "todo" } else { "todos" };
+        let mut msg = format!(
+            "⚠️ {} incomplete {} (reminder {}/{})",
+            count, label, self.todo_reminder_count, max_reminders
+        );
+        for (i, todo) in incomplete.iter().enumerate() {
+            msg.push_str(&format!("\n  {}. {}", i + 1, todo.content));
+        }
+        Some(msg)
     }
 }
 

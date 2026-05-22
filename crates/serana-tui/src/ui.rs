@@ -4,7 +4,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
-use crate::app::{App, AppMode, ChatMessage, MessageRole, ToolCallStatus};
+use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoStatus, ToolCallStatus};
 use crate::markdown::render_markdown;
 use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
@@ -269,11 +269,15 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
     if !app.todo_items.is_empty() {
         all_lines.push(Line::from(""));
         all_lines.push(Line::from(Span::styled("  Tasks", theme.accent)));
-        for todo in &app.todo_items {
-            let check = if todo.done { s.checkbox_checked } else { s.checkbox_unchecked };
-            let style = if todo.done { theme.dim } else { Style::default() };
+        for (i, todo) in app.todo_items.iter().enumerate() {
+            let (check, style) = match todo.status {
+                TodoStatus::Done => (s.checkbox_checked, theme.dim),
+                TodoStatus::Abandoned => (s.checkbox_abandoned, Style::default().add_modifier(ratatui::style::Modifier::DIM | ratatui::style::Modifier::CROSSED_OUT)),
+                TodoStatus::InProgress => (s.checkbox_in_progress, Style::default().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD)),
+                TodoStatus::Pending => (s.checkbox_unchecked, Style::default()),
+            };
             all_lines.push(Line::from(Span::styled(
-                format!("    {} {}", check, todo.content),
+                format!("  {:>2}. {} {}", i + 1, check, todo.content),
                 style,
             )));
         }
@@ -281,13 +285,21 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if !app.btw_notes.is_empty() {
         all_lines.push(Line::from(""));
-        all_lines.push(Line::from(Span::styled("  By the way", theme.warning)));
+        let h = s.box_sharp.horizontal;
+        all_lines.push(Line::from(Span::styled(
+            format!("  {}{} By the way {}{}", s.box_sharp.top_left, h, h, s.box_sharp.top_right),
+            theme.warning,
+        )));
         for note in &app.btw_notes {
-            all_lines.push(Line::from(Span::styled(
-                format!("    {} {}", s.bullet, note),
-                theme.dim,
-            )));
+            all_lines.push(Line::from(vec![
+                Span::styled(format!("  {} ", s.box_sharp.vertical), theme.warning),
+                Span::styled(format!("{} {}", s.bullet, note), theme.muted),
+            ]));
         }
+        all_lines.push(Line::from(Span::styled(
+            format!("  {}{}", s.box_sharp.bottom_left, h.repeat(2)),
+            theme.warning,
+        )));
     }
 
     all_lines.push(Line::from(""));
