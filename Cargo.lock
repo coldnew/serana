@@ -1747,6 +1747,7 @@ name = "serana"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "clap",
  "dirs",
@@ -1758,11 +1759,13 @@ dependencies = [
  "serana-tree-sitter",
  "serana-tui",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -1774,6 +1777,7 @@ dependencies = [
  "chrono",
  "dirs",
  "futures",
+ "regex",
  "rusqlite",
  "serana-core",
  "serana-llm",
@@ -1781,6 +1785,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "toml",
  "tracing",
  "uuid",
 ]
