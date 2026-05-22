@@ -57,6 +57,7 @@ pub struct App {
     pub btw_entries: Vec<BtwEntry>,
     pub btw_notes: Vec<String>,
     pub editor: crate::editor::Editor,
+    pub active_dialog: Option<crate::dialog::Dialog>,
     pub scroll: usize,
     pub mode: AppMode,
     pub model: String,
@@ -110,6 +111,7 @@ impl App {
             btw_entries: Vec::new(),
             btw_notes: Vec::new(),
             editor: crate::editor::Editor::new(),
+            active_dialog: None,
             scroll: 0,
             mode: AppMode::Normal,
             model: "gpt-4o".to_string(),
@@ -151,6 +153,26 @@ impl App {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
+        // Dialog intercepts all keys
+        if self.active_dialog.is_some() {
+            return self.handle_dialog_key(key);
+        }
+        // Keyboard shortcuts to open dialogs
+        if self.mode == AppMode::Input || self.mode == AppMode::Normal {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match key.code {
+                    KeyCode::Char('m') => {
+                        self.open_model_dialog();
+                        return Ok(true);
+                    }
+                    KeyCode::Char('t') => {
+                        self.open_theme_dialog();
+                        return Ok(true);
+                    }
+                    _ => {}
+                }
+            }
+        }
         match self.mode {
             AppMode::Normal => self.handle_normal_mode(key),
             AppMode::Input => self.handle_input_mode(key),
@@ -443,6 +465,95 @@ impl App {
         }
     }
 
+
+    /// Handle keys when a dialog is open.
+    fn handle_dialog_key(&mut self, key: KeyEvent) -> Result<bool> {
+        let dialog = self.active_dialog.as_mut().unwrap();
+        match key.code {
+            KeyCode::Esc => {
+                self.active_dialog = None;
+            }
+            KeyCode::Enter => {
+                if let Some(value) = dialog.selected_value() {
+                    let value = value.to_string();
+                    let kind = dialog.kind;
+                    self.active_dialog = None;
+                    match kind {
+                        crate::dialog::DialogKind::ModelSelector => {
+                            self.model = value;
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Model switched to: {}", self.model),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                        crate::dialog::DialogKind::ThemeSelector => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Theme selected: {}", value),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                        crate::dialog::DialogKind::SessionSelector => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Session selected: {}", value),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                    }
+                }
+            }
+            KeyCode::Up => {
+                dialog.select_previous();
+            }
+            KeyCode::Down => {
+                dialog.select_next();
+            }
+            KeyCode::Backspace => {
+                dialog.filter_backspace();
+            }
+            KeyCode::Char(c) => {
+                dialog.filter_input(c);
+            }
+            _ => {}
+        }
+        Ok(true)
+    }
+
+    /// Open the model selector dialog.
+    pub fn open_model_dialog(&mut self) {
+        let models = vec![
+            ("gpt-4o".into(), "OpenAI flagship".into()),
+            ("gpt-4o-mini".into(), "OpenAI fast".into()),
+            ("claude-3.5-sonnet".into(), "Anthropic".into()),
+            ("claude-3-haiku".into(), "Anthropic fast".into()),
+            ("deepseek-coder".into(), "DeepSeek".into()),
+            ("codellama-70b".into(), "Meta".into()),
+        ];
+        self.active_dialog = Some(crate::dialog::Dialog::new_model_selector(models));
+    }
+
+    /// Open the theme selector dialog.
+    pub fn open_theme_dialog(&mut self) {
+        let themes = vec![
+            ("default".into(), "Oceanic dark".into()),
+            ("light".into(), "Light mode".into()),
+            ("colorblind".into(), "Colorblind friendly".into()),
+        ];
+        self.active_dialog = Some(crate::dialog::Dialog::new_theme_selector(themes));
+    }
+
+    /// Open the session selector dialog.
+    pub fn open_session_dialog(&mut self) {
+        let sessions = vec![
+            ("current".into(), "Current session".into()),
+        ];
+        self.active_dialog = Some(crate::dialog::Dialog::new_session_selector(sessions));
+    }
     pub fn handle_resize(&mut self, _width: u16, _height: u16) {
     }
 

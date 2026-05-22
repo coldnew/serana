@@ -541,4 +541,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     render_input(frame, input_area, app);
     render_status_line(frame, status_area, app);
+
+    // Render dialog on top if active
+    if let Some(ref dialog) = app.active_dialog {
+        crate::dialog::render_dialog(frame, dialog);
+    }
 }
