@@ -1,9 +1,8 @@
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
+use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
-
-const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolState {
@@ -26,7 +25,7 @@ pub struct ToolExecution {
     output: Option<String>,
     diff_preview: Option<DiffPreview>,
     expanded: bool,
-    spinner_frame: usize,
+    spinner_tick: u64,
 }
 
 impl ToolExecution {
@@ -38,7 +37,7 @@ impl ToolExecution {
             output: None,
             diff_preview: None,
             expanded: false,
-            spinner_frame: 0,
+            spinner_tick: 0,
         }
     }
 
@@ -71,7 +70,7 @@ impl ToolExecution {
     }
 
     pub fn advance_spinner(&mut self) {
-        self.spinner_frame = (self.spinner_frame + 1) % SPINNER_FRAMES.len();
+        self.spinner_tick = self.spinner_tick.wrapping_add(1);
     }
 
     pub fn state(&self) -> ToolState {
@@ -82,17 +81,20 @@ impl ToolExecution {
         self.expanded
     }
 
-    pub fn render_lines(&self, _width: usize) -> Vec<Line<'static>> {
+    pub fn render_lines(&self, _width: usize, symbols: &Symbols) -> Vec<Line<'static>> {
         let theme = Theme::default();
         let mut lines = Vec::new();
 
         lines.push(Line::from(""));
 
         let icon = match self.state {
-            ToolState::Pending => "○",
-            ToolState::Running => SPINNER_FRAMES[self.spinner_frame],
-            ToolState::Success => "✔",
-            ToolState::Error => "✘",
+            ToolState::Pending => symbols.pending,
+            ToolState::Running => {
+                let frames = symbols.spinner;
+                frames[(self.spinner_tick as usize) % frames.len()]
+            }
+            ToolState::Success => symbols.success,
+            ToolState::Error => symbols.error,
         };
 
         let tool_style = match self.state {
@@ -167,11 +169,12 @@ impl ToolExecution {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::symbols;
 
     #[test]
     fn test_tool_execution_pending() {
         let tool = ToolExecution::new("read");
-        let lines = tool.render_lines(80);
+        let lines = tool.render_lines(80, symbols::UNICODE);
         assert!(!lines.is_empty());
     }
 
@@ -180,11 +183,11 @@ mod tests {
         let mut tool = ToolExecution::new("read");
         tool.set_state(ToolState::Success);
         tool.set_output("file contents here");
-        let lines = tool.render_lines(80);
+        let lines = tool.render_lines(80, symbols::UNICODE);
         assert!(lines.iter().any(|l| l.to_string().contains("expand")));
 
         tool.set_expanded(true);
-        let lines = tool.render_lines(80);
+        let lines = tool.render_lines(80, symbols::UNICODE);
         assert!(lines.iter().any(|l| l.to_string().contains("file contents")));
     }
 
@@ -194,7 +197,7 @@ mod tests {
         tool.set_state(ToolState::Error);
         tool.set_output("command failed");
         tool.set_expanded(true);
-        let lines = tool.render_lines(80);
+        let lines = tool.render_lines(80, symbols::UNICODE);
         assert!(lines.iter().any(|l| l.to_string().contains("command failed")));
     }
 
@@ -205,7 +208,7 @@ mod tests {
             path: "src/main.rs".to_string(),
             diff: "@@ src/main.rs\n-old line\n+new line".to_string(),
         });
-        let lines = tool.render_lines(80);
+        let lines = tool.render_lines(80, symbols::UNICODE);
         assert!(!lines.is_empty());
     }
 

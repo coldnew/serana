@@ -1,6 +1,7 @@
 pub mod app;
 pub mod event;
 pub mod markdown;
+pub mod symbols;
 pub mod theme;
 pub mod tool_execution;
 pub mod tui;

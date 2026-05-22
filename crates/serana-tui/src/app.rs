@@ -6,9 +6,12 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use serana_core::Result;
 
+use crate::symbols::{self, Symbols};
+
 /// Application state.
 #[derive(Debug)]
 pub struct App {
+    pub symbols: &'static Symbols,
     pub workspace: PathBuf,
     pub messages: Vec<ChatMessage>,
     pub pending_messages: Vec<String>,
@@ -51,6 +54,7 @@ pub struct TodoItem {
 impl App {
     pub fn new(workspace: PathBuf) -> Self {
         Self {
+            symbols: &symbols::UNICODE,
             workspace,
             messages: Vec::new(),
             pending_messages: Vec::new(),

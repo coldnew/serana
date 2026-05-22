@@ -6,6 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{App, AppMode, ChatMessage, MessageRole, ToolCallStatus};
 use crate::markdown::render_markdown;
+use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
 
 const PI_LOGO: &[&str] = &[
@@ -15,12 +16,6 @@ const PI_LOGO: &[&str] = &[
     "  ███    ███  ",
     " ▄███▄  ▄███▄ ",
 ];
-
-const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-fn spinner_frame(tick: u64) -> &'static str {
-    SPINNER_FRAMES[(tick % SPINNER_FRAMES.len() as u64) as usize]
-}
 
 fn gradient_logo_style(_area: Rect) -> Vec<(String, Style)> {
     let colors = [
@@ -60,6 +55,7 @@ fn _fit_to_width(text: String, width: usize) -> String {
 
 fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
+    let s = app.symbols;
 
     let cols = Layout::horizontal([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)]);
     let areas = cols.split(area);
@@ -101,7 +97,7 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     let mut right_lines: Vec<Line> = Vec::new();
-    let sep = format!(" {}", "─".repeat(right_area.width.saturating_sub(3) as usize));
+    let sep = format!(" {}", s.hr_char.repeat(right_area.width.saturating_sub(3) as usize));
 
     right_lines.push(Line::from(Span::styled(
         format!(" {}", "Tips"),
@@ -130,7 +126,7 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     right_lines.push(Line::from(Span::styled(&sep, theme.dim)));
     right_lines.push(Line::from(Span::styled(" LSP Servers", theme.accent)));
     right_lines.push(Line::from(Span::styled(
-        "  ○ No LSP servers",
+        format!("  {} No LSP servers", s.pending),
         theme.dim,
     )));
     right_lines.push(Line::from(Span::styled(&sep, theme.dim)));
@@ -139,7 +135,7 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
         theme.accent,
     )));
     right_lines.push(Line::from(Span::styled(
-        "  • No recent sessions",
+        format!("  {} No recent sessions", s.bullet),
         theme.dim,
     )));
 
@@ -147,33 +143,43 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(right_para, right_area);
 }
 
-fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: &Symbols) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
+    let h = symbols.box_sharp.horizontal;
 
     match msg.role {
         MessageRole::User => {
             lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled("  ✔ You", theme.success)));
+            lines.push(Line::from(Span::styled(
+                format!("  {} You", symbols.success),
+                theme.success,
+            )));
             for text_line in msg.content.lines() {
                 lines.push(Line::from(Span::raw(format!("    {}", text_line))));
             }
         }
         MessageRole::Agent => {
             lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled("  ❯ Serana", theme.accent)));
+            lines.push(Line::from(Span::styled(
+                format!("  {} Serana", symbols.cursor),
+                theme.accent,
+            )));
 
             if let Some(ref thinking) = msg.thinking {
                 lines.push(Line::from(Span::styled(
-                    "  ┌─ thinking ─",
+                    format!("  {}{} thinking {}", symbols.box_sharp.top_left, h, h),
                     theme.thinking,
                 )));
                 for t_line in thinking.lines() {
                     lines.push(Line::from(Span::styled(
-                        format!("  │ {}", t_line),
+                        format!("  {} {}", symbols.box_sharp.vertical, t_line),
                         theme.thinking,
                     )));
                 }
-                lines.push(Line::from(Span::styled("  └─", theme.thinking)));
+                lines.push(Line::from(Span::styled(
+                    format!("  {}{}", symbols.box_sharp.bottom_left, h),
+                    theme.thinking,
+                )));
                 lines.push(Line::from(""));
             }
 
@@ -188,10 +194,10 @@ fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme) -> Vec<Li
             for tool in &msg.tool_calls {
                 lines.push(Line::from(""));
                 let icon = match tool.status {
-                    ToolCallStatus::Pending => "○",
-                    ToolCallStatus::Running => "●",
-                    ToolCallStatus::Success => "✔",
-                    ToolCallStatus::Error => "✘",
+                    ToolCallStatus::Pending => symbols.pending,
+                    ToolCallStatus::Running => symbols.running,
+                    ToolCallStatus::Success => symbols.success,
+                    ToolCallStatus::Error => symbols.error,
                 };
                 let tool_style = match tool.status {
                     ToolCallStatus::Pending => theme.dim,
@@ -214,7 +220,7 @@ fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme) -> Vec<Li
         MessageRole::System => {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                format!("  ⚠ {}", msg.content),
+                format!("  {} {}", symbols.warning, msg.content),
                 theme.warning,
             )));
         }
@@ -225,17 +231,21 @@ fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme) -> Vec<Li
 
 fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
     let theme = Theme::default();
+    let s = app.symbols;
     let mut all_lines: Vec<Line<'static>> = Vec::new();
 
     for msg in &app.messages {
-        let mut msg_lines = render_message_para(msg, area.width as usize, &theme);
+        let mut msg_lines = render_message_para(msg, area.width as usize, &theme, s);
         all_lines.append(&mut msg_lines);
     }
 
     if !app.pending_messages.is_empty() && app.mode == AppMode::Processing {
         all_lines.push(Line::from(""));
         all_lines.push(Line::from(Span::styled(
-            format!("  {} Responding...", spinner_frame(app.tick_count)),
+            format!(
+                "  {} Responding...",
+                s.spinner[(app.tick_count % s.spinner.len() as u64) as usize]
+            ),
             theme.accent,
         )));
         for pending in &app.pending_messages {
@@ -250,7 +260,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
         all_lines.push(Line::from(""));
         for msg in &app.status_messages {
             all_lines.push(Line::from(Span::styled(
-                format!("  → {}", msg),
+                format!("  {} {}", s.arrow, msg),
                 theme.info,
             )));
         }
@@ -260,7 +270,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
         all_lines.push(Line::from(""));
         all_lines.push(Line::from(Span::styled("  Tasks", theme.accent)));
         for todo in &app.todo_items {
-            let check = if todo.done { "✓" } else { "○" };
+            let check = if todo.done { s.checkbox_checked } else { s.checkbox_unchecked };
             let style = if todo.done { theme.dim } else { Style::default() };
             all_lines.push(Line::from(Span::styled(
                 format!("    {} {}", check, todo.content),
@@ -274,7 +284,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
         all_lines.push(Line::from(Span::styled("  By the way", theme.warning)));
         for note in &app.btw_notes {
             all_lines.push(Line::from(Span::styled(
-                format!("    • {}", note),
+                format!("    {} {}", s.bullet, note),
                 theme.dim,
             )));
         }
@@ -346,6 +356,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
+    let s = app.symbols;
 
     let mut left_segments = Vec::new();
 
@@ -357,10 +368,11 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
         }
     };
     left_segments.push(Span::styled(mode_text.to_string(), mode_style));
-    left_segments.push(Span::styled(" ┆ ".to_string(), theme.dim));
+    let sep = format!(" {} ", s.sep_thin);
+    left_segments.push(Span::styled(sep.clone(), theme.dim));
 
     left_segments.push(Span::styled(app.model.clone(), theme.info));
-    left_segments.push(Span::styled(" ┆ ".to_string(), theme.dim));
+    left_segments.push(Span::styled(sep.clone(), theme.dim));
 
     if let Some(ref branch) = app.git_branch {
         left_segments.push(Span::styled(
@@ -383,7 +395,7 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
                 theme.warning,
             ));
         }
-        left_segments.push(Span::styled(" ┆ ".to_string(), theme.dim));
+        left_segments.push(Span::styled(sep.clone(), theme.dim));
     }
 
     let workspace_name = app
@@ -396,7 +408,7 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     if app.tokens_input > 0 || app.tokens_output > 0 {
         let total_input = app.tokens_input + app.tokens_cache_read;
         if total_input > 0 || app.tokens_output > 0 {
-            left_segments.push(Span::styled(" ┆ ".to_string(), theme.dim));
+            left_segments.push(Span::styled(sep.clone(), theme.dim));
             let usage = format!("in:{} out:{}", total_input, app.tokens_output);
             left_segments.push(Span::styled(usage, theme.dim));
         }
@@ -408,7 +420,7 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
                 0
             };
             if pct > 0 {
-                left_segments.push(Span::styled(" ┆ ".to_string(), theme.dim));
+                left_segments.push(Span::styled(sep.clone(), theme.dim));
                 let ctx_str = format!("ctx:{}%", pct);
                 let ctx_style = if pct >= 90 {
                     theme.error
@@ -425,7 +437,7 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     if app.iterations_max > 0 {
-        left_segments.push(Span::styled(" ┆ ".to_string(), theme.dim));
+        left_segments.push(Span::styled(sep.clone(), theme.dim));
         let iter_text = format!("iter:{}/{}", app.iterations_used, app.iterations_max);
         let iter_style = if app.iterations_used >= app.iterations_max {
             theme.error
