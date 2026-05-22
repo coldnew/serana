@@ -1,18 +1,14 @@
-//! TUI frontend for serana
-//!
-//! Custom inline TUI inspired by oh-my-pi, with vertical flow rendering and no
-//! alternate-screen takeover.
-
 pub mod app;
-pub mod component;
-pub mod components;
 pub mod event;
-pub mod style;
-pub mod terminal;
+pub mod markdown;
 pub mod theme;
 pub mod tool_execution;
 pub mod tui;
 pub mod ui;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use serana_agent::CodingAgent;
 use serana_agent::SessionStore;
@@ -25,16 +21,12 @@ use serana_core::Result;
 use serana_llm::OpenAiClient;
 use serana_tools::self_evolve;
 use serana_tools::ToolRegistry;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::app::App;
 use crate::event::Event;
 use crate::tui::Tui;
 
-/// Run the TUI application.
 pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) -> Result<()> {
     let mut tui = Tui::new()?;
     let workspace_for_agent = workspace.clone();
@@ -45,18 +37,15 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     let (stream_tx, mut stream_rx) = mpsc::unbounded_channel::<String>();
     let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
     let mut tools = ToolRegistry::new();
-    // Register self-evolution tools
     self_evolve::register_self_evolve_tools(&mut tools);
     let session_store = SessionStore::default_location();
     session_store.init()?;
     let session = session_store.create_session()?;
 
-    // Set up streaming callback
     let stream_tx_clone = stream_tx.clone();
     let callbacks = AgentCallbacks::new().with_stream_delta(Arc::new(move |delta| {
         let _ = stream_tx_clone.send(delta.to_string());
     }));
-    // Create cancel token for interruptible execution
     let cancel_token = CancelToken::new();
     let agent_cancel_token = cancel_token.clone();
 
@@ -68,21 +57,8 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
             .with_cancel_token(agent_cancel_token),
     );
 
-    tui.clear_screen()?;
-    tui.hide_cursor()?;
+    let result = run_app(&mut tui, &mut app, events, agent, response_tx, &mut response_rx, &mut stream_rx);
 
-    let result = run_app(
-        &mut tui,
-        &mut app,
-        events,
-        agent,
-        cancel_token,
-        response_tx,
-        &mut response_rx,
-        &mut stream_rx,
-    );
-
-    tui.show_cursor()?;
     tui.restore()?;
     result
 }
@@ -97,7 +73,6 @@ fn run_app(
     app: &mut App,
     mut events: event::EventHandler,
     agent: Arc<CodingAgent>,
-    _cancel_token: CancelToken,
     response_tx: mpsc::UnboundedSender<AgentResponse>,
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
     stream_rx: &mut mpsc::UnboundedReceiver<String>,
@@ -106,13 +81,13 @@ fn run_app(
     let mut streaming_content = String::new();
 
     loop {
-        ui::draw(tui, app)?;
-        tui.render()?;
+        tui.terminal().draw(|frame| {
+            ui::draw(frame, app);
+        })?;
 
         while let Ok(delta) = stream_rx.try_recv() {
             streaming_content.push_str(&delta);
             app.set_pending_response(streaming_content.clone());
-            tui.request_render();
         }
 
         if let Ok(resp) = response_rx.try_recv() {
@@ -126,7 +101,6 @@ fn run_app(
             app.clear_pending_response();
             streaming_content.clear();
             pending_request = None;
-            tui.request_render();
         }
 
         match events.next()? {
@@ -153,16 +127,10 @@ fn run_app(
                         }
                     }
                 }
-
-                tui.request_render();
             }
-            Event::Resize(width, height) => {
-                app.handle_resize(width, height);
-                tui.request_render();
-            }
+            Event::Resize(_width, _height) => {}
             Event::Tick => {
                 app.tick();
-                tui.request_render();
             }
         }
     }

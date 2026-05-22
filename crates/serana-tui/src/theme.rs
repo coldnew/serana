@@ -1,108 +1,64 @@
-//! Theme definitions for the TUI
-
 use ratatui::style::{Color, Modifier, Style};
 
-#[derive(Debug, Clone, Copy)]
+pub const CORAL: Color = Color::Rgb(255, 139, 109);
+pub const BRIGHT_CORAL: Color = Color::Rgb(255, 111, 94);
+pub const TEAL: Color = Color::Rgb(91, 192, 190);
+pub const AQUAMARINE: Color = Color::Rgb(111, 255, 233);
+pub const SEAFOAM_GREEN: Color = Color::Rgb(167, 240, 232);
+pub const MUTED_TEAL: Color = Color::Rgb(119, 141, 169);
+pub const DIM_TEAL: Color = Color::Rgb(90, 123, 153);
+pub const DEEP_BLUE: Color = Color::Rgb(11, 19, 43);
+pub const NAVY_BLUE: Color = Color::Rgb(28, 37, 65);
+pub const OCEAN_BLUE: Color = Color::Rgb(58, 80, 107);
+pub const MID_WATER: Color = Color::Rgb(27, 38, 59);
+pub const DARK_BORDER: Color = Color::Rgb(30, 45, 63);
+pub const ABYSS_BLACK: Color = Color::Rgb(5, 10, 26);
+pub const DEEP_WATER: Color = Color::Rgb(13, 27, 42);
+pub const USER_MSG_BG: Color = Color::Rgb(15, 26, 40);
+pub const TOOL_PENDING_BG: Color = Color::Rgb(13, 21, 32);
+pub const TOOL_SUCCESS_BG: Color = Color::Rgb(10, 20, 24);
+pub const TOOL_ERROR_BG: Color = Color::Rgb(26, 13, 15);
+pub const CODE_PURPLE: Color = Color::Rgb(212, 165, 255);
+pub const DIFF_GREEN: Color = Color::Rgb(167, 240, 232);
+pub const DIFF_RED: Color = Color::Rgb(255, 111, 94);
+pub const DIFF_YELLOW: Color = Color::Rgb(255, 209, 102);
+
 pub struct Theme {
-    pub background: Color,
-    pub foreground: Color,
-    pub accent: Color,
-    pub success: Color,
-    pub error: Color,
-    pub warning: Color,
-    pub info: Color,
-    pub dim: Color,
-    pub border: Color,
-    pub user_msg_bg: Color,
-    pub agent_msg_bg: Color,
-    pub system_msg_bg: Color,
-}
-
-impl Theme {
-    pub fn dark() -> Self {
-        Self {
-            background: Color::Rgb(18, 18, 24),
-            foreground: Color::Rgb(220, 220, 240),
-            accent: Color::Rgb(88, 166, 255),
-            success: Color::Rgb(68, 180, 120),
-            error: Color::Rgb(230, 80, 80),
-            warning: Color::Rgb(255, 180, 60),
-            info: Color::Rgb(100, 180, 200),
-            dim: Color::Rgb(100, 100, 120),
-            border: Color::Rgb(60, 60, 72),
-            user_msg_bg: Color::Rgb(35, 35, 45),
-            agent_msg_bg: Color::Rgb(25, 25, 35),
-            system_msg_bg: Color::Rgb(30, 30, 40),
-        }
-    }
-
-    pub fn light() -> Self {
-        Self {
-            background: Color::Rgb(248, 248, 248),
-            foreground: Color::Rgb(40, 40, 50),
-            accent: Color::Rgb(0, 100, 200),
-            success: Color::Rgb(40, 140, 80),
-            error: Color::Rgb(200, 50, 50),
-            warning: Color::Rgb(200, 120, 20),
-            info: Color::Rgb(30, 120, 140),
-            dim: Color::Rgb(120, 120, 140),
-            border: Color::Rgb(200, 200, 210),
-            user_msg_bg: Color::Rgb(235, 235, 245),
-            agent_msg_bg: Color::Rgb(245, 245, 255),
-            system_msg_bg: Color::Rgb(240, 240, 250),
-        }
-    }
-
-    pub fn border_style(&self) -> Style {
-        Style::default().fg(self.border)
-    }
-
-    pub fn block<'a>(&self, title: &'a str) -> ratatui::widgets::Block<'a> {
-        ratatui::widgets::Block::bordered()
-            .title(title)
-            .border_set(ratatui::symbols::border::ROUNDED)
-            .border_style(self.border_style())
-    }
-
-    pub fn title_style(&self) -> Style {
-        Style::default().fg(self.accent).add_modifier(Modifier::BOLD)
-    }
-
-    pub fn user_style(&self) -> Style {
-        Style::default().fg(self.success)
-    }
-
-    pub fn agent_style(&self) -> Style {
-        Style::default().fg(self.accent)
-    }
-
-    pub fn system_style(&self) -> Style {
-        Style::default().fg(self.warning)
-    }
-
-    pub fn accent_style(&self) -> Style {
-        Style::default().fg(self.accent)
-    }
-
-    pub fn dim_style(&self) -> Style {
-        Style::default().fg(self.dim)
-    }
-
-    pub fn status_mode_normal(&self) -> Style {
-        Style::default().fg(self.success)
-    }
-
-    pub fn status_mode_input(&self) -> Style {
-        Style::default().fg(self.warning)
-    }
-
-    pub fn status_mode_processing(&self) -> Style {
-        Style::default().fg(self.error)
-    }
+    pub accent: Style,
+    pub success: Style,
+    pub warning: Style,
+    pub error: Style,
+    pub dim: Style,
+    pub muted: Style,
+    pub info: Style,
+    pub user_fg: Style,
+    pub agent_fg: Style,
+    pub thinking: Style,
+    pub border: Style,
 }
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::dark()
+        Self {
+            accent: Style::new().fg(CORAL).add_modifier(Modifier::BOLD),
+            success: Style::new()
+                .fg(SEAFOAM_GREEN)
+                .add_modifier(Modifier::BOLD),
+            warning: Style::new()
+                .fg(DIFF_YELLOW)
+                .add_modifier(Modifier::BOLD),
+            error: Style::new()
+                .fg(BRIGHT_CORAL)
+                .add_modifier(Modifier::BOLD),
+            dim: Style::new().fg(DIM_TEAL),
+            muted: Style::new().fg(MUTED_TEAL),
+            info: Style::new().fg(TEAL),
+            user_fg: Style::new().fg(SEAFOAM_GREEN),
+            agent_fg: Style::new().fg(CORAL),
+            thinking: Style::new()
+                .fg(MUTED_TEAL)
+                .add_modifier(Modifier::ITALIC),
+            border: Style::new().fg(DARK_BORDER),
+        }
     }
 }

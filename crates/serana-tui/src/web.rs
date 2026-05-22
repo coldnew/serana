@@ -1,1 +1,0 @@
-//! Web-related functionality (placeholder)
