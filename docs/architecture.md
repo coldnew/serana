@@ -2,368 +2,165 @@
 
 ## Overview
 
-Serana is a personal coding agent built in Rust with a TUI frontend. It features built-in LSP and tree-sitter for deep code understanding without relying on external tools.
+Serana is a personal coding agent built in Rust. It uses a workspace of 7 crates providing LLM integration, code intelligence (LSP + tree-sitter), tool execution, agent orchestration, and a TUI interface.
 
-## Core Components
+## Crate Dependency Graph
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        TUI Frontend                          │
-│  ratatui-based interface with chat, sidebar, status bar     │
-│  Handles keyboard input, renders streaming responses        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     Agent (agent/mod.rs)                     │
-│  Agent trait + CodingAgent implementation                    │
-│  - Plans tasks via LLM                                       │
-│  - Executes tools based on LLM responses                     │
-│  - Manages conversation state                                │
-└─────────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   LLM Client    │  │  Tool Registry  │  │    Context      │
-│  (llm/mod.rs)   │  │  (tools/mod.rs) │  │ (context/mod.rs)│
-│                 │  │                 │  │                 │
-│  - OpenAI API   │  │  - read_file    │  │  - Gatherer     │
-│  - Streaming    │  │  - write_file   │  │  - Compactor    │
-│  - Pluggable    │  │  - shell_exec   │  │                 │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
-         │
+serana (binary root)
+  ├── serana-core          (foundational traits & types)
+  ├── serana-llm           (LLM client implementations)
+  ├── serana-lsp           (LSP protocol client)
+  ├── serana-tree-sitter   (AST parser)
+  ├── serana-tools         (tool implementations)
+  ├── serana-agent         (agent orchestration)
+  └── serana-tui           (terminal UI)
+```
+
+Dependency flow (only one direction):
+
+```
+serana-core
+  ├── serana-llm
+  ├── serana-lsp
+  ├── serana-tree-sitter
+  ├── serana-tools (also depends on serana-lsp, serana-tree-sitter)
+  ├── serana-agent (depends on serana-llm, serana-tools)
+  └── serana-tui   (depends on serana-llm, serana-agent, serana-tools)
+```
+
+No circular dependencies. Lower-level crates never depend on higher-level ones.
+
+## High-Level Data Flow
+
+```
+User Input (TUI or CLI)
+  │
+  ▼
+┌──────────────────────────────────────────────────────────┐
+│                    serana-agent                           │
+│  CodingAgent::execute(instruction)                       │
+│                                                          │
+│  1. Build system prompt (prompt_builder)                 │
+│  2. Call LLM (serana-llm → LlmClient)                    │
+│  3. Parse tool calls from response                       │
+│  4. Execute tools (serana-tools → ToolRegistry)          │
+│  5. Feed results back to LLM                             │
+│  6. Repeat until done or budget exhausted                │
+│                                                          │
+│  Optional: compress context if nearing token limit       │
+│  Optional: persist session (SessionStore → SQLite)       │
+└──────────────────────────────────────────────────────────┘
+  │
+  ├── serana-core  (Message, Tool, LlmClient traits)
+  ├── serana-llm   (OpenAI, Anthropic, fallback, routing)
+  ├── serana-tools (24 tools: fs, shell, search, git, LSP, ...)
+  └── serana-lsp   (LSP server management)
+  └── serana-tree-sitter (AST parsing)
+```
+
+## Crate Responsibilities
+
+| Crate | Responsibility | Key Exports |
+|-------|---------------|-------------|
+| `serana-core` | Shared types, traits (`Agent`, `Tool`, `LlmClient`), config, callbacks, cancellation, budgets, compression, meta-cognition, verification | `Agent`, `Tool`, `LlmClient`, `Config`, `Message`, `AgentCallbacks`, `IterationBudget`, `MetaCognition` |
+| `serana-llm` | `LlmClient` implementations: OpenAI, Anthropic; credential management; fallback chains; role-based routing; auxiliary tasks | `OpenAiClient`, `AnthropicClient`, `FallbackChain`, `RoutingClient`, `AuxiliaryClient` |
+| `serana-lsp` | LSP client protocol: spawn language servers, JSON-RPC 2.0, go-to-def, references, hover | `LspManager`, `LspClient`, `Position`, `Location` |
+| `serana-tree-sitter` | AST parsing and syntax queries for Rust, JS/TS, Python, Go | `ParserManager`, `FunctionDef`, `StructDef`, `Import` |
+| `serana-tools` | 24 `Tool` implementations: file ops, shell, search, git, GitHub, SSH, eval, browser, debugger, memory, MCP, skills, etc. | `ToolRegistry`, `ShellSession`, `DapSession`, `MemoryStore`, `McpConnection` |
+| `serana-agent` | Agent orchestration: execute loop, context compression, session persistence, subagent spawning, stream rules, message validation | `CodingAgent`, `SessionStore`, `SubagentSpawner`, `ContextCompressor`, `StreamRuleEngine` |
+| `serana-tui` | Terminal UI: ratatui rendering, event loop, markdown, syntax highlighting, editor, dialogs | `run()`, `App`, `Tui` |
+
+## Core Execution Loop (CodingAgent)
+
+```
+┌─────────────────────┐
+│   Build system      │
+│   prompt            │
+└────────┬────────────┘
          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Code Intelligence Layer                      │
-├───────────────────────────┬─────────────────────────────────┤
-│       LSP Client          │      Tree-sitter Parser         │
-│       (lsp/mod.rs)        │   (tree_sitter/mod.rs)          │
-│                           │                                 │
-│  - rust-analyzer          │  - AST parsing                  │
-│  - typescript-language-   │  - Syntax queries               │
-│    server                 │  - Incremental edits            │
-│  - gopls                  │  - Multi-language support       │
-│  - (extensible)           │                                 │
-│                           │  Languages:                     │
-│  Features:                │  - Rust                         │
-│  - go_to_def              │  - TypeScript/JavaScript        │
-│  - find_refs              │  - Python                       │
-│  - rename                 │  - Go                           │
-│  - hover                  │  - (extensible)                 │
-│  - diagnostics            │                                 │
-└───────────────────────────┴─────────────────────────────────┘
+┌─────────────────────┐
+│   LLM call          │
+│   chat_with_tools   │
+└────────┬────────────┘
+         ▼
+   ┌───────────┐
+   │ Tool call │←── No ───┐
+   └─────┬─────┘          │
+         │ Yes             │
+         ▼                 │
+┌─────────────────────┐   │
+│   Execute tools     │   │
+│   (sequential)      │   │
+└────────┬────────────┘   │
+         ▼                │
+┌─────────────────────┐   │
+│   Inject results    │   │
+│   as messages       │   │
+└────────┬────────────┘   │
+         ▼                │
+┌─────────────────────┐   │
+│   Check budget      │───┘
+│   Check compression │
+└────────┬────────────┘
+         ▼ (no more tool calls)
+┌─────────────────────┐
+│   Return            │
+│   AgentOutput       │
+└─────────────────────┘
 ```
 
-## TUI Architecture
+## LLM Provider Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Main Window                           │
-├──────────────────────┬──────────────────────────────────────┤
-│                      │                                      │
-│     Sidebar          │         Chat Panel                   │
-│   (File Tree)        │    (Conversation History)            │
-│                      │                                      │
-│   - workspace files  │   User: <message>                    │
-│   - context files    │   Agent: <streaming response...>     │
-│   - tool outputs     │   [tool call indicators]             │
-│                      │                                      │
-├──────────────────────┴──────────────────────────────────────┤
-│  Input: [_____________________________________________] [Send]│
-├─────────────────────────────────────────────────────────────┤
-│  Status: workspace: /path/to/project | model: gpt-4 | 2.3k  │
-└─────────────────────────────────────────────────────────────┘
+                        ┌──────────────────┐
+                        │  RoutingClient    │  (serana-llm::registry)
+                        │  role→chain map  │
+                        └────────┬─────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │    FallbackChain         │
+                    │  provider1 → provider2   │
+                    └────────────┬─────────────┘
+                                 │
+               ┌─────────────────┼─────────────────┐
+               ▼                 ▼                   ▼
+        ┌────────────┐   ┌──────────────┐   ┌──────────────┐
+        │OpenAIClient│   │AnthropicClient│   │Refreshable...│
+        └────────────┘   └──────────────┘   └──────────────┘
 ```
 
-### TUI Module Structure
-
-| Module | Responsibility |
-|--------|----------------|
-| `tui/mod.rs` | TUI entry point, terminal setup/teardown |
-| `tui/app.rs` | Application state machine, event loop |
-| `tui/ui.rs` | Widget layout and rendering |
-| `tui/event.rs` | Keyboard/mouse events, resize handling |
-| `tui/components/mod.rs` | Component trait |
-| `tui/components/chat.rs` | Conversation display, message list |
-| `tui/components/sidebar.rs` | File tree, context panel |
-| `tui/components/status.rs` | Status bar with workspace/model info |
-
-## LSP Architecture
-
-### LSP Manager
-
-The LSP manager handles multiple language servers per workspace:
-
-```rust
-pub struct LspManager {
-    servers: HashMap<LanguageId, LspClient>,
-    workspace_root: PathBuf,
-}
-
-pub struct LspClient {
-    process: Child,
-    transport: LspTransport,
-    capabilities: ServerCapabilities,
-    pending_requests: HashMap<RequestId, Sender<LspResponse>>,
-}
-```
-
-### LSP Transport
-
-Communication with language servers via stdio:
-
-```rust
-pub enum LspTransport {
-    Stdio {
-        stdin: ChildStdin,
-        stdout: BufReader<ChildStdout>,
-    },
-    Socket { /* TCP/Unix socket */ },
-}
-```
-
-### Supported Operations
-
-| Operation | LSP Method | Use Case |
-|-----------|------------|----------|
-| Definition | textDocument/definition | "Go to where X is defined" |
-| References | textDocument/references | "Find all uses of X" |
-| Hover | textDocument/hover | "What type is X?" |
-| Rename | textDocument/rename | "Rename X to Y" |
-| Diagnostics | textDocument/publishDiagnostics | Real-time error checking |
-| Symbols | textDocument/documentSymbol | "List all functions in file" |
-
-### Language Server Detection
-
-```rust
-impl LspManager {
-    pub fn detect_language_servers(&self, workspace: &Path) -> Vec<(LanguageId, &str)> {
-        let mut servers = Vec::new();
-        
-        // Check for Cargo.toml -> rust-analyzer
-        if workspace.join("Cargo.toml").exists() {
-            servers.push((LanguageId::Rust, "rust-analyzer"));
-        }
-        
-        // Check for package.json -> typescript-language-server
-        if workspace.join("package.json").exists() {
-            servers.push((LanguageId::TypeScript, "typescript-language-server"));
-        }
-        
-        // Check for go.mod -> gopls
-        if workspace.join("go.mod").exists() {
-            servers.push((LanguageId::Go, "gopls"));
-        }
-        
-        servers
-    }
-}
-```
-
-## Tree-sitter Architecture
-
-### Parser Manager
-
-```rust
-pub struct ParserManager {
-    parsers: HashMap<LanguageId, Parser>,
-    queries: HashMap<LanguageId, QueryMap>,
-}
-
-pub struct QueryMap {
-    function_definitions: Query,
-    struct_definitions: Query,
-    imports: Query,
-    // ... language-specific queries
-}
-```
-
-### Supported Languages
-
-```rust
-pub enum LanguageId {
-    Rust,
-    TypeScript,
-    JavaScript,
-    Python,
-    Go,
-}
-```
-
-### Query Examples
-
-```rust
-// Find all function definitions (Rust)
-const RUST_FUNCTION_QUERY: &str = r#"
-(function_item
-  name: (identifier) @name)
-"#;
-
-// Find all struct definitions (Rust)
-const RUST_STRUCT_QUERY: &str = r#"
-(struct_item
-  name: (type_identifier) @name)
-"#;
-
-// Find all imports (TypeScript)
-const TS_IMPORT_QUERY: &str = r#"
-(import_statement
-  source: (string) @source)
-"#;
-```
-
-### Usage in Agent
-
-```rust
-// Agent can use tree-sitter for fast code queries
-let parser_manager = ParserManager::new();
-let tree = parser_manager.parse_file(&path, &content)?;
-let functions = parser_manager.query_functions(&tree, &content)?;
-
-// Or use LSP for more accurate results
-let lsp_manager = LspManager::new(workspace);
-let definition = lsp_manager.goto_definition(&path, position).await?;
-```
-
-## Data Flow
+## LSP + Tree-Sitter Code Intelligence
 
 ```
-User Input (TUI)
-       │
-       ▼
-┌──────────────────┐
-│ Parse Intent     │ ─── "Where is X defined?"
-└──────────────────┘
-       │
-       ▼
-┌──────────────────────────────────────┐
-│ Choose Code Intelligence Tool        │
-│                                      │
-│  - LSP for accurate cross-file refs  │
-│  - Tree-sitter for fast local AST    │
-└──────────────────────────────────────┘
-       │
-       ▼
-┌──────────────────┐
-│ Execute Query    │
-└──────────────────┘
-       │
-       ▼
-┌──────────────────┐
-│   LLM Request    │ ─── Context + query results + instruction
-└──────────────────┘
-       │
-       ▼
-┌──────────────────┐
-│  Update TUI      │ ─── Display results in chat panel
-└──────────────────┘
+Tool Call (e.g., "find references of X in main.rs")
+  │
+  ├── LspDefinitionTool
+  │     └── serana-lsp::LspManager
+  │           ├── LspClient (rust-analyzer)
+  │           └── LspTransport (stdio, JSON-RPC 2.0)
+  │
+  ├── AstOutlineTool
+  │     └── serana-tree-sitter::ParserManager
+  │           └── SyntaxTree (language-specific queries)
+  │
+  └── SearchTool (ripgrep fallback)
 ```
 
-## Key Traits
+## Self-Evolution
 
-### `Agent`
-```rust
-#[async_trait]
-pub trait Agent: Send + Sync {
-    fn name(&self) -> &'static str;
-    async fn execute(&self, instruction: &str) -> Result<AgentOutput>;
-    async fn chat(&self, message: &str) -> Result<String>;
-}
+Serana can modify her own source code through `self_evolve` tools:
+
+```
+ReadSelfTool  → read source files
+EditSelfTool  → edit source files (hashline format)
+CargoTool     → `cargo build`, `cargo test`
+GitTool       → `git add`, `git commit`, etc.
+SearchCodeTool → ripgrep across own codebase
+RecordModificationTool → log to MetaCognition
+ModificationStatsTool  → query modification history
+ReflectModificationTool → extract lessons from modifications
+VerificationSystem (serana-core) → build + test before committing
 ```
 
-### `Tool`
-```rust
-#[async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn description(&self) -> &'static str;
-    async fn execute(&self, input: Value) -> Result<Value>;
-}
-```
-
-### `LlmClient`
-```rust
-#[async_trait]
-pub trait LlmClient: Send + Sync {
-    async fn chat(&self, messages: &[Message]) -> Result<String>;
-}
-```
-
-## Module Responsibilities
-
-| Module | Purpose |
-|--------|---------|
-| `config` | Configuration loading from ~/.serana/config.toml, provider setup, environment overrides |
-| `tui` | Terminal UI, event handling, widget rendering |
-| `web` | Web frontend stub (future implementation) |
-| `agent` | Agent trait, planning logic, task execution |
-| `tools` | Tool trait, file/shell/search implementations |
-| `lsp` | LSP client, transport, request/response handling |
-| `tree_sitter` | Parser management, syntax queries, language bindings |
-| `llm` | LLM client trait, OpenAI implementation, prompt templates |
-| `context` | File gathering, context compaction for long sessions |
-
-## Configuration
-
-Configuration is loaded from `~/.serana/config.toml` with environment variable overrides.
-
-### Provider Configuration
-
-```toml
-[provider]
-name = "openai"  # openai, anthropic, ollama, openrouter, custom
-url = ""         # Required only for custom provider
-
-[llm]
-model = "gpt-4"
-temperature = 0.7
-
-[agent]
-max_tokens = 4096
-```
-
-### Environment Variables
-
-| Variable | Purpose |
-|---------|---------|
-| `SERANA_PROVIDER` | Override provider name |
-| `SERANA_API_KEY` | API key (takes precedence over config) |
-| `SERANA_MODEL` | Override model name |
-| `OPENAI_API_KEY` | Fallback API key for OpenAI |
-## Extension Points
-
-### Adding a New Language Server
-
-```rust
-impl LspManager {
-    pub fn register_server(&mut self, lang: LanguageId, command: &str) -> Result<()> {
-        let client = LspClient::spawn(command, &self.workspace_root)?;
-        self.servers.insert(lang, client);
-        Ok(())
-    }
-}
-```
-
-### Adding a New Tree-sitter Language
-
-```rust
-impl ParserManager {
-    pub fn register_language(&mut self, lang: LanguageId, language: Language) -> Result<()> {
-        let mut parser = Parser::new();
-        parser.set_language(&language)?;
-        self.parsers.insert(lang, parser);
-        self.load_queries(lang)?;
-        Ok(())
-    }
-}
-```
-
-## Future Work
-
-1. **LSP implementation** - Full LSP client with rust-analyzer support
-2. **Tree-sitter integration** - Parse Rust/TypeScript, query syntax trees
-3. **Tool execution loop** - Structured output parsing from LLM
-4. **Context compaction** - Summarize long conversations
-5. **RAG integration** - Index codebase for semantic search
-6. **Web frontend** - Alternative interface via WebSocket
-7. **Hermes capabilities** - Multi-agent collaboration, self-reflection
+All modifications are tracked in `MetaCognition` with timestamps, pass/fail status, and extracted lessons for continuous improvement.
