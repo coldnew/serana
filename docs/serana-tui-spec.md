@@ -63,8 +63,8 @@ Each message stored in `app.messages`:
 `serana_tui::run(workspace, model, provider, config)`:
 1. Creates `Tui` (terminal raw mode)
 2. Creates `EventHandler` + mpsc channels
-3. Initializes `CodingAgent` with `AgentCallbacks` (streaming delta → `stream_tx`)
-4. Creates `ToolRegistry`, registers self-evolve + LSP tools
+3. Builds `HermesAgent` through `AgentFactory::hermes` with `AgentCallbacks` (streaming delta → `stream_tx`)
+4. Creates the Hermes tool registry with self-evolution, LSP, and skill tools
 5. Initializes `SessionStore` + `SkillStore`
 6. Creates `App` and enters render/event loop
 

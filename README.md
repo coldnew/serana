@@ -1,6 +1,6 @@
 # Serana
 
-A personal coding agent built in Rust with TUI frontend.
+A personal Hermes agent built in Rust with TUI frontend.
 
 ## Features
 

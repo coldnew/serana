@@ -2,7 +2,7 @@
 
 ## Overview
 
-Serana is a personal coding agent built in Rust. It uses a workspace of 7 crates providing LLM integration, code intelligence (LSP + tree-sitter), tool execution, agent orchestration, and a TUI interface.
+Serana is a personal Hermes agent built in Rust. It uses a workspace of 7 crates providing LLM integration, code intelligence (LSP + tree-sitter), tool execution, agent orchestration, and a TUI interface.
 
 ## Crate Dependency Graph
 
@@ -39,7 +39,7 @@ User Input (TUI or CLI)
   ▼
 ┌──────────────────────────────────────────────────────────┐
 │                    serana-agent                           │
-│  CodingAgent::execute(instruction)                       │
+│  HermesAgent::execute(instruction)                       │
 │                                                          │
 │  1. Build system prompt (prompt_builder)                 │
 │  2. Call LLM (serana-llm → LlmClient)                    │
@@ -68,10 +68,10 @@ User Input (TUI or CLI)
 | `serana-lsp` | LSP client protocol: spawn language servers, JSON-RPC 2.0, go-to-def, references, hover | `LspManager`, `LspClient`, `Position`, `Location` |
 | `serana-tree-sitter` | AST parsing and syntax queries for Rust, JS/TS, Python, Go | `ParserManager`, `FunctionDef`, `StructDef`, `Import` |
 | `serana-tools` | 24 `Tool` implementations: file ops, shell, search, git, GitHub, SSH, eval, browser, debugger, memory, MCP, skills, etc. | `ToolRegistry`, `ShellSession`, `DapSession`, `MemoryStore`, `McpConnection` |
-| `serana-agent` | Agent orchestration: execute loop, context compression, session persistence, subagent spawning, stream rules, message validation | `CodingAgent`, `SessionStore`, `SubagentSpawner`, `ContextCompressor`, `StreamRuleEngine` |
+| `serana-agent` | Agent orchestration: execute loop, context compression, session persistence, subagent spawning, stream rules, message validation | `HermesAgent`, `SessionStore`, `SubagentSpawner`, `ContextCompressor`, `StreamRuleEngine` |
 | `serana-tui` | Terminal UI: ratatui rendering, event loop, markdown, syntax highlighting, editor, dialogs | `run()`, `App`, `Tui` |
 
-## Core Execution Loop (CodingAgent)
+## Core Execution Loop (HermesAgent)
 
 ```
 ┌─────────────────────┐

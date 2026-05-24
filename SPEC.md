@@ -1,8 +1,8 @@
-# SPEC: Serana — Personal Coding Agent
+# SPEC: Serana — Personal Hermes Agent
 
 ## Objective
 
-A personal coding agent in Rust that understands codebases (via LSP + tree-sitter), edits files, runs commands, searches the web, debugs programs, persists memory, and answers code questions — all from a terminal UI.
+A personal Hermes agent in Rust that understands codebases (via LSP + tree-sitter), edits files, runs commands, searches the web, debugs programs, persists memory, and answers code questions — all from a terminal UI.
 
 **User**: Single developer (coldnew) for personal productivity.
 **Architecture**: 7-crate workspace with one-directional dependency flow.
@@ -42,7 +42,7 @@ serana (binary)
   ├── serana-tools   — 24 Tool impls: fs, shell, search, git, GitHub, SSH, eval, debug,
   │                    browser, MCP, memory, skills, code review, checkpoint, etc.
   │
-  ├── serana-agent   — Agent orchestration: CodingAgent, session persistence, subagent
+  ├── serana-agent   — Agent orchestration: HermesAgent, session persistence, subagent
   │                    spawning, context compression, stream rules, message validation
   │
   └── serana-tui     — TUI: ratatui rendering, event loop, markdown, syntax highlight,

@@ -13,7 +13,8 @@ The main agent that orchestrates LLM calls, tool execution, context management, 
 
 | Module | Exports | Purpose |
 |--------|---------|---------|
-| `coding` | `CodingAgent` | Main agent implementation: execute loop, system prompt, tool integration |
+| `hermes` | `HermesAgent` | Canonical agent implementation: execute loop, system prompt, tool integration |
+| `coding` | `CodingAgent` | Deprecated compatibility module and alias for `HermesAgent` |
 | `prompt_builder` | `PromptBuilder` | Assembles system prompt from personality, memory, skills, context files |
 | `tool_executor` | `execute_tools_concurrent`, `ToolExecutionResult` | Iterates tool calls, invokes via ToolRegistry |
 | `compressor` | `ContextCompressor` | Checks token usage, summaries old messages to stay within budget |
@@ -24,7 +25,7 @@ The main agent that orchestrates LLM calls, tool execution, context management, 
 | `message_validation` | `validate_message_alternation`, `fix_message_alternation` | Ensures correct user/assistant/tool role alternation |
 | `stream_rules` | `StreamRuleEngine`, `StreamRule` | TTSR: pattern-match streaming output, inject system reminders mid-stream |
 
-## CodingAgent
+## HermesAgent
 
 ### Execute Loop
 
@@ -74,7 +75,7 @@ Assembles system prompt from sections (in order):
 
 ## SubagentSpawner
 
-- Spawns independent `CodingAgent` instances as `tokio::spawn` tasks
+- Spawns independent `HermesAgent` instances as `tokio::spawn` tasks
 - Each subagent gets its own `IterationBudget` (default: 20)
 - Results collected as `JoinHandle<SubagentResult>`
 - Uses shared `Arc<dyn LlmClient>` for the LLM

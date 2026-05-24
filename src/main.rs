@@ -1,14 +1,13 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use serana_agent::CodingAgent;
+use serana_agent::HermesAgent;
 use serana_core::{Agent, Config, LlmClient};
 use serana_llm::OpenAiClient;
-use serana_tools::ToolRegistry;
 use std::io::IsTerminal;
 
 #[derive(Parser)]
 #[command(name = "serana")]
-#[command(about = "Personal coding agent", long_about = None)]
+#[command(about = "Personal Hermes agent", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -75,8 +74,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
     let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
-    let tools = ToolRegistry::new();
-    let agent = CodingAgent::new(llm, tools);
+    let agent = HermesAgent::hermes(llm);
 
     println!("Running: {}", instruction);
     let result = agent.execute(instruction).await?;

@@ -61,7 +61,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Personal coding agent"
+description = "Personal Hermes agent"
 
 [dependencies]
 serana-core = { path = "crates/serana-core" }
