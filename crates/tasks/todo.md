@@ -160,3 +160,16 @@ Review:
 - Changed status-line rendering to use dot separators, shorter mode/context/session labels, `@workspace`, and cleaner git dirty markers.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
 - `rustfmt --edition 2021 --check serana-tui/src/theme.rs serana-tui/src/status_line.rs serana-tui/src/ui.rs` reports formatting changes in pre-existing nearby code; I left that churn out of this slice.
+
+Success criteria for status-line layout slice:
+- [x] Split built-in status presets into left and right segment groups like `ref/oh-my-pi`.
+- [x] Add a right-side session segment.
+- [x] Render a width-aware filled gap between left and right status groups.
+- [x] Drop overflowing status segments from the right, then the left, to keep the footer within terminal width.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Status presets now model left/right segment groups instead of one linear list.
+- The default preset now follows the reference shape: identity/model/mode/path/git/context/cost on the left and session/runtime metadata on the right.
+- Status-line rendering joins visible segments, fills the center gap with the theme border style, and prunes overflow.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

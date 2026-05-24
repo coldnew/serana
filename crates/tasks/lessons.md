@@ -36,3 +36,4 @@
 - Deprecate compatibility modules as well as aliases; otherwise old module paths remain attractive even when the canonical type has moved.
 - Use deprecation warnings as migration checks: once the parent binary stopped warning, the remaining old names were limited to documented compatibility surfaces.
 - For the TUI rewrite, derive small Rust-native slices from `ref/oh-my-pi` docs and components rather than copying the TypeScript implementation wholesale.
+- Status-line parity requires modeling layout, not just labels. Keep left/right groups and width pruning in the Rust TUI so future segments can match the reference footer behavior.

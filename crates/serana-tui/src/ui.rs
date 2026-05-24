@@ -457,46 +457,105 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
 fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
     let s = app.symbols;
-    let sep = format!(" {} ", s.sep_dot);
+    let sep = Span::styled(format!(" {} ", s.sep_dot), theme.dim);
+    let fill = s.hr_char;
 
-    let preset_segments = crate::status_line::resolve_preset(&app.status_preset);
-    let mut spans: Vec<Span<'static>> = Vec::new();
+    let preset = crate::status_line::resolve_preset(&app.status_preset);
+    let mut left = render_status_group(&preset.left_segments, app, &theme, &sep);
+    let mut right = render_status_group(&preset.right_segments, app, &theme, &sep);
 
-    for seg in &preset_segments {
-        let maybe_span = render_status_segment(*seg, app, &theme, &sep);
-        if let Some(sp) = maybe_span {
-            spans.push(sp);
-        }
+    let width = area.width as usize;
+    while status_width(&left) + status_width(&right) + gap_width(&left, &right) > width
+        && !right.is_empty()
+    {
+        drop_last_status_segment(&mut right);
+    }
+    while status_width(&left) + status_width(&right) + gap_width(&left, &right) > width
+        && !left.is_empty()
+    {
+        drop_last_status_segment(&mut left);
     }
 
-    spans.push(Span::raw(" "));
+    let left_width = status_width(&left);
+    let right_width = status_width(&right);
+    let mut spans = left;
+    if !spans.is_empty() && !right.is_empty() {
+        let fill_width = width.saturating_sub(left_width + right_width).max(1);
+        spans.push(Span::styled(fill.repeat(fill_width), theme.border));
+    }
+    spans.extend(right);
+
     let line = Line::from(spans);
     let para = Paragraph::new(line);
     frame.render_widget(para, area);
+}
+
+fn render_status_group(
+    segments: &[crate::status_line::StatusSegment],
+    app: &App,
+    theme: &Theme,
+    sep: &Span<'static>,
+) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    for seg in segments {
+        if let Some(sp) = render_status_segment(*seg, app, theme) {
+            if !spans.is_empty() {
+                spans.push(sep.clone());
+            }
+            spans.push(sp);
+        }
+    }
+    spans
+}
+
+fn status_width(spans: &[Span<'static>]) -> usize {
+    spans.iter().map(|sp| sp.content.chars().count()).sum()
+}
+
+fn gap_width(left: &[Span<'static>], right: &[Span<'static>]) -> usize {
+    if left.is_empty() || right.is_empty() {
+        0
+    } else {
+        1
+    }
+}
+
+fn drop_last_status_segment(spans: &mut Vec<Span<'static>>) {
+    spans.pop();
+    if spans.last().is_some_and(|span| span.content.trim() == "·") {
+        spans.pop();
+    }
 }
 
 fn render_status_segment(
     seg: crate::status_line::StatusSegment,
     app: &App,
     theme: &Theme,
-    sep: &str,
 ) -> Option<Span<'static>> {
     use crate::status_line::StatusSegment::*;
     match seg {
-        Pi => Some(Span::styled(format!("π{}", sep), theme.accent)),
+        Pi => Some(Span::styled("π", theme.accent)),
         Mode => {
             let (text, style) = match app.mode {
                 AppMode::Normal => ("normal", theme.success),
                 AppMode::Input => ("input", theme.accent),
                 AppMode::Processing => ("busy", theme.warning),
             };
-            Some(Span::styled(format!("{}{}", text, sep), style))
+            Some(Span::styled(text, style))
+        }
+        Session => {
+            let session = app
+                .current_session_id
+                .as_deref()
+                .map(|id| id.chars().take(8).collect::<String>())
+                .unwrap_or_else(|| "new".to_string());
+            Some(Span::styled(session, theme.dim))
         }
         Model => Some(Span::styled(
-            format!("{}/{}{}", app.provider, app.model, sep),
+            format!("{}/{}", app.provider, app.model),
             theme.info,
         )),
-        Hostname => Some(Span::styled(format!("{}{}", app.hostname, sep), theme.dim)),
+        Hostname => Some(Span::styled(app.hostname.clone(), theme.dim)),
         Git => app.git_branch.as_ref().map(|branch| {
             let mut text = branch.clone();
             if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
@@ -512,7 +571,6 @@ fn render_status_segment(
                 }
                 text.push_str(&format!(" {}", parts.join(" ")));
             }
-            text.push_str(sep);
             let style = if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
                 theme.warning
             } else {
@@ -526,13 +584,13 @@ fn render_status_segment(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("workspace");
-            Some(Span::styled(format!("@{}{}", name, sep), theme.dim))
+            Some(Span::styled(format!("@{}", name), theme.dim))
         }
         Tokens => {
             let total_in = app.tokens_input + app.tokens_cache_read;
             if total_in > 0 || app.tokens_output > 0 {
                 Some(Span::styled(
-                    format!("{}k/{}k{}", total_in / 1000, app.tokens_output / 1000, sep),
+                    format!("{}k/{}k", total_in / 1000, app.tokens_output / 1000),
                     theme.dim,
                 ))
             } else {
@@ -542,7 +600,7 @@ fn render_status_segment(
         TokenRate => {
             let rate = app.token_rate();
             if rate > 0.0 {
-                Some(Span::styled(format!("@{:.0}t/s{}", rate, sep), theme.dim))
+                Some(Span::styled(format!("@{:.0}t/s", rate), theme.dim))
             } else {
                 None
             }
@@ -550,18 +608,19 @@ fn render_status_segment(
         ContextPct => {
             let total_in = app.tokens_input + app.tokens_cache_read;
             let total_tokens = total_in + app.tokens_output;
-            if app.context_window > 0 && total_tokens > 0 {
-                let pct = (total_tokens as f64 / app.context_window as f64 * 100.0) as u32;
-                if pct > 0 {
-                    let style = if pct >= 90 {
-                        theme.error
-                    } else if pct >= 70 {
-                        theme.warning
-                    } else {
-                        theme.dim
-                    };
-                    return Some(Span::styled(format!("{}%{}", pct, sep), style));
-                }
+            if app.context_window > 0 {
+                let pct = total_tokens as f64 / app.context_window as f64 * 100.0;
+                let style = if pct >= 90.0 {
+                    theme.error
+                } else if pct >= 70.0 {
+                    theme.warning
+                } else {
+                    theme.dim
+                };
+                return Some(Span::styled(
+                    format!("{:.1}%/{}k", pct, app.context_window / 1000),
+                    style,
+                ));
             }
             None
         }
@@ -569,17 +628,14 @@ fn render_status_segment(
             let cost = app.cost_estimate();
             if cost > 0.0 {
                 Some(Span::styled(
-                    format!("${:.2}{}", cost, sep),
+                    format!("${:.2}", cost),
                     Style::new().fg(theme::DIFF_YELLOW),
                 ))
             } else {
                 None
             }
         }
-        SessionTime => Some(Span::styled(
-            format!("{}{}", app.session_elapsed(), sep),
-            theme.dim,
-        )),
+        SessionTime => Some(Span::styled(app.session_elapsed(), theme.dim)),
         ThinkingLevel => {
             if app.thinking_level != crate::app::ThinkingLevel::Off {
                 let label = match app.thinking_level {
@@ -588,10 +644,7 @@ fn render_status_segment(
                     crate::app::ThinkingLevel::High => "think:high",
                     _ => return None,
                 };
-                Some(Span::styled(
-                    format!("{}{}", label, sep),
-                    Style::new().fg(theme::AQUAMARINE),
-                ))
+                Some(Span::styled(label, Style::new().fg(theme::AQUAMARINE)))
             } else {
                 None
             }
@@ -606,7 +659,7 @@ fn render_status_segment(
                     theme.dim
                 };
                 Some(Span::styled(
-                    format!("iter:{}/{}{}", app.iterations_used, app.iterations_max, sep),
+                    format!("iter:{}/{}", app.iterations_used, app.iterations_max),
                     style,
                 ))
             } else {

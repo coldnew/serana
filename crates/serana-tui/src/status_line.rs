@@ -8,6 +8,7 @@ pub enum StatusSegment {
     Pi,
     Mode,
     Model,
+    Session,
     Hostname,
     Git,
     Workspace,
@@ -24,7 +25,8 @@ pub enum StatusSegment {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusPreset {
     pub name: String,
-    pub segments: Vec<StatusSegment>,
+    pub left_segments: Vec<StatusSegment>,
+    pub right_segments: Vec<StatusSegment>,
 }
 
 /// Built-in presets.
@@ -32,45 +34,56 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
     vec![
         StatusPreset {
             name: "default".into(),
-            segments: vec![
+            left_segments: vec![
                 StatusSegment::Pi,
                 StatusSegment::Model,
+                StatusSegment::Mode,
                 StatusSegment::Workspace,
                 StatusSegment::Git,
-                StatusSegment::Tokens,
                 StatusSegment::ContextPct,
                 StatusSegment::Cost,
+            ],
+            right_segments: vec![
+                StatusSegment::Session,
                 StatusSegment::SessionTime,
-                StatusSegment::Mode,
                 StatusSegment::ThinkingLevel,
                 StatusSegment::Iterations,
             ],
         },
         StatusPreset {
             name: "compact".into(),
-            segments: vec![
-                StatusSegment::Pi,
+            left_segments: vec![
                 StatusSegment::Model,
-                StatusSegment::Tokens,
+                StatusSegment::Mode,
+                StatusSegment::Git,
+            ],
+            right_segments: vec![
+                StatusSegment::Session,
+                StatusSegment::Cost,
                 StatusSegment::ContextPct,
-                StatusSegment::SessionTime,
             ],
         },
         StatusPreset {
             name: "minimal".into(),
-            segments: vec![
-                StatusSegment::Pi,
-                StatusSegment::Model,
-                StatusSegment::SessionTime,
+            left_segments: vec![StatusSegment::Workspace, StatusSegment::Git],
+            right_segments: vec![
+                StatusSegment::Session,
+                StatusSegment::Mode,
+                StatusSegment::ContextPct,
             ],
         },
         StatusPreset {
             name: "dev".into(),
-            segments: vec![
+            left_segments: vec![
                 StatusSegment::Pi,
+                StatusSegment::Hostname,
                 StatusSegment::Model,
+                StatusSegment::Mode,
                 StatusSegment::Workspace,
                 StatusSegment::Git,
+            ],
+            right_segments: vec![
+                StatusSegment::Session,
                 StatusSegment::Tokens,
                 StatusSegment::TokenRate,
                 StatusSegment::ContextPct,
@@ -81,9 +94,9 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
         },
         StatusPreset {
             name: "cost-focus".into(),
-            segments: vec![
-                StatusSegment::Pi,
-                StatusSegment::Model,
+            left_segments: vec![StatusSegment::Model, StatusSegment::Mode],
+            right_segments: vec![
+                StatusSegment::Session,
                 StatusSegment::Tokens,
                 StatusSegment::TokenRate,
                 StatusSegment::Cost,
@@ -94,12 +107,11 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
     ]
 }
 
-/// Resolve a preset name to its segment list.
-pub fn resolve_preset(name: &str) -> Vec<StatusSegment> {
+/// Resolve a preset name to its segment groups.
+pub fn resolve_preset(name: &str) -> StatusPreset {
     builtin_presets()
         .into_iter()
         .find(|p| p.name == name)
-        .map(|p| p.segments)
         .unwrap_or_else(|| {
             // Default fallback
             resolve_preset("default")
@@ -117,24 +129,27 @@ mod tests {
 
     #[test]
     fn test_default_preset_has_all_segments() {
-        let segs = resolve_preset("default");
-        assert!(segs.contains(&StatusSegment::Pi));
-        assert!(segs.contains(&StatusSegment::SessionTime));
-        assert!(segs.contains(&StatusSegment::Cost));
+        let preset = resolve_preset("default");
+        assert!(preset.left_segments.contains(&StatusSegment::Pi));
+        assert!(preset.left_segments.contains(&StatusSegment::Cost));
+        assert!(preset.right_segments.contains(&StatusSegment::Session));
     }
 
     #[test]
     fn test_compact_is_shorter() {
         let def = resolve_preset("default");
         let compact = resolve_preset("compact");
-        assert!(compact.len() < def.len());
+        let def_len = def.left_segments.len() + def.right_segments.len();
+        let compact_len = compact.left_segments.len() + compact.right_segments.len();
+        assert!(compact_len < def_len);
     }
 
     #[test]
     fn test_unknown_preset_falls_back() {
         let segs = resolve_preset("nonexistent");
         let def = resolve_preset("default");
-        assert_eq!(segs.len(), def.len());
+        assert_eq!(segs.left_segments.len(), def.left_segments.len());
+        assert_eq!(segs.right_segments.len(), def.right_segments.len());
     }
 
     #[test]
