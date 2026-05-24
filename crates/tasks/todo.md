@@ -173,3 +173,16 @@ Review:
 - The default preset now follows the reference shape: identity/model/mode/path/git/context/cost on the left and session/runtime metadata on the right.
 - Status-line rendering joins visible segments, fills the center gap with the theme border style, and prunes overflow.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for welcome panel slice:
+- [x] Move the welcome title into the welcome component border like `ref/oh-my-pi`.
+- [x] Hide the separate global header while the welcome screen is active.
+- [x] Keep the two-column welcome layout inside one bordered panel with a center divider.
+- [x] Show real recent session metadata in the welcome panel.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Welcome now renders as one bordered panel with embedded `Serana v...` title.
+- The welcome screen no longer consumes a separate top header band.
+- The right column now lists up to three stored sessions with timestamps instead of always showing a placeholder.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

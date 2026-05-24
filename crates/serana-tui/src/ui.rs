@@ -19,12 +19,11 @@ const PI_LOGO: &[&str] = &[
 
 fn gradient_logo_style(_area: Rect) -> Vec<(String, Style)> {
     let colors = [
-        ratatui::style::Color::Rgb(255, 139, 109),
-        ratatui::style::Color::Rgb(255, 170, 130),
-        ratatui::style::Color::Rgb(200, 200, 160),
-        ratatui::style::Color::Rgb(130, 210, 200),
-        ratatui::style::Color::Rgb(91, 192, 190),
-        ratatui::style::Color::Rgb(111, 255, 233),
+        ratatui::style::Color::Rgb(255, 92, 200),
+        ratatui::style::Color::Rgb(200, 110, 255),
+        ratatui::style::Color::Rgb(120, 130, 255),
+        ratatui::style::Color::Rgb(60, 200, 255),
+        ratatui::style::Color::Rgb(120, 255, 220),
     ];
     PI_LOGO
         .iter()
@@ -57,10 +56,31 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
     let s = app.symbols;
 
-    let cols = Layout::horizontal([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)]);
-    let areas = cols.split(area);
-    let left_area = areas[0];
-    let right_area = areas[1];
+    if area.width < 4 || area.height < 4 {
+        return;
+    }
+
+    let title = format!(" Serana v{} ", app.version);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme.border)
+        .title(Span::styled(title, theme.muted));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let show_right = inner.width >= 58;
+    let cols = if show_right {
+        Layout::horizontal([
+            Constraint::Percentage(35),
+            Constraint::Length(1),
+            Constraint::Percentage(65),
+        ])
+        .split(inner)
+    } else {
+        Layout::horizontal([Constraint::Percentage(100)]).split(inner)
+    };
+    let left_area = cols[0];
+    let right_area = if show_right { Some(cols[2]) } else { None };
 
     let mut left_lines = vec![
         Line::from(""),
@@ -92,9 +112,15 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     let left_para = Paragraph::new(left_lines);
     frame.render_widget(left_para, left_area);
 
-    if right_area.width < 20 {
+    let Some(right_area) = right_area else {
         return;
-    }
+    };
+
+    let divider = Paragraph::new(vec![
+        Line::from(Span::styled(s.box_round.vertical, theme.border));
+        right_area.height as usize
+    ]);
+    frame.render_widget(divider, cols[1]);
 
     let mut right_lines: Vec<Line> = Vec::new();
     let sep = format!(" {}", s.hr_char.repeat(right_area.width.saturating_sub(3) as usize));
@@ -134,13 +160,40 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
         " Recent sessions",
         theme.accent,
     )));
-    right_lines.push(Line::from(Span::styled(
-        format!("  {} No recent sessions", s.bullet),
-        theme.dim,
-    )));
+    if app.recent_sessions.is_empty() {
+        right_lines.push(Line::from(Span::styled(
+            format!("  {} No recent sessions", s.bullet),
+            theme.dim,
+        )));
+    } else {
+        for session in app.recent_sessions.iter().take(3) {
+            let name = session.title.as_deref().unwrap_or(&session.id);
+            let date = session.updated_at.format("%m-%d %H:%M");
+            right_lines.push(Line::from(vec![
+                Span::styled(format!("  {} ", s.bullet), theme.dim),
+                Span::styled(
+                    truncate_text(name, right_area.width.saturating_sub(18) as usize),
+                    theme.muted,
+                ),
+                Span::styled(format!(" ({})", date), theme.dim),
+            ]));
+        }
+    }
 
     let right_para = Paragraph::new(right_lines);
     frame.render_widget(right_para, right_area);
+}
+
+fn truncate_text(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_string();
+    }
+    if width <= 1 {
+        return "…".chars().take(width).collect();
+    }
+    let mut out: String = text.chars().take(width - 1).collect();
+    out.push('…');
+    out
 }
 
 fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: &Symbols) -> Vec<Line<'static>> {
@@ -671,32 +724,29 @@ fn render_status_segment(
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let theme = Theme::default();
+    let showing_welcome = app.show_welcome && app.messages.is_empty();
 
     let main_layout = Layout::vertical([
-        Constraint::Length(if app.show_welcome && app.messages.is_empty() {
-            frame.area().height.min(25)
-        } else {
-            3
-        }),
+        Constraint::Length(if showing_welcome { 0 } else { 3 }),
         Constraint::Min(0),
         Constraint::Length(3),
         Constraint::Length(1),
     ]);
     let [header_area, content_area, input_area, status_area] = main_layout.areas(frame.area());
 
-    let title = format!(" Serana v{} ", app.version);
-    let header = Paragraph::new(Line::from(Span::styled(&title, theme.muted)))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(theme.border)
-                .title(title.clone()),
-        );
-    frame.render_widget(header, header_area);
+    if !showing_welcome {
+        let title = format!(" Serana v{} ", app.version);
+        let header = Paragraph::new(Line::from(Span::styled(&title, theme.muted)))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(theme.border)
+                    .title(title.clone()),
+            );
+        frame.render_widget(header, header_area);
+    }
 
-    if app.show_welcome && app.messages.is_empty() {
-        let cols = Layout::horizontal([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)]);
-        let _welcome_areas = cols.split(content_area);
+    if showing_welcome {
         render_welcome(frame, content_area, app);
     } else {
         render_messages(frame, content_area, app);
