@@ -40,7 +40,7 @@ pub fn render_tool_call(
         n if n.starts_with("ast_") => {
             render_ast(tool, header, symbols)
         }
-        _ => render_generic(tool, header, &theme),
+        _ => render_generic(tool, header, &theme, symbols),
     };
     lines.push(footer);
 
@@ -330,6 +330,7 @@ fn render_lsp(
     let mut lines = Vec::new();
     lines.push(Line::from(""));
     lines.push(header);
+    push_arg_summary(&mut lines, tool, &theme);
 
     let content = tool.result.as_deref().unwrap_or("");
     if content.is_empty() {
@@ -387,6 +388,7 @@ fn render_ast(
     let mut lines = Vec::new();
     lines.push(Line::from(""));
     lines.push(header);
+    push_arg_summary(&mut lines, tool, &theme);
 
     let content = tool.result.as_deref().unwrap_or("");
     if content.is_empty() {
@@ -441,37 +443,130 @@ fn render_generic(
     tool: &ToolCall,
     header: Line<'static>,
     theme: &Theme,
+    symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     lines.push(Line::from(""));
     lines.push(header);
 
-    if !tool.args.is_empty() {
-        let truncated = truncate(&tool.args, 80);
-        lines.push(Line::from(Span::styled(
-            format!("  args: {}", truncated),
-            theme.dim,
-        )));
-    }
+    push_arg_summary(&mut lines, tool, theme);
     if let Some(ref result) = tool.result {
         let result_style = match tool.status {
             ToolCallStatus::Error => theme.error,
             _ => theme.dim,
         };
-        for text_line in result.lines().take(PREVIEW_LINES) {
+        let result_lines = result.lines().count();
+        let status_icon = match tool.status {
+            ToolCallStatus::Error => symbols.error,
+            _ => symbols.success,
+        };
+        if result_lines == 0 {
             lines.push(Line::from(Span::styled(
-                format!("  {}", text_line),
+                format!("  {} done", status_icon),
                 result_style,
             )));
-        }
-        if result.lines().count() > PREVIEW_LINES {
+        } else if result_lines == 1 && result.len() < 80 {
             lines.push(Line::from(Span::styled(
-                format!("  ... ({} lines)", result.lines().count()),
+                format!("  {} {}", status_icon, result.trim()),
+                result_style,
+            )));
+        } else {
+            lines.push(Line::from(Span::styled(
+                format!("  {} {} lines", status_icon, result_lines),
+                result_style,
+            )));
+            for text_line in result.lines().take(PREVIEW_LINES) {
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", text_line),
+                    result_style,
+                )));
+            }
+        }
+        if result_lines > PREVIEW_LINES {
+            lines.push(Line::from(Span::styled(
+                format!("    ... ({} more)", result_lines - PREVIEW_LINES),
                 theme.dim,
             )));
         }
     }
     lines
+}
+
+fn push_arg_summary(lines: &mut Vec<Line<'static>>, tool: &ToolCall, theme: &Theme) {
+    if let Some(summary) = format_tool_args(tool) {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", truncate(&summary, 120)),
+            theme.dim,
+        )));
+    }
+}
+
+fn format_tool_args(tool: &ToolCall) -> Option<String> {
+    let val = serde_json::from_str::<serde_json::Value>(&tool.args).ok()?;
+    let map = val.as_object()?;
+    let get_str = |name: &str| map.get(name).and_then(|v| v.as_str()).map(str::to_string);
+    let get_array = |name: &str| {
+        map.get(name).and_then(|v| {
+            v.as_array().map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+        })
+    };
+
+    let summary = match tool.name.as_str() {
+        "read" | "read_file" | "read_self" | "write" | "write_file" | "edit" | "edit_file"
+        | "edit_self" | "apply_patch" => get_str("path").map(|path| format!("path: {}", path)),
+        "bash" | "cargo" | "git" | "verify_self" => get_str("command").or_else(|| get_str("args")),
+        "search" | "grep" | "ripgrep" => {
+            let mut parts = Vec::new();
+            if let Some(pattern) = get_str("pattern") {
+                parts.push(format!("pattern: {}", pattern));
+            }
+            if let Some(paths) = get_array("paths").filter(|paths| !paths.is_empty()) {
+                parts.push(format!("paths: {}", paths.join(", ")));
+            }
+            Some(parts.join(", ")).filter(|s| !s.is_empty())
+        }
+        name if name.starts_with("lsp_") => {
+            let parts = ["action", "file", "path", "symbol", "query"]
+                .into_iter()
+                .filter_map(get_str)
+                .collect::<Vec<_>>();
+            Some(parts.join(" ")).filter(|s| !s.is_empty())
+        }
+        name if name.starts_with("ast_") => get_str("path")
+            .or_else(|| get_str("file"))
+            .map(|path| format!("path: {}", path)),
+        "task" | "todo" | "todo_write" => map.get("tasks").and_then(|tasks| {
+            tasks
+                .as_array()
+                .map(|items| format!("{} task(s)", items.len()))
+        }),
+        _ => {
+            let mut parts = Vec::new();
+            let mut total = 0;
+            for (key, value) in map {
+                if key.starts_with('_') {
+                    continue;
+                }
+                let value = match value {
+                    serde_json::Value::String(s) => s.replace('\t', "   "),
+                    other => other.to_string(),
+                };
+                let entry = format!("{}: {}", key, value);
+                if total + entry.chars().count() > 160 {
+                    break;
+                }
+                total += entry.chars().count();
+                parts.push(entry);
+            }
+            Some(parts.join(", ")).filter(|s| !s.is_empty())
+        }
+    };
+
+    summary.filter(|s| !s.is_empty())
 }
 
 /// Extract a named argument from the tool's args JSON.
@@ -621,5 +716,55 @@ mod tests {
         );
         let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
         assert!(lines.iter().any(|l| l.to_string().contains("command failed")));
+    }
+
+    #[test]
+    fn test_generic_args_are_summarized() {
+        let tool = make_tool(
+            "custom_tool",
+            ToolCallStatus::Success,
+            r#"{"path":"src/main.rs","_internal":true,"count":2}"#,
+            Some("ok"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        let rendered: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        assert!(rendered.iter().any(|l| l.contains("path: src/main.rs")));
+        assert!(!rendered.iter().any(|l| l.contains("_internal")));
+    }
+
+    #[test]
+    fn test_lsp_and_ast_args_are_summarized() {
+        let lsp = make_tool(
+            "lsp_definition",
+            ToolCallStatus::Success,
+            r#"{"file":"src/main.rs","symbol":"main"}"#,
+            Some("[]"),
+        );
+        let ast = make_tool(
+            "ast_search",
+            ToolCallStatus::Success,
+            r#"{"path":"src/lib.rs"}"#,
+            Some("{}"),
+        );
+        let lsp_lines = render_tool_call(&lsp, &symbols::UNICODE, 80);
+        let ast_lines = render_tool_call(&ast, &symbols::UNICODE, 80);
+        assert!(lsp_lines
+            .iter()
+            .any(|l| l.to_string().contains("src/main.rs main")));
+        assert!(ast_lines
+            .iter()
+            .any(|l| l.to_string().contains("path: src/lib.rs")));
+    }
+
+    #[test]
+    fn test_generic_result_summary_counts_lines() {
+        let tool = make_tool(
+            "custom_tool",
+            ToolCallStatus::Success,
+            r#"{}"#,
+            Some("one\ntwo\nthree"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
+        assert!(lines.iter().any(|l| l.to_string().contains("3 lines")));
     }
 }

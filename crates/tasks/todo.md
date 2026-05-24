@@ -287,3 +287,17 @@ Review:
 - List item wraps insert continuation padding aligned under the item text.
 - Added tests for long paragraph, blockquote, and list wrapping.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for tool metadata slice:
+- [x] Render concise tool argument summaries instead of raw JSON for generic tool calls.
+- [x] Show concise LSP/AST argument metadata when available.
+- [x] Render generic tool results with status and line-count metadata before previews.
+- [x] Add focused tests for generic, LSP, AST, and result summary behavior.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Generic tool calls now render compact key/value argument summaries and skip private `_` fields.
+- LSP and AST renderers show concise argument metadata before results when useful fields are present.
+- Generic result previews now include success/error status and line-count metadata before expanded preview lines.
+- Added focused tests for generic arg summaries, LSP/AST summaries, and multi-line result summaries.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
