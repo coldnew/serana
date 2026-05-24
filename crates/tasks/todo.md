@@ -273,3 +273,17 @@ Review:
 - Horizontal padding is applied inside the input border, matching the reference editor's bordered layout.
 - The existing top-border status line, cursor drawing, wrapping, and scroll behavior remain in place.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown wrapping slice:
+- [x] Wrap styled Markdown paragraph lines to the renderer width instead of relying on outer clipping.
+- [x] Preserve blockquote borders on wrapped quote lines.
+- [x] Align wrapped list-item continuation lines under the item text.
+- [x] Add focused tests for long paragraph, blockquote, and list wrapping.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown flushing now wraps styled spans to the renderer width before conversation-level clamping.
+- Blockquote wraps repeat the quote border prefix on continuation rows.
+- List item wraps insert continuation padding aligned under the item text.
+- Added tests for long paragraph, blockquote, and list wrapping.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

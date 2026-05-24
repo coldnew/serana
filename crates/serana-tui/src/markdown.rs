@@ -323,15 +323,146 @@ impl<'a> MarkdownRenderer<'a> {
     fn flush_line(&mut self) {
         if !self.current_spans.is_empty() {
             let mut spans = std::mem::take(&mut self.current_spans);
+            let continuation_prefix = if self.in_list {
+                list_continuation_prefix(&spans)
+            } else {
+                Vec::new()
+            };
             if self.in_blockquote {
                 let mut quoted = vec![Span::styled("│ ".to_string(), self.theme.quote)];
                 quoted.append(&mut spans);
-                self.lines.push(Line::from(quoted));
+                let mut quoted_prefix = vec![Span::styled("│ ".to_string(), self.theme.quote)];
+                quoted_prefix.extend(continuation_prefix);
+                self.lines
+                    .extend(wrap_spans(quoted, self.width, quoted_prefix));
             } else {
-                self.lines.push(Line::from(spans));
+                self.lines
+                    .extend(wrap_spans(spans, self.width, continuation_prefix));
             }
         }
     }
+}
+
+fn list_continuation_prefix(spans: &[Span<'static>]) -> Vec<Span<'static>> {
+    let mut width = 0;
+    for span in spans {
+        let text = span.content.as_ref();
+        if text.trim().is_empty() {
+            width += text.chars().count();
+            continue;
+        }
+        if text.ends_with(". ") || text == "- " || text == "✓ " || text == "○ " {
+            width += text.chars().count();
+            break;
+        }
+        break;
+    }
+    if width == 0 {
+        Vec::new()
+    } else {
+        vec![Span::raw(" ".repeat(width))]
+    }
+}
+
+fn wrap_spans(
+    spans: Vec<Span<'static>>,
+    width: usize,
+    continuation_prefix: Vec<Span<'static>>,
+) -> Vec<Line<'static>> {
+    if width == 0 {
+        return vec![Line::from("")];
+    }
+
+    let continuation_prefix = clamp_spans(continuation_prefix, width.saturating_sub(1));
+    let continuation_width = spans_width(&continuation_prefix);
+    let mut lines = Vec::new();
+    let mut current = Vec::new();
+    let mut current_width = 0;
+
+    for span in spans {
+        let style = span.style;
+        let mut text = span.content.to_string();
+        while !text.is_empty() {
+            let remaining = width.saturating_sub(current_width);
+            if remaining == 0 {
+                lines.push(Line::from(std::mem::take(&mut current)));
+                current_width = 0;
+                if !continuation_prefix.is_empty() {
+                    current.extend(clone_spans(&continuation_prefix));
+                    current_width = continuation_width;
+                }
+                continue;
+            }
+
+            let text_width = text.chars().count();
+            if text_width <= remaining {
+                current.push(Span::styled(text, style));
+                current_width += text_width;
+                break;
+            }
+
+            let (head, tail) = split_at_char_width(&text, remaining);
+            if !head.is_empty() {
+                current.push(Span::styled(head, style));
+            }
+            lines.push(Line::from(std::mem::take(&mut current)));
+            current_width = 0;
+            text = tail;
+            if !continuation_prefix.is_empty() {
+                current.extend(clone_spans(&continuation_prefix));
+                current_width = continuation_width;
+            }
+        }
+    }
+
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(Line::from(current));
+    }
+    lines
+}
+
+fn clone_spans(spans: &[Span<'static>]) -> Vec<Span<'static>> {
+    spans
+        .iter()
+        .map(|span| Span::styled(span.content.to_string(), span.style))
+        .collect()
+}
+
+fn clamp_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
+    let mut remaining = width;
+    let mut out = Vec::new();
+    for span in spans {
+        if remaining == 0 {
+            break;
+        }
+        let text = span.content.to_string();
+        let text_width = text.chars().count();
+        if text_width <= remaining {
+            out.push(Span::styled(text, span.style));
+            remaining -= text_width;
+        } else {
+            let (head, _) = split_at_char_width(&text, remaining);
+            out.push(Span::styled(head, span.style));
+            remaining = 0;
+        }
+    }
+    out
+}
+
+fn spans_width(spans: &[Span<'static>]) -> usize {
+    spans
+        .iter()
+        .map(|span| span.content.chars().count())
+        .sum()
+}
+
+fn split_at_char_width(text: &str, width: usize) -> (String, String) {
+    let split = text
+        .char_indices()
+        .nth(width)
+        .map(|(idx, _)| idx)
+        .unwrap_or(text.len());
+    (text[..split].to_string(), text[split..].to_string())
 }
 
 #[cfg(test)]
@@ -374,5 +505,33 @@ mod tests {
             let s = l.clone().to_string();
             s.contains("cargo run")
         }));
+    }
+
+    #[test]
+    fn test_long_paragraph_wraps_to_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("abcdefghijabcdefghijabcdefghij", &theme, 10);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line == "abcdefghij"));
+        assert!(rendered.iter().all(|line| line.chars().count() <= 10));
+    }
+
+    #[test]
+    fn test_blockquote_wrap_keeps_border() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("> abcdefghijabcdefghij", &theme, 8);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().filter(|line| line.starts_with("│ ")).count() >= 2);
+        assert!(rendered.iter().all(|line| line.chars().count() <= 8));
+    }
+
+    #[test]
+    fn test_list_wrap_aligns_continuation() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("- abcdefghijabcdefghij", &theme, 10);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line.starts_with("- ")));
+        assert!(rendered.iter().any(|line| line.starts_with("  ")));
+        assert!(rendered.iter().all(|line| line.chars().count() <= 10));
     }
 }
