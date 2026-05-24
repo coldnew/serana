@@ -1,0 +1,37 @@
+# Lessons
+
+- Keep Hermes-agent refactors behavior-preserving and incremental; the current agent loop has several responsibilities, so extracting one lifecycle piece at a time is safer than rewriting the loop.
+- When tests rely on temp directories inside a workspace with a read-only parent lockfile, prefer local test helpers over adding dev-dependencies that force `Cargo.lock` updates outside the writable crate root.
+- Self-evolution tools should resolve paths from the actual workspace root, not from an individual crate manifest directory, otherwise tests and tool behavior diverge depending on the current package.
+- Subagents must be constructed through the same runtime policy as parent agents; otherwise workspace context, skills, and compression behavior silently diverge.
+- Tool power should be represented as explicit policy. Named registry profiles make it clear when Hermes-level self-evolution, network, SSH, browser, and MCP tools are enabled.
+- Agent construction should go through one factory path so LSP, skill creation, runtime config, and tool profile cannot drift between TUI, parent agents, and subagents.
+- Session persistence is agent runtime bookkeeping, not turn orchestration; keeping it behind a recorder makes the agent loop easier to reason about and test.
+- Model turn execution should be isolated from agent lifecycle status transitions; this keeps streaming behavior testable without exercising the full agent loop.
+- Per-run mutable state should be explicit. A small run-state object makes message/tool-call mutations reviewable and keeps the agent loop focused on decisions.
+- Empty lifecycle hooks should either become real policy objects or disappear. Tool-call validation belongs at the boundary between model response and tool execution.
+- Context compression is a gateway concern. Keeping threshold checks and summarizer selection together avoids spreading compression policy across the agent loop.
+- Cancellation and budget checks are lifecycle gates. Keeping them together makes the agent loop easier to scan and prevents status emission from drifting.
+- `CodingAgent` should stay close to construction and configuration. Runtime orchestration belongs in an engine so the Hermes agent can evolve without growing one large method again.
+- Tool schema generation belongs with the registry. Keeping registered tools and model definitions together prevents future Hermes entry points from drifting.
+- Shared runtime policy should live independently from any one agent implementation; factories, subagents, and TUI entry points all need the same Hermes configuration contract.
+- Powered Hermes construction should have a named factory path. Call sites should request Hermes, not remember which extensions make an agent Hermes-capable.
+- Subagents should inherit the full Hermes construction path by default; otherwise parent and delegated agents quietly diverge in available power tools.
+- Keep the compatibility alias at the edge, but make new construction and tests use the canonical Hermes type so the codebase does not keep reinforcing old names.
+- Canonical implementation files should match canonical types; compatibility modules can stay thin re-export shims.
+- Self-evolution examples are part of the agent API. Keep them pointed at canonical files or future self-edits will reinforce stale architecture.
+- Named powered constructors should enforce their policy. A `hermes` factory must not silently preserve a downgraded tool profile.
+- Give tool power levels named constructors as well as enum variants; call sites read better and policy intent is harder to miss.
+- Tests should request the minimum named tool power they need; using default constructors in narrow tests hides policy drift.
+- Keep prompt/runtime fields separate from tool-power policy. Direct agent setters should not appear to own registry construction when the factory actually owns it.
+- Direct agent constructors should name whether they use powered Hermes tools or a custom registry; a generic `new` should only remain as compatibility glue.
+- Runtime config constructors should name policy defaults; a generic `new` can remain compatibility glue, but call sites should request Hermes explicitly.
+- User-facing prompts are part of the architecture contract; once Hermes is canonical, the system prompt should reinforce Hermes rather than legacy coding-agent identity.
+- Compatibility aliases belong in compatibility modules. Keep canonical modules free of old names so new work gravitates to the current architecture.
+- Factory constructors should name policy strength. Use `hermes` for the powered path and `custom` for raw tool-policy assembly; keep generic `new` only for compatibility.
+- Registry tests should use named power-level constructors. A generic `new` belongs in compatibility coverage, not in tests that are really asserting core or Hermes capability sets.
+- Direct constructors should use the canonical architecture name. Keep older adjectives like `powered` only as compatibility aliases once `HermesAgent::hermes` exists.
+- Once compatibility APIs are deprecated, workspace-level binaries and docs become useful detectors for missed migration sites.
+- The middle tool profile should describe scope, not legacy agent identity. `Workspace` is clearer than `Coding` once Hermes is canonical.
+- Deprecate compatibility modules as well as aliases; otherwise old module paths remain attractive even when the canonical type has moved.
+- Use deprecation warnings as migration checks: once the parent binary stopped warning, the remaining old names were limited to documented compatibility surfaces.
