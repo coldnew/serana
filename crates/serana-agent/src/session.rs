@@ -314,7 +314,7 @@ fn parse_time(value: String) -> DateTime<Utc> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use crate::test_support::tempdir;
 
     #[test]
     fn stores_and_loads_sessions() {

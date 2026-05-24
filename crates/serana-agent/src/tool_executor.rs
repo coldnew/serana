@@ -84,7 +84,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sequential_execution() {
-        let registry = ToolRegistry::new();
+        let registry = ToolRegistry::core();
         let callbacks = AgentCallbacks::new();
 
         let tool_calls = vec![serana_core::ToolCallData {

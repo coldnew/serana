@@ -1,8 +1,7 @@
-use serana_core::{
-    CompressionConfig, CompressionDecision, LlmClient, Message, Result,
-};
+use serana_core::{CompressionConfig, CompressionDecision, LlmClient, Message, Result};
 use serana_llm::AuxiliaryClient;
 
+#[derive(Clone)]
 pub struct ContextCompressor {
     config: CompressionConfig,
 }
@@ -140,6 +139,7 @@ impl ContextCompressor {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use serana_core::CompressionThresholds;
     use std::sync::Arc;
 
     struct MockLlm;

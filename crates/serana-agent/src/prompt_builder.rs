@@ -97,7 +97,7 @@ impl PromptBuilder {
             .unwrap_or("workspace");
 
         format!(
-            r#"You are Serana, a coding agent that helps with programming tasks.
+            r#"You are Serana, a Hermes agent that helps with programming tasks.
 
 ## Core Capabilities
 - Read, write, and edit files in the workspace
@@ -199,7 +199,7 @@ Please complete the task using the available tools. Show your reasoning and expl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use crate::test_support::tempdir;
 
     #[test]
     fn test_prompt_builder() {
@@ -208,7 +208,7 @@ mod tests {
         let prompt = builder.build();
 
         assert!(prompt.contains("Serana"));
-        assert!(prompt.contains("coding agent"));
+        assert!(prompt.contains("Hermes agent"));
     }
 
     #[test]

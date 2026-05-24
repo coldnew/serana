@@ -1,6 +1,8 @@
-use serana_core::{Agent, AgentCallbacks, AgentOutput, IterationBudget, LlmClient, Message, Result};
-use serana_tools::ToolRegistry;
+use crate::{AgentFactory, AgentRuntimeConfig};
 use async_trait::async_trait;
+use serana_core::{
+    Agent, AgentCallbacks, AgentOutput, IterationBudget, LlmClient, Message, Result,
+};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -69,6 +71,7 @@ impl LlmClient for SubagentLlm {
 pub struct SubagentSpawner {
     llm: Arc<dyn LlmClient>,
     default_config: SubagentConfig,
+    factory: AgentFactory,
 }
 
 impl SubagentSpawner {
@@ -76,11 +79,22 @@ impl SubagentSpawner {
         Self {
             llm,
             default_config: SubagentConfig::default(),
+            factory: AgentFactory::hermes(AgentRuntimeConfig::default()),
         }
     }
 
     pub fn with_default_config(mut self, config: SubagentConfig) -> Self {
         self.default_config = config;
+        self
+    }
+
+    pub fn with_runtime_config(mut self, config: AgentRuntimeConfig) -> Self {
+        self.factory = AgentFactory::hermes(config);
+        self
+    }
+
+    pub fn with_factory(mut self, factory: AgentFactory) -> Self {
+        self.factory = factory;
         self
     }
 
@@ -92,14 +106,13 @@ impl SubagentSpawner {
             .unwrap_or_else(|| self.default_config.clone());
         let task_id = task.id.clone();
         let instruction = task.instruction.clone();
+        let factory = self.factory.clone();
 
         tokio::spawn(async move {
-            let agent = crate::CodingAgent::new(
-                Box::new(SubagentLlm { inner: llm }),
-                ToolRegistry::new(),
-            )
-            .with_budget(config.budget)
-            .with_callbacks(config.callbacks);
+            let agent = factory
+                .build(Box::new(SubagentLlm { inner: llm }))
+                .with_budget(config.budget)
+                .with_callbacks(config.callbacks);
 
             let output = agent.execute(&instruction).await;
 
@@ -151,6 +164,7 @@ pub async fn delegate_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     struct MockLlm;
 
@@ -203,5 +217,61 @@ mod tests {
 
         let output = delegate_task(llm, "task1", "Test instruction").await;
         assert!(output.is_ok());
+    }
+
+    struct RuntimeAwareLlm {
+        saw_skill: Arc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl LlmClient for RuntimeAwareLlm {
+        async fn chat(&self, _messages: &[Message]) -> Result<String> {
+            Ok("Mock response".to_string())
+        }
+
+        async fn chat_with_tools(
+            &self,
+            messages: &[Message],
+            _tools: &[serana_core::ToolDefinition],
+        ) -> Result<Message> {
+            let has_skill = messages.iter().any(|message| match message {
+                Message::Text { role, content } if role == "system" => {
+                    content.contains("[research] Inspect code before editing")
+                }
+                _ => false,
+            });
+            self.saw_skill.store(has_skill, Ordering::SeqCst);
+            Ok(Message::assistant("Mock response".to_string()))
+        }
+    }
+
+    #[tokio::test]
+    async fn subagents_inherit_runtime_config() {
+        let saw_skill = Arc::new(AtomicBool::new(false));
+        let llm = Arc::new(RuntimeAwareLlm {
+            saw_skill: saw_skill.clone(),
+        }) as Arc<dyn LlmClient>;
+        let runtime = AgentRuntimeConfig::default()
+            .with_skills(vec!["[research] Inspect code before editing".to_string()]);
+        let spawner = SubagentSpawner::new(llm).with_runtime_config(runtime);
+
+        let results = spawner
+            .execute_tasks(vec![SubagentTask::new("task1", "Test instruction")])
+            .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].output.is_ok());
+        assert!(saw_skill.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn runtime_config_uses_hermes_factory_defaults() {
+        let llm = Arc::new(MockLlm) as Arc<dyn LlmClient>;
+        let spawner = SubagentSpawner::new(llm).with_runtime_config(AgentRuntimeConfig::default());
+        let tools = spawner.factory.build_tools();
+
+        assert!(tools.get("read_self").is_some());
+        assert!(tools.get("lsp_definition").is_some());
+        assert!(tools.get("skill_create").is_some());
     }
 }
