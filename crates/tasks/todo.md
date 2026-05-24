@@ -210,3 +210,15 @@ Review:
 - The frame title includes status labels (`pending`, `running`, `done`, `error`) alongside the existing status icon and tool name.
 - Existing tool-specific body renderers now accept styled header lines, preserving header color.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for message rendering slice:
+- [x] Render user messages as padded Markdown blocks with the configured user-message background.
+- [x] Remove the extra assistant name header so assistant text reads like the reference component.
+- [x] Render thinking traces as simple italic text instead of a nested box.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- User messages now use the Markdown renderer and `USER_MSG_BG` styling instead of raw indented text.
+- Assistant messages start directly with rendered Markdown content, closer to `AssistantMessageComponent`.
+- Thinking content no longer adds box chrome that the reference assistant component does not use.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

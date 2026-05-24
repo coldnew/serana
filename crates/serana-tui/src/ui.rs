@@ -198,41 +198,31 @@ fn truncate_text(text: &str, width: usize) -> String {
 
 fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: &Symbols) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    let h = symbols.box_sharp.horizontal;
 
     match msg.role {
         MessageRole::User => {
             lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                format!("  {} You", symbols.success),
-                theme.success,
-            )));
-            for text_line in msg.content.lines() {
-                lines.push(Line::from(Span::raw(format!("    {}", text_line))));
+            let md_theme = crate::markdown::MarkdownTheme::default();
+            let user_style = Style::new().fg(theme::MUTED_TEAL).bg(theme::USER_MSG_BG);
+            let md_lines = render_markdown(&msg.content, &md_theme, width.saturating_sub(4));
+            for md_line in md_lines {
+                let mut spans = vec![Span::styled("  ".to_string(), user_style)];
+                spans.extend(md_line.spans.into_iter().map(|span| {
+                    Span::styled(span.content.into_owned(), span.style.patch(user_style))
+                }));
+                lines.push(Line::from(spans));
             }
         }
         MessageRole::Agent => {
             lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                format!("  {} Serana", symbols.cursor),
-                theme.accent,
-            )));
 
             if let Some(ref thinking) = msg.thinking {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}{} thinking {}", symbols.box_sharp.top_left, h, h),
-                    theme.thinking,
-                )));
                 for t_line in thinking.lines() {
                     lines.push(Line::from(Span::styled(
-                        format!("  {} {}", symbols.box_sharp.vertical, t_line),
+                        format!("  {}", t_line),
                         theme.thinking,
                     )));
                 }
-                lines.push(Line::from(Span::styled(
-                    format!("  {}{}", symbols.box_sharp.bottom_left, h),
-                    theme.thinking,
-                )));
                 lines.push(Line::from(""));
             }
 
