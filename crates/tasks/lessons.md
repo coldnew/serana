@@ -44,3 +44,4 @@
 - Width safety should happen after composing styled conversation lines so Markdown, tool bodies, and status panels share the same terminal-boundary guard.
 - Select-list parity is mostly row structure: explicit cursor prefix, selected text style, muted descriptions, and count/scroll metadata are more reference-aligned than relying on widget highlight state alone.
 - Dialog filtering can make stored item indices diverge from rendered row indices; renderers should map through the filtered list before deciding which row is selected.
+- Editor parity can move incrementally through renderer chrome first: rounded borders and internal padding align visible layout without changing editing semantics.

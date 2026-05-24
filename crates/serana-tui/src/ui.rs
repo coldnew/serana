@@ -1,7 +1,9 @@
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap,
+};
 use ratatui::Frame;
 
 use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoStatus};
@@ -438,7 +440,9 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(border_style)
+                .padding(Padding::horizontal(2))
                 .title(build_status_line(area.width.saturating_sub(2) as usize, app)),
         )
         .wrap(Wrap { trim: false })

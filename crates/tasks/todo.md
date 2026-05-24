@@ -260,3 +260,16 @@ Review:
 - Labels and descriptions are sanitized and truncated to the popup width.
 - Empty filters show muted no-match text, and clipped lists show a muted selected/total count line.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for editor chrome slice:
+- [x] Render the input editor with rounded border symbols like the reference editor.
+- [x] Add horizontal editor padding inside the border.
+- [x] Keep status content embedded in the top border.
+- [x] Preserve existing input cursor, wrapping, and scrolling behavior.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- The input editor block now uses rounded border glyphs.
+- Horizontal padding is applied inside the input border, matching the reference editor's bordered layout.
+- The existing top-border status line, cursor drawing, wrapping, and scroll behavior remain in place.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
