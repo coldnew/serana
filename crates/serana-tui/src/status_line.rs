@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 /// A single status line segment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatusSegment {
+    Pi,
     Mode,
     Model,
     Hostname,
@@ -32,16 +33,15 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
         StatusPreset {
             name: "default".into(),
             segments: vec![
-                StatusSegment::Mode,
+                StatusSegment::Pi,
                 StatusSegment::Model,
-                StatusSegment::Hostname,
-                StatusSegment::Git,
                 StatusSegment::Workspace,
+                StatusSegment::Git,
                 StatusSegment::Tokens,
-                StatusSegment::TokenRate,
                 StatusSegment::ContextPct,
                 StatusSegment::Cost,
                 StatusSegment::SessionTime,
+                StatusSegment::Mode,
                 StatusSegment::ThinkingLevel,
                 StatusSegment::Iterations,
             ],
@@ -49,7 +49,7 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
         StatusPreset {
             name: "compact".into(),
             segments: vec![
-                StatusSegment::Mode,
+                StatusSegment::Pi,
                 StatusSegment::Model,
                 StatusSegment::Tokens,
                 StatusSegment::ContextPct,
@@ -59,7 +59,7 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
         StatusPreset {
             name: "minimal".into(),
             segments: vec![
-                StatusSegment::Mode,
+                StatusSegment::Pi,
                 StatusSegment::Model,
                 StatusSegment::SessionTime,
             ],
@@ -67,8 +67,9 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
         StatusPreset {
             name: "dev".into(),
             segments: vec![
-                StatusSegment::Mode,
+                StatusSegment::Pi,
                 StatusSegment::Model,
+                StatusSegment::Workspace,
                 StatusSegment::Git,
                 StatusSegment::Tokens,
                 StatusSegment::TokenRate,
@@ -81,7 +82,7 @@ pub fn builtin_presets() -> Vec<StatusPreset> {
         StatusPreset {
             name: "cost-focus".into(),
             segments: vec![
-                StatusSegment::Mode,
+                StatusSegment::Pi,
                 StatusSegment::Model,
                 StatusSegment::Tokens,
                 StatusSegment::TokenRate,
@@ -117,7 +118,7 @@ mod tests {
     #[test]
     fn test_default_preset_has_all_segments() {
         let segs = resolve_preset("default");
-        assert!(segs.contains(&StatusSegment::Mode));
+        assert!(segs.contains(&StatusSegment::Pi));
         assert!(segs.contains(&StatusSegment::SessionTime));
         assert!(segs.contains(&StatusSegment::Cost));
     }

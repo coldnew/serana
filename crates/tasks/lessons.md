@@ -35,3 +35,4 @@
 - The middle tool profile should describe scope, not legacy agent identity. `Workspace` is clearer than `Coding` once Hermes is canonical.
 - Deprecate compatibility modules as well as aliases; otherwise old module paths remain attractive even when the canonical type has moved.
 - Use deprecation warnings as migration checks: once the parent binary stopped warning, the remaining old names were limited to documented compatibility surfaces.
+- For the TUI rewrite, derive small Rust-native slices from `ref/oh-my-pi` docs and components rather than copying the TypeScript implementation wholesale.

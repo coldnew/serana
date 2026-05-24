@@ -145,3 +145,18 @@ Review:
 - Updated parent architecture/spec docs to describe `HermesAgent` and the Hermes factory path instead of the old `CodingAgent` runtime path.
 - Updated the parent package description and README summary to describe Serana as a personal Hermes agent.
 - Workspace verification now passes without Hermes migration deprecation warnings from `src/main.rs`; only pre-existing unrelated warnings remain.
+
+# TUI Rewrite Toward oh-my-pi
+
+Success criteria for this slice:
+- [x] Derive the first visual slice from `ref/oh-my-pi` docs and theme/status-line components.
+- [x] Port the default TUI palette to the reference Titanium colors.
+- [x] Start status-line parity with a compact `π` identity segment, dot separators, and shorter path/git/token labels.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Ported `serana-tui` default theme constants and JSON token defaults to the reference Titanium palette.
+- Added a `Pi` status segment and made built-in presets start with the compact identity/model/status shape.
+- Changed status-line rendering to use dot separators, shorter mode/context/session labels, `@workspace`, and cleaner git dirty markers.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+- `rustfmt --edition 2021 --check serana-tui/src/theme.rs serana-tui/src/status_line.rs serana-tui/src/ui.rs` reports formatting changes in pre-existing nearby code; I left that churn out of this slice.
