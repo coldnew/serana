@@ -18,29 +18,31 @@ pub fn render_tool_call(
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let (icon, style) = tool_status_style(tool.status, symbols, &theme);
-    let header = format!("  {} {}", icon, tool.name);
+    let header = tool_header(tool, icon, style, width, symbols);
+    let footer = tool_footer(width, symbols, &theme);
 
     let mut lines = match tool.name.as_str() {
         "read_file" | "read" | "read_self" => {
-            render_read_file(tool, header, style, width, symbols)
+            render_read_file(tool, header, width, symbols)
         }
         "edit_file" | "edit" | "edit_self" | "apply_patch" => {
-            render_edit_diff(tool, header, style, width, symbols)
+            render_edit_diff(tool, header, width, symbols)
         }
         "write_file" | "write" => {
-            render_write_file(tool, header, style, width, symbols)
+            render_write_file(tool, header, width, symbols)
         }
         "bash" | "cargo" | "git" | "verify_self" => {
-            render_command(tool, header, style, width, symbols)
+            render_command(tool, header, width, symbols)
         }
         n if n.starts_with("lsp_") => {
-            render_lsp(tool, header, style, symbols)
+            render_lsp(tool, header, symbols)
         }
         n if n.starts_with("ast_") => {
-            render_ast(tool, header, style, symbols)
+            render_ast(tool, header, symbols)
         }
-        _ => render_generic(tool, header, style, &theme),
+        _ => render_generic(tool, header, &theme),
     };
+    lines.push(footer);
 
     // Check for image output in tool results
     if let Some(ref result) = tool.result {
@@ -63,6 +65,49 @@ pub fn render_tool_call(
     lines
 }
 
+fn tool_header(
+    tool: &ToolCall,
+    icon: &str,
+    style: Style,
+    width: usize,
+    symbols: &Symbols,
+) -> Line<'static> {
+    let label = match tool.status {
+        ToolCallStatus::Pending => "pending",
+        ToolCallStatus::Running => "running",
+        ToolCallStatus::Success => "done",
+        ToolCallStatus::Error => "error",
+    };
+    let title = format!(" {} {} {} ", icon, tool.name, label);
+    let content_width = width.saturating_sub(4).max(title.chars().count() + 2);
+    let title_width = title.chars().count();
+    let fill = content_width.saturating_sub(title_width + 1);
+    Line::from(Span::styled(
+        format!(
+            "  {}{}{}{}{}",
+            symbols.box_round.top_left,
+            symbols.box_round.horizontal,
+            title,
+            symbols.box_round.horizontal.repeat(fill),
+            symbols.box_round.top_right,
+        ),
+        style,
+    ))
+}
+
+fn tool_footer(width: usize, symbols: &Symbols, theme: &Theme) -> Line<'static> {
+    let content_width = width.saturating_sub(4).max(2);
+    Line::from(Span::styled(
+        format!(
+            "  {}{}{}",
+            symbols.box_round.bottom_left,
+            symbols.box_round.horizontal.repeat(content_width),
+            symbols.box_round.bottom_right,
+        ),
+        theme.border,
+    ))
+}
+
 fn tool_status_style<'a>(
     status: ToolCallStatus,
     symbols: &'a Symbols,
@@ -79,15 +124,14 @@ fn tool_status_style<'a>(
 /// Render file content with line numbers.
 fn render_read_file(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     width: usize,
     _symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+    lines.push(header);
 
     let path = extract_arg(tool, "path").unwrap_or_default();
     let content = tool.result.as_deref().unwrap_or("");
@@ -131,15 +175,14 @@ fn render_read_file(
 /// Render edit/patch with inline diff.
 fn render_edit_diff(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     width: usize,
     _symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+    lines.push(header);
 
     let path = extract_arg(tool, "path").unwrap_or_default();
     if !path.is_empty() {
@@ -177,15 +220,14 @@ fn render_edit_diff(
 /// Render write_file confirmation.
 fn render_write_file(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     width: usize,
     symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+    lines.push(header);
 
     let path = extract_arg(tool, "path").unwrap_or_default();
     let content = tool.result.as_deref().unwrap_or("");
@@ -228,15 +270,14 @@ fn render_write_file(
 /// Render command output (bash, cargo, git, etc.).
 fn render_command(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     _width: usize,
     symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+    lines.push(header);
 
     let cmd = extract_arg(tool, "command").or_else(|| extract_arg(tool, "args"));
     if let Some(ref cmd_text) = cmd {
@@ -282,14 +323,13 @@ fn render_command(
 /// Render LSP results.
 fn render_lsp(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+    lines.push(header);
 
     let content = tool.result.as_deref().unwrap_or("");
     if content.is_empty() {
@@ -340,14 +380,13 @@ fn render_lsp(
 /// Render AST results.
 fn render_ast(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     symbols: &Symbols,
 ) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header.clone(), header_style)));
+    lines.push(header);
 
     let content = tool.result.as_deref().unwrap_or("");
     if content.is_empty() {
@@ -400,13 +439,12 @@ fn render_ast(
 /// Generic fallback renderer.
 fn render_generic(
     tool: &ToolCall,
-    header: String,
-    header_style: Style,
+    header: Line<'static>,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(header, header_style)));
+    lines.push(header);
 
     if !tool.args.is_empty() {
         let truncated = truncate(&tool.args, 80);

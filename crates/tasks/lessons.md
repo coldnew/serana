@@ -39,3 +39,4 @@
 - Status-line parity requires modeling layout, not just labels. Keep left/right groups and width pruning in the Rust TUI so future segments can match the reference footer behavior.
 - The welcome screen should own its title border while active; keeping a separate global header makes the Rust TUI structurally diverge from the reference welcome component.
 - In oh-my-pi the status line is editor chrome, not a separate footer. Keep Serana status rendering reusable so it can be embedded in the input border.
+- Tool rendering should have a stable component frame before deeper per-tool renderer work; this lets Serana move toward oh-my-pi's ToolExecutionComponent without replacing every renderer at once.

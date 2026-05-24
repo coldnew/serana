@@ -198,3 +198,15 @@ Review:
 - The input block now uses that status line as its top-border title.
 - The main layout now has header/content/input areas only, matching the reference editor/status integration more closely.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for tool execution frame slice:
+- [x] Render tool calls as a distinct framed component like the reference tool execution UI.
+- [x] Include tool status in the tool header.
+- [x] Preserve existing per-tool body rendering for file, diff, command, LSP, AST, and generic tools.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Tool-call rendering now wraps existing tool bodies in a rounded title/footer frame.
+- The frame title includes status labels (`pending`, `running`, `done`, `error`) alongside the existing status icon and tool name.
+- Existing tool-specific body renderers now accept styled header lines, preserving header color.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
