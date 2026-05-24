@@ -196,6 +196,30 @@ fn truncate_text(text: &str, width: usize) -> String {
     out
 }
 
+fn clamp_line(line: Line<'static>, width: usize) -> Line<'static> {
+    if width == 0 {
+        return Line::from("");
+    }
+    let mut remaining = width;
+    let mut spans = Vec::new();
+    for span in line.spans {
+        if remaining == 0 {
+            break;
+        }
+        let text = span.content.replace('\t', "   ");
+        let text_len = text.chars().count();
+        if text_len <= remaining {
+            spans.push(Span::styled(text, span.style));
+            remaining -= text_len;
+        } else {
+            let truncated: String = text.chars().take(remaining).collect();
+            spans.push(Span::styled(truncated, span.style));
+            remaining = 0;
+        }
+    }
+    Line::from(spans)
+}
+
 fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: &Symbols) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
@@ -326,6 +350,10 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     all_lines.push(Line::from(""));
+    all_lines = all_lines
+        .into_iter()
+        .map(|line| clamp_line(line, area.width as usize))
+        .collect();
 
     let scroll_offset = app.scroll.min(all_lines.len().saturating_sub(area.height as usize));
 

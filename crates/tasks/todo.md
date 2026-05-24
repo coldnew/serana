@@ -222,3 +222,14 @@ Review:
 - Assistant messages start directly with rendered Markdown content, closer to `AssistantMessageComponent`.
 - Thinking content no longer adds box chrome that the reference assistant component does not use.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for width-safe conversation slice:
+- [x] Sanitize tabs in rendered conversation lines.
+- [x] Clamp rendered conversation lines to the terminal content width.
+- [x] Preserve span styling while clamping.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Added a span-preserving `clamp_line` helper for the conversation surface.
+- Message, tool, todo, status, and BTW lines are clamped after composition before rendering.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

@@ -41,3 +41,4 @@
 - In oh-my-pi the status line is editor chrome, not a separate footer. Keep Serana status rendering reusable so it can be embedded in the input border.
 - Tool rendering should have a stable component frame before deeper per-tool renderer work; this lets Serana move toward oh-my-pi's ToolExecutionComponent without replacing every renderer at once.
 - Conversation parity means removing Serana-specific labels where the reference uses raw Markdown components; keep role distinction in styling, not extra headings.
+- Width safety should happen after composing styled conversation lines so Markdown, tool bodies, and status panels share the same terminal-boundary guard.
