@@ -43,3 +43,4 @@
 - Conversation parity means removing Serana-specific labels where the reference uses raw Markdown components; keep role distinction in styling, not extra headings.
 - Width safety should happen after composing styled conversation lines so Markdown, tool bodies, and status panels share the same terminal-boundary guard.
 - Select-list parity is mostly row structure: explicit cursor prefix, selected text style, muted descriptions, and count/scroll metadata are more reference-aligned than relying on widget highlight state alone.
+- Dialog filtering can make stored item indices diverge from rendered row indices; renderers should map through the filtered list before deciding which row is selected.

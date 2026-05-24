@@ -246,3 +246,17 @@ Review:
 - Item values and descriptions are width-limited before rendering.
 - The popup grows by one row for a scroll/count indicator when more results exist than are visible.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for dialog selector slice:
+- [x] Render dialog rows with the same explicit cursor-prefix structure as the reference select list.
+- [x] Derive the highlighted row from the selected item inside the filtered list.
+- [x] Truncate labels and descriptions to the available dialog width.
+- [x] Show no-match and clipped-result count lines with muted styling.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Dialog selectors now render explicit `›` cursor rows instead of relying on Ratatui list highlight state.
+- Filtered selections are mapped from the selected original item to the selected filtered row before rendering.
+- Labels and descriptions are sanitized and truncated to the popup width.
+- Empty filters show muted no-match text, and clipped lists show a muted selected/total count line.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
