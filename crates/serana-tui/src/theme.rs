@@ -7,29 +7,29 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-// Default oceanic palette
-pub const CORAL: Color = Color::Rgb(255, 139, 109);
-pub const BRIGHT_CORAL: Color = Color::Rgb(255, 111, 94);
-pub const TEAL: Color = Color::Rgb(91, 192, 190);
-pub const AQUAMARINE: Color = Color::Rgb(111, 255, 233);
-pub const SEAFOAM_GREEN: Color = Color::Rgb(167, 240, 232);
-pub const MUTED_TEAL: Color = Color::Rgb(119, 141, 169);
-pub const DIM_TEAL: Color = Color::Rgb(90, 123, 153);
-pub const DEEP_BLUE: Color = Color::Rgb(11, 19, 43);
-pub const NAVY_BLUE: Color = Color::Rgb(28, 37, 65);
-pub const OCEAN_BLUE: Color = Color::Rgb(58, 80, 107);
-pub const MID_WATER: Color = Color::Rgb(27, 38, 59);
-pub const DARK_BORDER: Color = Color::Rgb(30, 45, 63);
-pub const ABYSS_BLACK: Color = Color::Rgb(5, 10, 26);
-pub const DEEP_WATER: Color = Color::Rgb(13, 27, 42);
-pub const USER_MSG_BG: Color = Color::Rgb(15, 26, 40);
-pub const TOOL_PENDING_BG: Color = Color::Rgb(13, 21, 32);
-pub const TOOL_SUCCESS_BG: Color = Color::Rgb(10, 20, 24);
+// Default palette ported from ref/oh-my-pi's titanium theme.
+pub const CORAL: Color = Color::Rgb(0, 180, 255);
+pub const BRIGHT_CORAL: Color = Color::Rgb(255, 71, 87);
+pub const TEAL: Color = Color::Rgb(0, 130, 179);
+pub const AQUAMARINE: Color = Color::Rgb(0, 180, 255);
+pub const SEAFOAM_GREEN: Color = Color::Rgb(0, 255, 136);
+pub const MUTED_TEAL: Color = Color::Rgb(156, 163, 176);
+pub const DIM_TEAL: Color = Color::Rgb(107, 114, 128);
+pub const DEEP_BLUE: Color = Color::Rgb(15, 18, 22);
+pub const NAVY_BLUE: Color = Color::Rgb(31, 37, 45);
+pub const OCEAN_BLUE: Color = Color::Rgb(42, 48, 56);
+pub const MID_WATER: Color = Color::Rgb(21, 24, 32);
+pub const DARK_BORDER: Color = Color::Rgb(42, 48, 56);
+pub const ABYSS_BLACK: Color = Color::Rgb(15, 18, 22);
+pub const DEEP_WATER: Color = Color::Rgb(15, 18, 22);
+pub const USER_MSG_BG: Color = Color::Rgb(15, 18, 22);
+pub const TOOL_PENDING_BG: Color = Color::Rgb(15, 18, 22);
+pub const TOOL_SUCCESS_BG: Color = Color::Rgb(15, 18, 22);
 pub const TOOL_ERROR_BG: Color = Color::Rgb(26, 13, 15);
-pub const CODE_PURPLE: Color = Color::Rgb(212, 165, 255);
-pub const DIFF_GREEN: Color = Color::Rgb(167, 240, 232);
-pub const DIFF_RED: Color = Color::Rgb(255, 111, 94);
-pub const DIFF_YELLOW: Color = Color::Rgb(255, 209, 102);
+pub const CODE_PURPLE: Color = Color::Rgb(0, 255, 136);
+pub const DIFF_GREEN: Color = Color::Rgb(0, 255, 136);
+pub const DIFF_RED: Color = Color::Rgb(255, 71, 87);
+pub const DIFF_YELLOW: Color = Color::Rgb(212, 192, 144);
 
 /// RGB color representation for JSON serialization.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -157,72 +157,72 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            accent: RgbColor::new(255, 139, 109),
-            accent_secondary: RgbColor::new(212, 165, 255),
-            success: RgbColor::new(167, 240, 232),
-            warning: RgbColor::new(255, 209, 102),
-            error: RgbColor::new(255, 111, 94),
-            info: RgbColor::new(91, 192, 190),
-            text_primary: RgbColor::new(230, 237, 243),
-            text_secondary: RgbColor::new(168, 179, 200),
-            text_dim: RgbColor::new(90, 123, 153),
-            text_muted: RgbColor::new(119, 141, 169),
-            text_inverse: RgbColor::new(5, 10, 26),
-            user_fg: RgbColor::new(167, 240, 232),
-            user_bg: RgbColor::new(15, 26, 40),
-            agent_fg: RgbColor::new(255, 139, 109),
-            agent_bg: RgbColor::new(11, 19, 43),
-            system_fg: RgbColor::new(255, 209, 102),
-            system_bg: RgbColor::new(28, 37, 65),
-            tool_pending_fg: RgbColor::new(119, 141, 169),
-            tool_pending_bg: RgbColor::new(13, 21, 32),
-            tool_success_fg: RgbColor::new(167, 240, 232),
-            tool_success_bg: RgbColor::new(10, 20, 24),
-            tool_error_fg: RgbColor::new(255, 111, 94),
+            accent: RgbColor::new(0, 180, 255),
+            accent_secondary: RgbColor::new(212, 192, 144),
+            success: RgbColor::new(0, 255, 136),
+            warning: RgbColor::new(255, 179, 71),
+            error: RgbColor::new(255, 71, 87),
+            info: RgbColor::new(0, 130, 179),
+            text_primary: RgbColor::new(232, 236, 244),
+            text_secondary: RgbColor::new(156, 163, 176),
+            text_dim: RgbColor::new(107, 114, 128),
+            text_muted: RgbColor::new(156, 163, 176),
+            text_inverse: RgbColor::new(15, 18, 22),
+            user_fg: RgbColor::new(232, 236, 244),
+            user_bg: RgbColor::new(15, 18, 22),
+            agent_fg: RgbColor::new(0, 180, 255),
+            agent_bg: RgbColor::new(15, 18, 22),
+            system_fg: RgbColor::new(212, 192, 144),
+            system_bg: RgbColor::new(42, 48, 56),
+            tool_pending_fg: RgbColor::new(156, 163, 176),
+            tool_pending_bg: RgbColor::new(15, 18, 22),
+            tool_success_fg: RgbColor::new(0, 255, 136),
+            tool_success_bg: RgbColor::new(15, 18, 22),
+            tool_error_fg: RgbColor::new(255, 71, 87),
             tool_error_bg: RgbColor::new(26, 13, 15),
-            tool_running_fg: RgbColor::new(255, 139, 109),
-            tool_running_bg: RgbColor::new(27, 38, 59),
-            diff_add_fg: RgbColor::new(167, 240, 232),
-            diff_add_bg: RgbColor::new(10, 20, 24),
-            diff_remove_fg: RgbColor::new(255, 111, 94),
+            tool_running_fg: RgbColor::new(0, 180, 255),
+            tool_running_bg: RgbColor::new(15, 18, 22),
+            diff_add_fg: RgbColor::new(0, 255, 136),
+            diff_add_bg: RgbColor::new(15, 18, 22),
+            diff_remove_fg: RgbColor::new(255, 71, 87),
             diff_remove_bg: RgbColor::new(26, 13, 15),
-            diff_modify_fg: RgbColor::new(255, 209, 102),
+            diff_modify_fg: RgbColor::new(255, 179, 71),
             diff_modify_bg: RgbColor::new(25, 22, 10),
-            diff_context_fg: RgbColor::new(119, 141, 169),
-            diff_hunk_fg: RgbColor::new(91, 192, 190),
-            code_fg: RgbColor::new(167, 240, 232),
-            code_bg: RgbColor::new(11, 19, 43),
-            code_keyword: RgbColor::new(212, 165, 255),
-            code_string: RgbColor::new(167, 240, 232),
-            code_comment: RgbColor::new(90, 123, 153),
-            code_function: RgbColor::new(255, 139, 109),
-            code_number: RgbColor::new(255, 209, 102),
-            code_operator: RgbColor::new(91, 192, 190),
-            code_type: RgbColor::new(111, 255, 233),
-            border: RgbColor::new(30, 45, 63),
-            border_active: RgbColor::new(58, 80, 107),
-            border_focused: RgbColor::new(91, 192, 190),
-            title: RgbColor::new(119, 141, 169),
-            title_active: RgbColor::new(255, 139, 109),
-            scrollbar_thumb: RgbColor::new(58, 80, 107),
-            scrollbar_track: RgbColor::new(11, 19, 43),
-            selection_fg: RgbColor::new(5, 10, 26),
-            selection_bg: RgbColor::new(91, 192, 190),
-            bg_primary: RgbColor::new(5, 10, 26),
-            bg_secondary: RgbColor::new(11, 19, 43),
-            bg_elevated: RgbColor::new(28, 37, 65),
-            bg_input: RgbColor::new(13, 27, 42),
-            bg_header: RgbColor::new(11, 19, 43),
-            bg_status: RgbColor::new(13, 27, 42),
-            bg_popup: RgbColor::new(28, 37, 65),
-            thinking_fg: RgbColor::new(119, 141, 169),
-            thinking_bg: RgbColor::new(15, 26, 40),
-            hyperlink: RgbColor::new(111, 255, 233),
-            badge_fg: RgbColor::new(5, 10, 26),
-            badge_bg: RgbColor::new(255, 139, 109),
-            progress_bar_filled: RgbColor::new(91, 192, 190),
-            progress_bar_empty: RgbColor::new(30, 45, 63),
-            highlight: RgbColor::new(255, 209, 102),
+            diff_context_fg: RgbColor::new(156, 163, 176),
+            diff_hunk_fg: RgbColor::new(42, 48, 56),
+            code_fg: RgbColor::new(0, 255, 136),
+            code_bg: RgbColor::new(15, 18, 22),
+            code_keyword: RgbColor::new(0, 180, 255),
+            code_string: RgbColor::new(212, 192, 144),
+            code_comment: RgbColor::new(107, 114, 128),
+            code_function: RgbColor::new(0, 255, 136),
+            code_number: RgbColor::new(255, 179, 71),
+            code_operator: RgbColor::new(0, 180, 255),
+            code_type: RgbColor::new(0, 180, 255),
+            border: RgbColor::new(42, 48, 56),
+            border_active: RgbColor::new(0, 180, 255),
+            border_focused: RgbColor::new(0, 180, 255),
+            title: RgbColor::new(156, 163, 176),
+            title_active: RgbColor::new(0, 180, 255),
+            scrollbar_thumb: RgbColor::new(42, 48, 56),
+            scrollbar_track: RgbColor::new(15, 18, 22),
+            selection_fg: RgbColor::new(232, 236, 244),
+            selection_bg: RgbColor::new(0, 130, 179),
+            bg_primary: RgbColor::new(21, 24, 32),
+            bg_secondary: RgbColor::new(15, 18, 22),
+            bg_elevated: RgbColor::new(42, 48, 56),
+            bg_input: RgbColor::new(15, 18, 22),
+            bg_header: RgbColor::new(15, 18, 22),
+            bg_status: RgbColor::new(15, 18, 22),
+            bg_popup: RgbColor::new(42, 48, 56),
+            thinking_fg: RgbColor::new(156, 163, 176),
+            thinking_bg: RgbColor::new(15, 18, 22),
+            hyperlink: RgbColor::new(0, 180, 255),
+            badge_fg: RgbColor::new(15, 18, 22),
+            badge_bg: RgbColor::new(0, 180, 255),
+            progress_bar_filled: RgbColor::new(0, 180, 255),
+            progress_bar_empty: RgbColor::new(42, 48, 56),
+            highlight: RgbColor::new(212, 192, 144),
         }
     }
 }
@@ -481,8 +481,7 @@ mod tests {
     #[test]
     fn test_theme_config_default() {
         let config = ThemeConfig::default();
-        assert_eq!(config.accent.r, 255);
-        assert_eq!(config.accent.g, 139);
+        assert_eq!(config.accent, RgbColor::new(0, 180, 255));
     }
 
     #[test]
