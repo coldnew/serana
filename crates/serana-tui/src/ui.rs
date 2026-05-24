@@ -354,17 +354,12 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
     let editor = &app.editor;
 
-    let (border_style, title): (Style, String) = match app.mode {
-        AppMode::Normal => (Style::new().fg(theme::MUTED_TEAL), " Input ".to_string()),
+    let border_style = match app.mode {
+        AppMode::Normal => Style::new().fg(theme::MUTED_TEAL),
         AppMode::Input => {
-            let lines_hint = if editor.line_count() > 1 {
-                format!(" Input ({} lines, Shift+Enter: newline) ", editor.line_count())
-            } else {
-                " Input (Shift+Enter: newline) ".to_string()
-            };
-            (Style::new().fg(theme::AQUAMARINE), lines_hint)
+            Style::new().fg(theme::AQUAMARINE)
         }
-        AppMode::Processing => (Style::new().fg(theme::CORAL), " Working ".to_string()),
+        AppMode::Processing => Style::new().fg(theme::CORAL),
     };
 
     let mut text_lines: Vec<Line<'static>> = Vec::new();
@@ -426,7 +421,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(border_style)
-                .title(title),
+                .title(build_status_line(area.width.saturating_sub(2) as usize, app)),
         )
         .wrap(Wrap { trim: false })
         .scroll((
@@ -507,7 +502,7 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_stateful_widget(list, inner, &mut list_state);
 }
 
-fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
+fn build_status_line(width: usize, app: &App) -> Line<'static> {
     let theme = Theme::default();
     let s = app.symbols;
     let sep = Span::styled(format!(" {} ", s.sep_dot), theme.dim);
@@ -517,7 +512,6 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     let mut left = render_status_group(&preset.left_segments, app, &theme, &sep);
     let mut right = render_status_group(&preset.right_segments, app, &theme, &sep);
 
-    let width = area.width as usize;
     while status_width(&left) + status_width(&right) + gap_width(&left, &right) > width
         && !right.is_empty()
     {
@@ -538,9 +532,7 @@ fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     }
     spans.extend(right);
 
-    let line = Line::from(spans);
-    let para = Paragraph::new(line);
-    frame.render_widget(para, area);
+    Line::from(spans)
 }
 
 fn render_status_group(
@@ -730,9 +722,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Constraint::Length(if showing_welcome { 0 } else { 3 }),
         Constraint::Min(0),
         Constraint::Length(3),
-        Constraint::Length(1),
     ]);
-    let [header_area, content_area, input_area, status_area] = main_layout.areas(frame.area());
+    let [header_area, content_area, input_area] = main_layout.areas(frame.area());
 
     if !showing_welcome {
         let title = format!(" Serana v{} ", app.version);
@@ -754,7 +745,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     render_input(frame, input_area, app);
     render_autocomplete(frame, input_area, app);
-    render_status_line(frame, status_area, app);
 
     // Render dialog on top if active
     if let Some(ref dialog) = app.active_dialog {

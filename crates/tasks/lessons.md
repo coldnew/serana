@@ -38,3 +38,4 @@
 - For the TUI rewrite, derive small Rust-native slices from `ref/oh-my-pi` docs and components rather than copying the TypeScript implementation wholesale.
 - Status-line parity requires modeling layout, not just labels. Keep left/right groups and width pruning in the Rust TUI so future segments can match the reference footer behavior.
 - The welcome screen should own its title border while active; keeping a separate global header makes the Rust TUI structurally diverge from the reference welcome component.
+- In oh-my-pi the status line is editor chrome, not a separate footer. Keep Serana status rendering reusable so it can be embedded in the input border.

@@ -186,3 +186,15 @@ Review:
 - The welcome screen no longer consumes a separate top header band.
 - The right column now lists up to three stored sessions with timestamps instead of always showing a placeholder.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for editor status-border slice:
+- [x] Move status content from a standalone footer row into the input editor top border.
+- [x] Reuse the existing left/right status layout as border title content.
+- [x] Remove the extra status row from the main layout.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- `render_status_line` became `build_status_line`, returning border content instead of drawing a footer widget.
+- The input block now uses that status line as its top-border title.
+- The main layout now has header/content/input areas only, matching the reference editor/status integration more closely.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
