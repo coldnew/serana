@@ -56,10 +56,18 @@ fn verification_to_json(result: VerificationResult) -> Value {
     })
 }
 
-const SERANA_ROOT: &str = env!("CARGO_MANIFEST_DIR");
+const SERANA_TOOLS_MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
+fn serana_root() -> PathBuf {
+    PathBuf::from(SERANA_TOOLS_MANIFEST_DIR)
+        .parent()
+        .and_then(|path| path.parent())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(SERANA_TOOLS_MANIFEST_DIR))
+}
 
 fn serana_path(relative: &str) -> PathBuf {
-    PathBuf::from(SERANA_ROOT).join(relative)
+    serana_root().join(relative)
 }
 
 #[async_trait]
@@ -69,7 +77,7 @@ impl Tool for ReadSelfTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read a file from Serana's own source code. Input: {\"path\": \"src/agent/coding.rs\"}"
+        "Read a file from Serana's own source code. Input: {\"path\": \"crates/serana-agent/src/hermes.rs\"}"
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -113,7 +121,7 @@ impl Tool for EditSelfTool {
     }
 
     fn description(&self) -> &'static str {
-        "Edit a file in Serana's own source code. Input: {\"path\": \"src/agent/coding.rs\", \"edits\": [{\"old\": \"fn old()\", \"new\": \"fn new()\"}]} or {\"path\": \"...\", \"content\": \"full new content\"}"
+        "Edit a file in Serana's own source code. Input: {\"path\": \"crates/serana-agent/src/hermes.rs\", \"edits\": [{\"old\": \"fn old()\", \"new\": \"fn new()\"}]} or {\"path\": \"...\", \"content\": \"full new content\"}"
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -246,7 +254,7 @@ impl Tool for CargoTool {
 
         // Run cargo synchronously (simpler for self-modification verification)
         let output = Command::new("cargo")
-            .current_dir(SERANA_ROOT)
+            .current_dir(serana_root())
             .arg(cmd)
             .args(&args)
             .output()?;
@@ -340,7 +348,7 @@ impl Tool for GitTool {
         }
 
         let output = Command::new("git")
-            .current_dir(SERANA_ROOT)
+            .current_dir(serana_root())
             .arg(cmd)
             .args(&args)
             .output()?;
@@ -365,7 +373,7 @@ impl Tool for SearchCodeTool {
     }
 
     fn description(&self) -> &'static str {
-        "Search Serana's source code using regex pattern. Input: {\"pattern\": \"fn execute\", \"path\": \"src/agent\"}"
+        "Search Serana's source code using regex pattern. Input: {\"pattern\": \"fn execute\", \"path\": \"crates/serana-agent/src\"}"
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -402,7 +410,7 @@ impl Tool for SearchCodeTool {
 
         // Use ripgrep via Command (simpler than implementing regex search)
         let output = Command::new("rg")
-            .current_dir(SERANA_ROOT)
+            .current_dir(serana_root())
             .arg("--json")
             .arg("--type")
             .arg("rust")
@@ -444,9 +452,10 @@ impl Tool for WorkspaceRootTool {
     }
 
     async fn execute(&self, _input: Value) -> Result<Value> {
+        let root = serana_root();
         Ok(json!({
-            "root": SERANA_ROOT,
-            "manifest": format!("{}/Cargo.toml", SERANA_ROOT),
+            "root": root,
+            "manifest": root.join("Cargo.toml"),
         }))
     }
 }
@@ -458,7 +467,7 @@ impl Tool for RecordModificationTool {
     }
 
     fn description(&self) -> &'static str {
-        "Record a self-modification for learning. Input: {\"file\": \"src/agent/coding.rs\", \"kind\": \"Feature\", \"description\": \"Added X\", \"tests_passed\": true, \"commit\": \"abc123\"}"
+        "Record a self-modification for learning. Input: {\"file\": \"crates/serana-agent/src/hermes.rs\", \"kind\": \"Feature\", \"description\": \"Added X\", \"tests_passed\": true, \"commit\": \"abc123\"}"
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -579,7 +588,7 @@ impl Tool for ReflectModificationTool {
     }
 
     fn description(&self) -> &'static str {
-        "Reflect on a modification and add lessons learned. Input: {\"file\": \"src/agent/coding.rs\", \"lessons\": [\"Test early\", \"Keep functions small\"]}"
+        "Reflect on a modification and add lessons learned. Input: {\"file\": \"crates/serana-agent/src/hermes.rs\", \"lessons\": [\"Test early\", \"Keep functions small\"]}"
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -698,7 +707,7 @@ mod tests {
     #[tokio::test]
     async fn read_self_reads_own_source() {
         let result = ReadSelfTool
-            .execute(json!({ "path": "src/tools/self_evolve.rs" }))
+            .execute(json!({ "path": "crates/serana-tools/src/self_evolve.rs" }))
             .await
             .unwrap();
         assert!(result["content"].as_str().unwrap().contains("self_evolve"));
@@ -735,6 +744,25 @@ mod tests {
         let output = r#"{"type":"match","data":{"path":{"text":"src/main.rs"},"lines":{"text":"fn main()"}}}"#;
         let results = parse_ripgrep_json(output);
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn self_evolution_examples_point_at_hermes_agent() {
+        assert!(ReadSelfTool
+            .description()
+            .contains("crates/serana-agent/src/hermes.rs"));
+        assert!(EditSelfTool
+            .description()
+            .contains("crates/serana-agent/src/hermes.rs"));
+        assert!(RecordModificationTool
+            .description()
+            .contains("crates/serana-agent/src/hermes.rs"));
+        assert!(ReflectModificationTool
+            .description()
+            .contains("crates/serana-agent/src/hermes.rs"));
+        assert!(SearchCodeTool
+            .description()
+            .contains("crates/serana-agent/src"));
     }
 }
 

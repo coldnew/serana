@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use tokio::fs;
+use tokio::sync::Mutex;
 
 use serana_core::{Result, Tool};
 use serana_lsp::{types::Position, LspManager};
@@ -9,9 +11,24 @@ use serana_tree_sitter::ParserManager;
 pub struct AstOutlineTool;
 pub struct AstFunctionsTool;
 pub struct AstImportsTool;
-pub struct LspDefinitionTool;
-pub struct LspReferencesTool;
-pub struct LspHoverTool;
+
+/// Shared LSP manager wrapped in Arc<Mutex<>> for persistence across tool calls.
+pub type SharedLspManager = Arc<Mutex<LspManager>>;
+
+/// Create a shared LSP manager for a given workspace.
+pub fn new_shared_lsp_manager(workspace: std::path::PathBuf) -> SharedLspManager {
+    Arc::new(Mutex::new(LspManager::new(workspace)))
+}
+
+pub struct LspDefinitionTool {
+    pub manager: SharedLspManager,
+}
+pub struct LspReferencesTool {
+    pub manager: SharedLspManager,
+}
+pub struct LspHoverTool {
+    pub manager: SharedLspManager,
+}
 
 #[async_trait]
 impl Tool for AstOutlineTool {
@@ -138,11 +155,10 @@ impl Tool for LspDefinitionTool {
     }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
-        let mut manager = LspManager::new(request.workspace);
-        let locations = manager
+        let mut mgr = self.manager.lock().await;
+        let locations = mgr
             .definition(request.path.as_ref(), request.position)
             .await?;
-        manager.shutdown_all().await?;
         Ok(json!({ "locations": locations }))
     }
 }
@@ -171,11 +187,10 @@ impl Tool for LspReferencesTool {
     }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
-        let mut manager = LspManager::new(request.workspace);
-        let locations = manager
+        let mut mgr = self.manager.lock().await;
+        let locations = mgr
             .references(request.path.as_ref(), request.position)
             .await?;
-        manager.shutdown_all().await?;
         Ok(json!({ "locations": locations }))
     }
 }
@@ -204,17 +219,15 @@ impl Tool for LspHoverTool {
     }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
-        let mut manager = LspManager::new(request.workspace);
-        let hover = manager
+        let mut mgr = self.manager.lock().await;
+        let hover = mgr
             .hover(request.path.as_ref(), request.position)
             .await?;
-        manager.shutdown_all().await?;
         Ok(json!({ "hover": hover }))
     }
 }
 
 struct LspToolRequest {
-    workspace: std::path::PathBuf,
     path: String,
     position: Position,
 }
@@ -235,13 +248,7 @@ impl LspToolRequest {
             .and_then(Value::as_u64)
             .ok_or_else(|| anyhow::anyhow!("Missing 'character' field"))?
             as u32;
-        let workspace = input
-            .get("workspace")
-            .and_then(Value::as_str)
-            .map(std::path::PathBuf::from)
-            .unwrap_or(std::env::current_dir()?);
         Ok(Self {
-            workspace,
             path,
             position: Position { line, character },
         })
@@ -260,7 +267,7 @@ async fn read_source(input: Value) -> Result<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use crate::test_support::tempdir;
 
     #[tokio::test]
     async fn ast_outline_returns_rust_symbols() {
