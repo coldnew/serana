@@ -233,3 +233,16 @@ Review:
 - Added a span-preserving `clamp_line` helper for the conversation surface.
 - Message, tool, todo, status, and BTW lines are clamped after composition before rendering.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for autocomplete selector slice:
+- [x] Render autocomplete rows with an accent cursor prefix like the reference select list.
+- [x] Use accent styling for selected values and muted styling for descriptions.
+- [x] Truncate value and description text to fit the popup.
+- [x] Show a muted count line when autocomplete results are clipped.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Command autocomplete now uses `›` selection prefixes and selected-text styling instead of relying on list highlight state.
+- Item values and descriptions are width-limited before rendering.
+- The popup grows by one row for a scroll/count indicator when more results exist than are visible.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

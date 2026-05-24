@@ -458,8 +458,9 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let max_visible = 5.min(ac.items.len() as u16);
-    // Popup height = items + 2 for border
-    let popup_height = max_visible + 2;
+    let show_count = ac.items.len() > max_visible as usize;
+    // Popup height = items + border + optional scroll count
+    let popup_height = max_visible + 2 + u16::from(show_count);
     // Position: right below the input area, same width
     let popup = Rect {
         x: area.x,
@@ -488,6 +489,7 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
         ));
     frame.render_widget(block, popup);
 
+    let total_items = ac.items.len();
     let items: Vec<ListItem> = ac
         .items
         .iter()
@@ -501,9 +503,12 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default()
             };
             let desc_style = Style::new().fg(theme::MUTED_TEAL);
+            let cursor = if selected { "› " } else { "  " };
             let line = Line::from(vec![
-                Span::styled(format!(" {:<12}", item.value), name_style),
-                Span::styled(&item.description, desc_style),
+                Span::styled(cursor, Style::new().fg(theme::AQUAMARINE)),
+                Span::styled(truncate_text(&item.value, 18), name_style),
+                Span::raw(" "),
+                Span::styled(truncate_text(&item.description, popup.width.saturating_sub(24) as usize), desc_style),
             ]);
             ListItem::new(line)
         })
@@ -512,12 +517,23 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
     let mut list_state = ListState::default();
     list_state.select(Some(ac.selected));
 
-    let list = List::new(items)
-        .highlight_style(
-            Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD),
-        );
+    let list = List::new(items);
 
     frame.render_stateful_widget(list, inner, &mut list_state);
+
+    if show_count {
+        let count_line = Line::from(Span::styled(
+            format!("  {}/{}", ac.selected + 1, total_items),
+            Style::new().fg(theme::MUTED_TEAL),
+        ));
+        let count_area = Rect {
+            x: inner.x,
+            y: inner.y + inner.height.saturating_sub(1),
+            width: inner.width,
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(count_line), count_area);
+    }
 }
 
 fn build_status_line(width: usize, app: &App) -> Line<'static> {
