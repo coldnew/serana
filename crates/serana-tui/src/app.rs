@@ -8,6 +8,82 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serana_core::Result;
 
 use crate::symbols::{self, Symbols};
+use crate::slash_commands::SlashCommandRegistry;
+
+/// An autocomplete suggestion item.
+#[derive(Debug, Clone)]
+pub struct AutocompleteItem {
+    pub value: String,
+    pub description: String,
+}
+
+/// Autocomplete popup state.
+#[derive(Debug, Clone)]
+pub struct AutocompleteState {
+    /// Filtered suggestion items.
+    pub items: Vec<AutocompleteItem>,
+    /// Currently selected index.
+    pub selected: usize,
+    /// The prefix being completed (e.g. "/qui" or "/model ").
+    pub prefix: String,
+}
+
+/// Check if query is a subsequence of target (fuzzy match).
+fn fuzzy_match(query: &str, target: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let mut qi = 0;
+    let query_bytes = query.as_bytes();
+    for tc in target.bytes() {
+        if tc == query_bytes[qi] {
+            qi += 1;
+            if qi == query_bytes.len() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Score a fuzzy match. Higher = better.
+/// exact > starts-with > contains > subsequence
+fn fuzzy_score(query: &str, target: &str) -> i32 {
+    if query.is_empty() {
+        return 1;
+    }
+    if target == query {
+        return 100;
+    }
+    if target.starts_with(query) {
+        return 80;
+    }
+    if target.contains(query) {
+        return 60;
+    }
+    // Subsequence: score by gaps (fewer gaps = better)
+    let mut qi = 0;
+    let mut gaps = 0i32;
+    let mut last_match_idx: i32 = -1;
+    let query_bytes = query.as_bytes();
+    for (ti, tc) in target.bytes().enumerate() {
+        if tc == query_bytes[qi] {
+            if last_match_idx >= 0 && (ti as i32 - last_match_idx) > 1 {
+                gaps += 1;
+            }
+            last_match_idx = ti as i32;
+            qi += 1;
+            if qi == query_bytes.len() {
+                break;
+            }
+        }
+    }
+    if qi != query_bytes.len() {
+        return 0;
+    }
+    (40 - gaps * 5).max(1)
+}
+
 
 /// Todo status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +165,14 @@ pub struct App {
     pub output_cost_per_mtok: f64,
     // Status line preset
     pub status_preset: String,
+    pub slash_commands: SlashCommandRegistry,
+    pub autocomplete: Option<AutocompleteState>,
+    // Session persistence
+    pub session_store: Option<serana_agent::SessionStore>,
+    pub current_session_id: Option<String>,
+    pub recent_sessions: Vec<serana_agent::SessionMeta>,
+    // Skills
+    pub skill_store: Option<serana_tools::skill::SkillStore>,
 }
 
 /// Todo item for task tracking.
@@ -141,6 +225,12 @@ impl App {
             input_cost_per_mtok: 2.50,
             output_cost_per_mtok: 10.00,
             status_preset: "default".to_string(),
+            slash_commands: SlashCommandRegistry::new(),
+            autocomplete: None,
+            session_store: None,
+            current_session_id: None,
+            recent_sessions: Vec::new(),
+            skill_store: None,
         }
     }
 
@@ -193,14 +283,56 @@ impl App {
     }
 
     fn handle_input_mode(&mut self, key: KeyEvent) -> Result<bool> {
+        // When autocomplete is active, handle special keys first
+        if self.autocomplete.is_some() {
+            match key.code {
+                KeyCode::Up => {
+                    if let Some(ref mut ac) = self.autocomplete {
+                        if ac.selected > 0 {
+                            ac.selected -= 1;
+                        }
+                    }
+                    return Ok(true);
+                }
+                KeyCode::Down => {
+                    if let Some(ref mut ac) = self.autocomplete {
+                        if ac.selected + 1 < ac.items.len() {
+                            ac.selected += 1;
+                        }
+                    }
+                    return Ok(true);
+                }
+                KeyCode::Esc => {
+                    self.cancel_autocomplete();
+                    return Ok(true);
+                }
+                KeyCode::Tab => {
+                    self.apply_autocomplete_selection(false);
+                    return Ok(true);
+                }
+                KeyCode::Enter if !key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    // For slash commands: apply then submit
+                    if self.autocomplete.as_ref().map_or(false, |ac| ac.prefix.starts_with('/')) {
+                        self.apply_autocomplete_selection(true);
+                        return Ok(true);
+                    }
+                    // Otherwise fall through to normal Enter handling
+                }
+                _ => {} // Fall through to normal handling (typing updates autocomplete)
+            }
+        }
+
         match key.code {
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
                 self.editor.insert_newline();
+                self.cancel_autocomplete();
             }
             KeyCode::Enter if !self.editor.is_empty() => {
+                self.cancel_autocomplete();
                 self.submit_message();
             }
             KeyCode::Esc => {
+                self.cancel_autocomplete();
                 if self.editor.is_empty() {
                     self.mode = AppMode::Normal;
                 } else {
@@ -209,21 +341,34 @@ impl App {
             }
             KeyCode::Backspace => {
                 self.editor.delete_backward();
+                self.try_update_autocomplete();
             }
             KeyCode::Delete => {
                 self.editor.delete_forward();
+                self.try_update_autocomplete();
             }
-            KeyCode::Left => self.editor.move_left(),
-            KeyCode::Right => self.editor.move_right(),
+            KeyCode::Left => {
+                self.editor.move_left();
+                self.cancel_autocomplete();
+            }
+            KeyCode::Right => {
+                self.editor.move_right();
+                self.cancel_autocomplete();
+            }
             KeyCode::Up => self.editor.move_up(),
             KeyCode::Down => self.editor.move_down(),
             KeyCode::Home => self.editor.move_home(),
             KeyCode::End => self.editor.move_end(),
             KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.editor.undo();
+                self.cancel_autocomplete();
             }
             KeyCode::Tab => {
-                self.editor.complete_path(&self.workspace);
+                if self.autocomplete.is_some() {
+                    self.apply_autocomplete_selection(false);
+                } else {
+                    self.editor.complete_path(&self.workspace);
+                }
             }
             KeyCode::Char(c) => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'd' {
@@ -231,12 +376,118 @@ impl App {
                     return Ok(false);
                 }
                 self.editor.insert_char(c);
+                self.try_update_autocomplete();
             }
             _ => {}
         }
         Ok(true)
     }
 
+    /// Try to trigger or update autocomplete based on current editor content.
+    fn try_update_autocomplete(&mut self) {
+        let content = self.editor.content();
+        if !content.starts_with('/') {
+            self.autocomplete = None;
+            return;
+        }
+
+        let prefix = content.trim();
+        // Strip the '/' for matching
+        let query = if prefix.len() > 1 {
+            &prefix[1..]
+        } else {
+            ""
+        };
+
+        let lower_query = query.to_lowercase();
+
+        // Check if we're past command name (has a space) — no autocomplete for args yet
+        if query.contains(' ') {
+            self.autocomplete = None;
+            return;
+        }
+
+        let commands = self.slash_commands.list_commands();
+        let mut scored: Vec<(AutocompleteItem, i32)> = commands
+            .iter()
+            .filter_map(|(name, desc)| {
+                let lower_name = name.to_lowercase();
+                let lower_desc = desc.to_lowercase();
+                if !fuzzy_match(&lower_query, &lower_name)
+                    && !fuzzy_match(&lower_query, &lower_desc)
+                {
+                    return None;
+                }
+                let name_score = if fuzzy_match(&lower_query, &lower_name) {
+                    fuzzy_score(&lower_query, &lower_name)
+                } else {
+                    0
+                };
+                let desc_score = if fuzzy_match(&lower_query, &lower_desc) {
+                    fuzzy_score(&lower_query, &lower_desc) / 2
+                } else {
+                    0
+                };
+                Some((
+                    AutocompleteItem {
+                        value: name.to_string(),
+                        description: desc.to_string(),
+                    },
+                    name_score.max(desc_score),
+                ))
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        let items: Vec<AutocompleteItem> = scored.into_iter().map(|(item, _)| item).collect();
+
+        if items.is_empty() {
+            self.autocomplete = None;
+        } else {
+            // Preserve selection if possible, otherwise reset
+            let selected = match &self.autocomplete {
+                Some(ac) if ac.selected < items.len() => ac.selected,
+                _ => 0,
+            };
+            self.autocomplete = Some(AutocompleteState {
+                items,
+                selected,
+                prefix: prefix.to_string(),
+            });
+        }
+    }
+
+    /// Apply the currently selected autocomplete item.
+    /// If `also_submit` is true, also submit the message after applying.
+    fn apply_autocomplete_selection(&mut self, also_submit: bool) {
+        let item = match self.autocomplete.as_ref().and_then(|ac| ac.items.get(ac.selected).cloned()) {
+            Some(item) => item,
+            None => return,
+        };
+        self.autocomplete = None;
+
+        // Replace editor content with "/command " (with trailing space)
+        self.editor.set_content(&format!("/{} ", item.value));
+
+        if also_submit {
+            self.submit_message();
+        }
+    }
+
+    /// Cancel autocomplete popup.
+    fn cancel_autocomplete(&mut self) {
+        self.autocomplete = None;
+    }
+
+
+    /// Load recent sessions from the store for /session commands.
+    pub fn load_recent_sessions(&mut self) {
+        if let Some(ref store) = self.session_store {
+            if let Ok(sessions) = store.list_recent_sessions(20) {
+                self.recent_sessions = sessions;
+            }
+        }
+    }
     fn handle_processing_mode(&mut self, key: KeyEvent) -> Result<bool> {
         if let KeyCode::Esc = key.code {
             self.mode = AppMode::Normal;
@@ -248,80 +499,9 @@ impl App {
         let content = self.editor.content();
         self.editor.clear();
 
-        if content.starts_with('/') {
-            let cmd = content.trim();
-            match cmd {
-                "/quit" | "/exit" | "/q" => {
-                    self.should_quit = true;
-                    return;
-                }
-                "/help" | "/?" => {
-                    let help = concat!(
-                        "Available commands:\n",
-                        "  /quit, /exit, /q - Exit\n",
-                        "  /help, /? - Show this help\n",
-                        "  /todo add <task> - Add a todo item\n",
-                        "  /todo done <n> - Mark todo #n as done\n",
-                        "  /todo drop <n> - Drop todo #n\n",
-                        "  /todo clear - Clear completed todos\n",
-                        "  /btw <note> - Add a BTW note\n",
-                        "  /btw clear - Clear all BTW notes",
-                    );
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: help.to_string(),
-                        tool_calls: Vec::new(),
-                        thinking: None,
-                    });
-                    return;
-                }
-                _ if cmd.starts_with("/todo ") => {
-                    self.handle_todo_cmd(cmd);
-                    return;
-                }
-                _ if cmd.starts_with("/btw ") => {
-                    let note = cmd.trim_start_matches("/btw ");
-                    self.btw_notes.push(note.to_string());
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: format!("📌 BTW note added: {}", note),
-                        tool_calls: Vec::new(),
-                        thinking: None,
-                    });
-                    return;
-                }
-                "/btw clear" | "/btwc" => {
-                    self.btw_notes.clear();
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: "BTW notes cleared.".to_string(),
-                        tool_calls: Vec::new(),
-                        thinking: None,
-                    });
-                    return;
-                }
-                _ if cmd.starts_with("/btw") => {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: "Usage: /btw <note> or /btw clear".to_string(),
-                        tool_calls: Vec::new(),
-                        thinking: None,
-                    });
-                    return;
-                }
-                _ => {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: format!(
-                            "Unknown command: {}. Type /help for available commands.",
-                            cmd
-                        ),
-                        tool_calls: Vec::new(),
-                        thinking: None,
-                    });
-                    return;
-                }
-            }
+        if let Some(result) = self.slash_commands.dispatch(&content) {
+            self.handle_slash_result(result);
+            return;
         }
 
         self.show_welcome = false;
@@ -336,25 +516,81 @@ impl App {
         self.mode = AppMode::Processing;
     }
 
-    fn handle_todo_cmd(&mut self, cmd: &str) {
-        let rest = cmd.strip_prefix("/todo ").unwrap_or("");
-        let parts: Vec<&str> = rest.splitn(2, ' ').collect();
-        let sub = parts.first().copied().unwrap_or("");
+    /// Handle the result of a dispatched slash command.
+    fn handle_slash_result(&mut self, result: crate::slash_commands::SlashResult) {
+        use crate::slash_commands::SlashResult;
 
-        match sub {
-            "add" => {
-                let task = parts.get(1).copied().unwrap_or("").trim();
-                if task.is_empty() {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: "Usage: /todo add <task description>".to_string(),
-                        tool_calls: Vec::new(),
-                        thinking: None,
-                    });
-                    return;
-                }
+        match result {
+            SlashResult::Display(text) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: text,
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::Quit => {
+                self.should_quit = true;
+            }
+            SlashResult::SetModel(model) => {
+                self.model = model.clone();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Model switched to: {}", model),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::Compact | SlashResult::Clear | SlashResult::Reload => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("{:?} not yet implemented", result),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::SessionList => {
+                self.load_recent_sessions();
+                self.show_session_list();
+            }
+            SlashResult::SessionSave => {
+                self.open_session_dialog();
+            }
+            SlashResult::SessionLoad(id) => {
+                self.load_session_by_id(&id);
+            }
+            SlashResult::Stats => {
+                let elapsed = self.session_elapsed();
+                let cost = self.cost_estimate();
+                let rate = self.token_rate();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "Session stats:\n  Time: {}\n  Tokens in: {} / out: {} / cache-r: {} / cache-w: {}\n  Rate: {:.1} tok/s\n  Cost: ${:.4}\n  Model: {} ({})\n  Iterations: {}/{}",
+                        elapsed, self.tokens_input, self.tokens_output,
+                        self.tokens_cache_read, self.tokens_cache_write,
+                        rate, cost, self.model, self.provider,
+                        self.iterations_used, self.iterations_max,
+                    ),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::Help => {
+                let help = self.slash_commands.help_text();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: help,
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::Theme => {
+                self.open_theme_dialog();
+            }
+            SlashResult::TodoAdd(task) => {
                 self.todo_items.push(TodoItem {
-                    content: task.to_string(),
+                    content: task.clone(),
                     status: TodoStatus::Pending,
                 });
                 self.todo_reminder_count = 0;
@@ -365,98 +601,220 @@ impl App {
                     thinking: None,
                 });
             }
-            "done" => {
-                let idx = parts
-                    .get(1)
-                    .and_then(|s| s.trim().parse::<usize>().ok())
-                    .and_then(|n| n.checked_sub(1));
-                match idx {
-                    Some(i) if i < self.todo_items.len() => {
-                        let task = self.todo_items[i].content.clone();
-                        self.todo_items[i].status = TodoStatus::Done;
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::System,
-                            content: format!("✅ Completed: {}", task),
-                            tool_calls: Vec::new(),
-                            thinking: None,
-                        });
-                    }
-                    _ => {
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::System,
-                            content: format!(
-                                "Invalid todo number. Use 1-{}.",
-                                self.todo_items.len()
-                            ),
-                            tool_calls: Vec::new(),
-                            thinking: None,
-                        });
-                    }
-                }
-            }
-            "drop" => {
-                let idx = parts
-                    .get(1)
-                    .and_then(|s| s.trim().parse::<usize>().ok())
-                    .and_then(|n| n.checked_sub(1));
-                match idx {
-                    Some(i) if i < self.todo_items.len() => {
-                        let task = self.todo_items[i].content.clone();
-                        self.todo_items[i].status = TodoStatus::Abandoned;
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::System,
-                            content: format!("🗑️ Dropped: {}", task),
-                            tool_calls: Vec::new(),
-                            thinking: None,
-                        });
-                    }
-                    _ => {
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::System,
-                            content: format!(
-                                "Invalid todo number. Use 1-{}.",
-                                self.todo_items.len()
-                            ),
-                            tool_calls: Vec::new(),
-                            thinking: None,
-                        });
-                    }
-                }
-            }
-            "clear" => {
-                let before = self.todo_items.len();
-                self.todo_items
-                    .retain(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress);
-                let cleared = before - self.todo_items.len();
-                if cleared > 0 {
+            SlashResult::TodoDone(n) => {
+                if let Some(item) = self.todo_items.get_mut(n - 1) {
+                    let task = item.content.clone();
+                    item.status = TodoStatus::Done;
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: format!("🧹 Cleared {} completed/dropped todos.", cleared),
+                        content: format!("✅ Completed: {}", task),
                         tool_calls: Vec::new(),
                         thinking: None,
                     });
                 } else {
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: "No completed todos to clear.".to_string(),
+                        content: format!(
+                            "Invalid todo number. Use 1-{}.",
+                            self.todo_items.len()
+                        ),
                         tool_calls: Vec::new(),
                         thinking: None,
                     });
                 }
             }
-            _ => {
-                let count = self.todo_items.len();
-                let done = self
+            SlashResult::TodoDrop(n) => {
+                if let Some(item) = self.todo_items.get_mut(n - 1) {
+                    let task = item.content.clone();
+                    item.status = TodoStatus::Abandoned;
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("🗑️ Dropped: {}", task),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!(
+                            "Invalid todo number. Use 1-{}.",
+                            self.todo_items.len()
+                        ),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::TodoClear => {
+                let before = self.todo_items.len();
+                self.todo_items
+                    .retain(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress);
+                let cleared = before - self.todo_items.len();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: if cleared > 0 {
+                        format!("🧹 Cleared {} completed/dropped todos.", cleared)
+                    } else {
+                        "No completed todos to clear.".to_string()
+                    },
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::TodoList => {
+                let pending: Vec<&TodoItem> = self
                     .todo_items
                     .iter()
-                    .filter(|t| t.status == TodoStatus::Done || t.status == TodoStatus::Abandoned)
-                    .count();
+                    .filter(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress)
+                    .collect();
+                if pending.is_empty() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "No pending todos.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                } else {
+                    let mut lines = vec![format!("Pending todos ({}):", pending.len())];
+                    for (i, todo) in pending.iter().enumerate() {
+                        lines.push(format!("  {}. {}", i + 1, todo.content));
+                    }
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: lines.join("\n"),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::BtwAdd(note) => {
+                self.btw_notes.push(note.clone());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("📌 BTW note added: {}", note),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::BtwClear => {
+                self.btw_notes.clear();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "BTW notes cleared.".to_string(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::QueueStatus => {
+                let pending = self.pending_messages.len();
+                let status = if self.mode == AppMode::Processing {
+                    "processing"
+                } else {
+                    "idle"
+                };
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
                     content: format!(
-                        "Usage: /todo add|done|drop|clear\nPending: {}/{} todos.",
-                        count - done,
-                        count
+                        "Queue: {} pending messages, mode: {}",
+                        pending, status,
+                    ),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::SetThinkingLevel(level) => {
+                self.thinking_level = match level.as_str() {
+                    "off" => ThinkingLevel::Off,
+                    "low" => ThinkingLevel::Low,
+                    "medium" => ThinkingLevel::Medium,
+                    "high" => ThinkingLevel::High,
+                    _ => ThinkingLevel::Off,
+                };
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Thinking level set to: {}", level),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::Copy => {
+                let last_assistant = self
+                    .messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == MessageRole::Agent);
+                match last_assistant {
+                    Some(msg) => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!(
+                                "📋 Last response ({} chars) — clipboard copy not yet wired",
+                                msg.content.len()
+                            ),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                    None => {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: "No assistant response to copy.".to_string(),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                }
+            }
+            SlashResult::SkillList => {
+                if let Some(ref store) = self.skill_store {
+                    let skills = store.all();
+                    if skills.is_empty() {
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: "No skills loaded. Create one with skill_create tool or add SKILL.md files to .serana/skills/.".to_string(),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    } else {
+                        let mut lines = vec![format!("Loaded skills ({}):", skills.len())];
+                        let mut sorted: Vec<_> = skills;
+                        sorted.sort_by(|a, b| a.name.cmp(&b.name));
+                        for s in &sorted {
+                            lines.push(format!("  /skill:{} — {} ({})", s.name, s.description, s.source));
+                        }
+                        self.messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: lines.join("\n"),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        });
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Skill store not initialized.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::SkillReload => {
+                if let Some(ref mut store) = self.skill_store {
+                    *store = serana_tools::skill::SkillStore::discover(&self.workspace);
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Skills reloaded. {} skill(s) found.", store.len()),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::Unknown(name) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "Unknown command: /{}. Type /help for available commands.",
+                        name
                     ),
                     tool_calls: Vec::new(),
                     thinking: None,
@@ -464,6 +822,7 @@ impl App {
             }
         }
     }
+
 
 
     /// Handle keys when a dialog is open.
@@ -549,10 +908,118 @@ impl App {
 
     /// Open the session selector dialog.
     pub fn open_session_dialog(&mut self) {
-        let sessions = vec![
-            ("current".into(), "Current session".into()),
-        ];
+        let mut sessions: Vec<(String, String)> = self
+            .recent_sessions
+            .iter()
+            .map(|s| {
+                let label = s.title.as_deref().unwrap_or(&s.id);
+                let date = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                let desc = format!("{} — {} msgs", date, s.message_count);
+                (format!("{} — {}", label, desc), s.id.clone())
+            })
+            .collect();
+        if sessions.is_empty() {
+            sessions.push(("current".into(), "Current session".into()));
+        }
         self.active_dialog = Some(crate::dialog::Dialog::new_session_selector(sessions));
+    }
+
+    /// Show recent sessions as a system message list.
+    fn show_session_list(&mut self) {
+        if self.recent_sessions.is_empty() {
+            self.messages.push(ChatMessage {
+                role: MessageRole::System,
+                content: "No saved sessions found.".to_string(),
+                tool_calls: Vec::new(),
+                thinking: None,
+            });
+            return;
+        }
+        let current = self.current_session_id.as_deref().unwrap_or("");
+        let mut lines = vec![format!("Recent sessions ({}):", self.recent_sessions.len())];
+        for (i, s) in self.recent_sessions.iter().take(10).enumerate() {
+            let marker = if s.id == current { " ← current" } else { "" };
+            let title = s.title.as_deref().unwrap_or(&s.id);
+            let date = s.updated_at.format("%Y-%m-%d %H:%M");
+            lines.push(format!(
+                "  {}. {} — {} msgs, {}{}",
+                i + 1,
+                title,
+                s.message_count,
+                date,
+                marker,
+            ));
+        }
+        self.messages.push(ChatMessage {
+            role: MessageRole::System,
+            content: lines.join("\n"),
+            tool_calls: Vec::new(),
+            thinking: None,
+        });
+    }
+
+    /// Load a session by id and display it.
+    fn load_session_by_id(&mut self, id: &str) {
+        let store = match self.session_store.as_ref() {
+            Some(s) => s,
+            None => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "No session store available.".to_string(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+                return;
+            }
+        };
+        match store.load_session(id) {
+            Ok(Some(session)) => {
+                self.current_session_id = Some(id.to_string());
+                // Restore messages from the session
+                self.messages.clear();
+                for msg in &session.messages {
+                    let role = match msg.role.as_str() {
+                        "user" => MessageRole::User,
+                        "assistant" => MessageRole::Agent,
+                        _ => MessageRole::System,
+                    };
+                    self.messages.push(ChatMessage {
+                        role,
+                        content: msg.content.clone(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+                let title = session.meta.title.as_deref().unwrap_or(id);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "Loaded session '{}' ({} messages)",
+                        title,
+                        session.messages.len(),
+                    ),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+                self.show_welcome = false;
+            }
+            Ok(None) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Session '{}' not found.", id),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            Err(e) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Failed to load session: {}", e),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+        }
     }
     pub fn handle_resize(&mut self, _width: u16, _height: u16) {
     }

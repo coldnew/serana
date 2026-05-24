@@ -5,9 +5,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-
 /// A slash command handler.
 pub struct SlashCommand {
     pub name: &'static str,
@@ -26,6 +23,8 @@ pub enum SlashResult {
     Compact,
     /// Clear the conversation.
     Clear,
+    /// Quit the application.
+    Quit,
     /// Show session list.
     SessionList,
     /// Save current session.
@@ -38,6 +37,32 @@ pub enum SlashResult {
     Reload,
     /// Show help.
     Help,
+    /// Open theme selector.
+    Theme,
+    /// Add a todo item.
+    TodoAdd(String),
+    /// Mark a todo as done by 1-indexed number.
+    TodoDone(usize),
+    /// Drop a todo by 1-indexed number.
+    TodoDrop(usize),
+    /// Clear completed/dropped todos.
+    TodoClear,
+    /// List current todos.
+    TodoList,
+    /// Add a BTW note.
+    BtwAdd(String),
+    /// Clear all BTW notes.
+    BtwClear,
+    /// Show message queue status.
+    /// List loaded skills.
+    SkillList,
+    /// Reload skills from disk.
+    SkillReload,
+    QueueStatus,
+    /// Set thinking/reasoning level.
+    SetThinkingLevel(String),
+    /// Copy last assistant response to clipboard.
+    Copy,
     /// Unknown command.
     Unknown(String),
 }
@@ -47,6 +72,15 @@ pub struct SlashCommandRegistry {
     commands: HashMap<String, SlashCommand>,
     custom_commands: Vec<CustomCommand>,
 }
+impl std::fmt::Debug for SlashCommandRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlashCommandRegistry")
+            .field("commands", &self.commands.keys().collect::<Vec<_>>())
+            .field("custom_commands", &self.custom_commands)
+            .finish()
+    }
+}
+
 
 /// A custom command loaded from a markdown file.
 #[derive(Debug, Clone)]
@@ -129,6 +163,119 @@ impl SlashCommandRegistry {
             name: "help",
             description: "Show available commands",
             handler: Box::new(|_| SlashResult::Help),
+        });
+
+        self.register(SlashCommand {
+            name: "quit",
+            description: "Exit the application",
+            handler: Box::new(|_| SlashResult::Quit),
+        });
+
+        self.register(SlashCommand {
+            name: "exit",
+            description: "Exit the application",
+            handler: Box::new(|_| SlashResult::Quit),
+        });
+
+        self.register(SlashCommand {
+            name: "q",
+            description: "Exit the application (alias)",
+            handler: Box::new(|_| SlashResult::Quit),
+        });
+
+        self.register(SlashCommand {
+            name: "theme",
+            description: "Open theme selector",
+            handler: Box::new(|_| SlashResult::Theme),
+        });
+
+        self.register(SlashCommand {
+            name: "todo",
+            description: "Task tracking. Usage: /todo add|done|drop|clear|list",
+            handler: Box::new(|args| {
+                let parts: Vec<&str> = args.trim().splitn(2, ' ').collect();
+                match parts.first().copied().unwrap_or("") {
+                    "add" => {
+                        let task = parts.get(1).copied().unwrap_or("").trim();
+                        if task.is_empty() {
+                            SlashResult::Display("Usage: /todo add <task>".to_string())
+                        } else {
+                            SlashResult::TodoAdd(task.to_string())
+                        }
+                    }
+                    "done" => match parts.get(1).and_then(|s| s.trim().parse::<usize>().ok()) {
+                        Some(n) if n > 0 => SlashResult::TodoDone(n),
+                        _ => SlashResult::Display("Usage: /todo done <number>".to_string()),
+                    },
+                    "drop" => match parts.get(1).and_then(|s| s.trim().parse::<usize>().ok()) {
+                        Some(n) if n > 0 => SlashResult::TodoDrop(n),
+                        _ => SlashResult::Display("Usage: /todo drop <number>".to_string()),
+                    },
+                    "clear" => SlashResult::TodoClear,
+                    "list" | "" => SlashResult::TodoList,
+                    _ => SlashResult::Display(
+                        "Usage: /todo add|done|drop|clear|list".to_string(),
+                    ),
+                }
+            }),
+        });
+
+        self.register(SlashCommand {
+            name: "btw",
+            description: "BTW notes. Usage: /btw <note> or /btw clear",
+            handler: Box::new(|args| {
+                let args = args.trim();
+                if args == "clear" {
+                    SlashResult::BtwClear
+                } else if args.is_empty() {
+                    SlashResult::Display("Usage: /btw <note> or /btw clear".to_string())
+                } else {
+                    SlashResult::BtwAdd(args.to_string())
+                }
+            }),
+        });
+
+        self.register(SlashCommand {
+            name: "queue",
+            description: "Show message queue status",
+            handler: Box::new(|_| SlashResult::QueueStatus),
+        });
+
+        self.register(SlashCommand {
+            name: "think",
+            description: "Set thinking level. Usage: /think off|low|medium|high",
+            handler: Box::new(|args| {
+                let level = args.trim().to_lowercase();
+                match level.as_str() {
+                    "off" | "low" | "medium" | "high" => {
+                        SlashResult::SetThinkingLevel(level)
+                    }
+                    "" => SlashResult::Display(
+                        "Usage: /think off|low|medium|high".to_string(),
+                    ),
+                    _ => SlashResult::Display(format!(
+                        "Unknown level '{}'. Use: off, low, medium, high",
+                        level
+                    )),
+                }
+            }),
+        });
+
+        self.register(SlashCommand {
+            name: "copy",
+            description: "Copy last assistant response to clipboard",
+            handler: Box::new(|_| SlashResult::Copy),
+        });
+        self.register(SlashCommand {
+            name: "skill",
+            description: "List or reload skills. Usage: /skill list|reload",
+            handler: Box::new(|args| {
+                let sub = args.trim();
+                match sub {
+                    "reload" => SlashResult::SkillReload,
+                    _ => SlashResult::SkillList,
+                }
+            }),
         });
     }
 
@@ -226,6 +373,20 @@ impl SlashCommandRegistry {
     pub fn is_command(input: &str) -> bool {
         input.trim().starts_with('/')
     }
+    /// List all available command names with descriptions (for autocomplete).
+    pub fn list_commands(&self) -> Vec<(&str, &str)> {
+        let mut cmds: Vec<_> = self
+            .commands
+            .values()
+            .map(|c| (c.name, c.description))
+            .collect();
+        for custom in &self.custom_commands {
+            cmds.push((&custom.name, &custom.description));
+        }
+        cmds.sort_by(|a, b| a.0.cmp(b.0));
+        cmds
+    }
+
 }
 
 impl Default for SlashCommandRegistry {

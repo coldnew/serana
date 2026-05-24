@@ -1,7 +1,7 @@
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoStatus};
@@ -384,6 +384,76 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(para, area);
 }
 
+/// Render autocomplete dropdown popup below the input area.
+fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
+    let ac = match app.autocomplete.as_ref() {
+        Some(ac) if !ac.items.is_empty() => ac,
+        _ => return,
+    };
+
+    let max_visible = 5.min(ac.items.len() as u16);
+    // Popup height = items + 2 for border
+    let popup_height = max_visible + 2;
+    // Position: right below the input area, same width
+    let popup = Rect {
+        x: area.x,
+        y: area.y + area.height,
+        width: area.width,
+        height: popup_height.min(frame.area().height.saturating_sub(area.y + area.height)),
+    };
+
+    if popup.height < 3 {
+        return; // Not enough room
+    }
+
+    frame.render_widget(Clear, popup);
+
+    let inner = popup.inner(ratatui::layout::Margin {
+        horizontal: 1,
+        vertical: 1,
+    });
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::new().fg(theme::AQUAMARINE))
+        .title(Span::styled(
+            " Commands ",
+            Style::new().fg(theme::AQUAMARINE),
+        ));
+    frame.render_widget(block, popup);
+
+    let items: Vec<ListItem> = ac
+        .items
+        .iter()
+        .take(max_visible as usize)
+        .enumerate()
+        .map(|(i, item)| {
+            let selected = i == ac.selected;
+            let name_style = if selected {
+                Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let desc_style = Style::new().fg(theme::MUTED_TEAL);
+            let line = Line::from(vec![
+                Span::styled(format!(" {:<12}", item.value), name_style),
+                Span::styled(&item.description, desc_style),
+            ]);
+            ListItem::new(line)
+        })
+        .collect();
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(ac.selected));
+
+    let list = List::new(items)
+        .highlight_style(
+            Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD),
+        );
+
+    frame.render_stateful_widget(list, inner, &mut list_state);
+}
+
 fn render_status_line(frame: &mut Frame, area: Rect, app: &App) {
     let theme = Theme::default();
     let s = app.symbols;
@@ -540,6 +610,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     render_input(frame, input_area, app);
+    render_autocomplete(frame, input_area, app);
     render_status_line(frame, status_area, app);
 
     // Render dialog on top if active
