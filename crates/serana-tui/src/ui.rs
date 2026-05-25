@@ -290,19 +290,13 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if !app.pending_messages.is_empty() && app.mode == AppMode::Processing {
         all_lines.push(Line::from(""));
-        all_lines.push(Line::from(Span::styled(
-            format!(
-                "  {} Responding...",
-                s.spinner[(app.tick_count % s.spinner.len() as u64) as usize]
-            ),
-            theme.accent,
-        )));
-        for pending in &app.pending_messages {
-            all_lines.push(Line::from(Span::styled(
-                format!("    {}", pending),
-                theme.dim,
-            )));
-        }
+        all_lines.extend(render_processing_lines(
+            &app.pending_messages,
+            (app.tick_count % s.spinner.len() as u64) as usize,
+            &theme,
+            s,
+            area.width as usize,
+        ));
     }
 
     if !app.status_messages.is_empty() {
@@ -455,6 +449,92 @@ fn render_btw_lines(
         theme.border,
     )));
     lines
+}
+
+fn render_processing_lines(
+    pending: &[String],
+    spinner_idx: usize,
+    theme: &Theme,
+    symbols: &Symbols,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let panel_width = width.saturating_sub(2).max(4);
+    let inner_width = panel_width.saturating_sub(4);
+    let spinner = symbols.spinner[spinner_idx % symbols.spinner.len()];
+    let message_width = inner_width.saturating_sub(spinner.chars().count() + 1);
+    let message = truncate_text("Responding... (esc to cancel)", message_width);
+    let mut lines = vec![
+        Line::from(Span::styled(
+            format!(
+                "  {}{}{}",
+                symbols.box_sharp.top_left,
+                symbols.box_sharp.horizontal.repeat(panel_width.saturating_sub(2)),
+                symbols.box_sharp.top_right
+            ),
+            theme.border,
+        )),
+        padded_panel_line(
+            vec![
+                Span::styled(spinner.to_string(), theme.accent),
+                Span::raw(" "),
+                Span::styled(message, theme.muted),
+            ],
+            inner_width,
+            theme,
+            symbols,
+        ),
+    ];
+
+    for item in pending {
+        lines.push(padded_panel_line(
+            vec![Span::styled(
+                truncate_text(item, inner_width),
+                theme.dim,
+            )],
+            inner_width,
+            theme,
+            symbols,
+        ));
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!(
+            "  {}{}{}",
+            symbols.box_sharp.bottom_left,
+            symbols.box_sharp.horizontal.repeat(panel_width.saturating_sub(2)),
+            symbols.box_sharp.bottom_right
+        ),
+        theme.border,
+    )));
+    lines
+}
+
+fn padded_panel_line(
+    mut content: Vec<Span<'static>>,
+    inner_width: usize,
+    theme: &Theme,
+    symbols: &Symbols,
+) -> Line<'static> {
+    let content_width = spans_text_width(&content);
+    let pad = " ".repeat(inner_width.saturating_sub(content_width));
+    let mut spans = vec![Span::styled(
+        format!("  {} ", symbols.box_sharp.vertical),
+        theme.border,
+    )];
+    spans.append(&mut content);
+    spans.push(Span::raw(pad));
+    spans.push(Span::styled(
+        format!(" {}", symbols.box_sharp.vertical),
+        theme.border,
+    ));
+    Line::from(spans)
+}
+
+fn spans_text_width(spans: &[Span<'static>]) -> usize {
+    spans
+        .iter()
+        .map(|span| span.content.chars().count())
+        .sum()
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
@@ -951,5 +1031,27 @@ mod tests {
         assert!(lines
             .iter()
             .all(|line| line.to_string().chars().count() <= 8));
+    }
+
+    #[test]
+    fn test_processing_lines_render_bordered_loader() {
+        let theme = Theme::default();
+        let pending = vec!["tool call pending".to_string()];
+        let lines = render_processing_lines(&pending, 0, &theme, &crate::symbols::UNICODE, 42);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered[0].contains("┌"));
+        assert!(rendered[1].contains("Responding"));
+        assert!(rendered[2].contains("tool call pending"));
+        assert!(rendered[3].contains("└"));
+    }
+
+    #[test]
+    fn test_processing_lines_fit_requested_width() {
+        let theme = Theme::default();
+        let pending = vec!["a very long pending status message".to_string()];
+        let lines = render_processing_lines(&pending, 0, &theme, &crate::symbols::UNICODE, 18);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 18));
     }
 }

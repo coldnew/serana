@@ -328,3 +328,16 @@ Review:
 - The panel title remains warning-styled and note text remains muted.
 - Added focused tests for rounded panel rendering and width bounds.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for processing loader slice:
+- [x] Render pending assistant work as a bordered loader panel like reference execution loaders.
+- [x] Keep spinner frame and pending message text visible.
+- [x] Make the loader panel width-aware, including narrow widths.
+- [x] Add focused tests for loader panel structure and width limits.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Pending assistant work now renders inside a sharp bordered loader panel.
+- The panel includes the active spinner frame, cancel hint, and pending message preview.
+- Added focused tests for loader structure and width limits.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
