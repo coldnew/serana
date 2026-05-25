@@ -506,3 +506,18 @@ Review:
 - Existing style-stack behavior for other inline styles was left intact.
 - Added a focused span-level strikethrough test.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown link de-duplication slice:
+- [x] Track visible link text while rendering inline link spans.
+- [x] Avoid appending the link target when visible text already equals the href.
+- [x] Treat `mailto:` targets as duplicates when visible text equals the email address.
+- [x] Preserve current target suffix behavior for descriptive link text.
+- [x] Add focused tests for duplicate and descriptive links.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown link rendering now tracks visible link text while inside link spans.
+- Link targets are omitted when visible text already equals the href or the `mailto:` email address.
+- Descriptive link text still appends the target suffix.
+- Added focused tests for duplicate URL links, duplicate mailto links, and descriptive links.
+- Live worktree tests are blocked by unrelated dirty `serana-llm` export edits; clean-checkout verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target-link-verify`.

@@ -58,6 +58,7 @@ struct MarkdownRenderer<'a> {
     lines: Vec<Line<'static>>,
     current_spans: Vec<Span<'static>>,
     link_target: Option<String>,
+    link_text: String,
     image_target: Option<String>,
     image_alt: String,
     style_stack: Vec<Style>,
@@ -86,6 +87,7 @@ impl<'a> MarkdownRenderer<'a> {
             lines: Vec::new(),
             current_spans: Vec::new(),
             link_target: None,
+            link_text: String::new(),
             image_target: None,
             image_alt: String::new(),
             style_stack: Vec::new(),
@@ -126,6 +128,9 @@ impl<'a> MarkdownRenderer<'a> {
                     self.image_alt.push_str(&text);
                 } else if self.in_table_cell {
                     self.current_table_cell.push_str(&text);
+                } else if self.link_target.is_some() {
+                    self.link_text.push_str(&text);
+                    self.push_text(&text);
                 } else {
                     self.push_text(&text);
                 }
@@ -135,6 +140,10 @@ impl<'a> MarkdownRenderer<'a> {
                     self.current_table_cell.push_str(&code);
                 } else if self.image_target.is_some() {
                     self.image_alt.push_str(&code);
+                } else if self.link_target.is_some() {
+                    self.link_text.push_str(&code);
+                    self.current_spans
+                        .push(Span::styled(code.to_string(), self.theme.code));
                 } else {
                     self.current_spans
                         .push(Span::styled(code.to_string(), self.theme.code));
@@ -229,6 +238,7 @@ impl<'a> MarkdownRenderer<'a> {
             }
             Tag::Link { dest_url, .. } => {
                 self.link_target = Some(dest_url.to_string());
+                self.link_text.clear();
                 self.style_stack.push(self.theme.link);
                 self.current_style = Some(self.theme.link);
             }
@@ -335,7 +345,8 @@ impl<'a> MarkdownRenderer<'a> {
             }
             TagEnd::Link => {
                 if let Some(target) = self.link_target.take() {
-                    if !target.is_empty() {
+                    let text = std::mem::take(&mut self.link_text);
+                    if !target.is_empty() && !link_text_matches_target(&text, &target) {
                         self.current_spans
                             .push(Span::styled(format!(" ({})", target), self.theme.link));
                     }
@@ -657,6 +668,11 @@ fn format_image_placeholder(alt: &str, target: &str, width: usize) -> String {
     truncate_to_width(&format!("[image: {}] {}", label, target), width)
 }
 
+fn link_text_matches_target(text: &str, target: &str) -> bool {
+    let text = text.trim();
+    text == target || target.strip_prefix("mailto:") == Some(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -711,6 +727,45 @@ mod tests {
             let s = l.clone().to_string();
             s.contains("cargo run")
         }));
+    }
+
+    #[test]
+    fn test_link_omits_duplicate_target() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("[https://example.com](https://example.com)", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("https://example.com"));
+        assert!(!rendered.contains("(https://example.com)"));
+    }
+
+    #[test]
+    fn test_mailto_link_omits_duplicate_target() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("[me@example.com](mailto:me@example.com)", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("me@example.com"));
+        assert!(!rendered.contains("(mailto:me@example.com)"));
+    }
+
+    #[test]
+    fn test_link_keeps_descriptive_target() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("[example](https://example.com)", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("example"));
+        assert!(rendered.contains("(https://example.com)"));
     }
 
     #[test]
