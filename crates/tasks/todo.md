@@ -452,3 +452,15 @@ Review:
 - Cursor marker and reversed cursor-character styling are preserved as styled characters through wrapping.
 - Added focused tests for word-boundary wrapping and long-word splitting.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for editor wrap helper slice:
+- [x] Extract styled editor wrap token construction from `wrap_editor_display_line`.
+- [x] Extract token application logic so long-word fallback and whitespace wrapping are named.
+- [x] Preserve existing editor wrapping behavior and tests.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Editor wrapping now builds styled wrap tokens through `editor_wrap_tokens`.
+- Normal token wrapping and long-token fallback are split into named helpers.
+- Existing cursor-preserving word-wrap behavior was preserved.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

@@ -689,8 +689,30 @@ fn wrap_editor_display_line(line: Line<'static>, width: usize) -> Vec<Line<'stat
     let mut lines = Vec::new();
     let mut current: Vec<(char, Style)> = Vec::new();
     let mut current_width = 0;
-    let mut tokens: Vec<(Vec<(char, Style)>, bool)> = Vec::new();
 
+    for (token, is_whitespace) in editor_wrap_tokens(line) {
+        if current.is_empty() && is_whitespace {
+            continue;
+        }
+
+        append_editor_wrap_token(
+            token,
+            is_whitespace,
+            width,
+            &mut current,
+            &mut current_width,
+            &mut lines,
+        );
+    }
+
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
+    }
+    lines
+}
+
+fn editor_wrap_tokens(line: Line<'static>) -> Vec<(Vec<(char, Style)>, bool)> {
+    let mut tokens: Vec<(Vec<(char, Style)>, bool)> = Vec::new();
     for span in line.spans {
         let style = span.style;
         for ch in span.content.chars() {
@@ -704,56 +726,69 @@ fn wrap_editor_display_line(line: Line<'static>, width: usize) -> Vec<Line<'stat
             tokens.push((vec![(ch, style)], is_whitespace));
         }
     }
+    tokens
+}
 
-    for (token, is_whitespace) in tokens {
-        if current.is_empty() && is_whitespace {
-            continue;
-        }
-
-        let token_width = token.len();
-        if token_width > width {
-            let mut idx = 0;
-            if !current.is_empty() && current_width < width {
-                let take = (width - current_width).min(token_width);
-                current.extend_from_slice(&token[..take]);
-                idx = take;
-                lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
-                current = Vec::new();
-                current_width = 0;
-            } else if !current.is_empty() {
-                lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
-                current = Vec::new();
-                current_width = 0;
-            }
-
-            while idx + width <= token_width {
-                lines.push(line_from_styled_chars(token[idx..idx + width].to_vec()));
-                idx += width;
-            }
-            if idx < token_width {
-                current = token[idx..].to_vec();
-                current_width = current.len();
-            }
-            continue;
-        }
-
-        if current_width + token_width > width {
-            lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
-            current = Vec::new();
-            current_width = 0;
-            if is_whitespace {
-                continue;
-            }
-        }
-
-        current.extend(token);
-        current_width += token_width;
+fn append_editor_wrap_token(
+    token: Vec<(char, Style)>,
+    is_whitespace: bool,
+    width: usize,
+    current: &mut Vec<(char, Style)>,
+    current_width: &mut usize,
+    lines: &mut Vec<Line<'static>>,
+) {
+    let token_width = token.len();
+    if token_width > width {
+        append_long_editor_token(token, width, current, current_width, lines);
+        return;
     }
 
-    if !current.is_empty() || lines.is_empty() {
-        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
+    if *current_width + token_width > width {
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(std::mem::take(
+            current,
+        ))));
+        *current_width = 0;
+        if is_whitespace {
+            return;
+        }
     }
-    lines
+
+    current.extend(token);
+    *current_width += token_width;
+}
+
+fn append_long_editor_token(
+    token: Vec<(char, Style)>,
+    width: usize,
+    current: &mut Vec<(char, Style)>,
+    current_width: &mut usize,
+    lines: &mut Vec<Line<'static>>,
+) {
+    let token_width = token.len();
+    let mut idx = 0;
+    if !current.is_empty() && *current_width < width {
+        let take = (width - *current_width).min(token_width);
+        current.extend_from_slice(&token[..take]);
+        idx = take;
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(std::mem::take(
+            current,
+        ))));
+        *current_width = 0;
+    } else if !current.is_empty() {
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(std::mem::take(
+            current,
+        ))));
+        *current_width = 0;
+    }
+
+    while idx + width <= token_width {
+        lines.push(line_from_styled_chars(token[idx..idx + width].to_vec()));
+        idx += width;
+    }
+    if idx < token_width {
+        current.extend_from_slice(&token[idx..]);
+        *current_width = current.len();
+    }
 }
 
 fn trim_trailing_editor_whitespace(mut chars: Vec<(char, Style)>) -> Vec<(char, Style)> {
