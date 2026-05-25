@@ -354,3 +354,16 @@ Review:
 - Notice text is truncated to the available width and remains muted.
 - Added focused tests for label rendering and width limits.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for thinking Markdown slice:
+- [x] Render assistant thinking through the Markdown renderer instead of raw lines.
+- [x] Preserve thinking color/italic styling across rendered spans.
+- [x] Keep thinking text width-aware and compatible with final conversation clamping.
+- [x] Add focused tests for formatted and wrapped thinking text.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Assistant thinking text now renders through the Markdown renderer.
+- Rendered thinking spans are patched with the existing thinking style.
+- Added focused tests for Markdown formatting and wrapping behavior.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

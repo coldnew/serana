@@ -243,12 +243,7 @@ fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: 
             lines.push(Line::from(""));
 
             if let Some(ref thinking) = msg.thinking {
-                for t_line in thinking.lines() {
-                    lines.push(Line::from(Span::styled(
-                        format!("  {}", t_line),
-                        theme.thinking,
-                    )));
-                }
+                lines.extend(render_thinking_lines(thinking, width, theme));
                 lines.push(Line::from(""));
             }
 
@@ -276,6 +271,26 @@ fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: 
     }
 
     lines
+}
+
+fn render_thinking_lines(text: &str, width: usize, theme: &Theme) -> Vec<Line<'static>> {
+    let md_theme = crate::markdown::MarkdownTheme::default();
+    let md_lines = render_markdown(text, &md_theme, width.saturating_sub(4));
+    md_lines
+        .into_iter()
+        .map(|line| {
+            let mut spans = vec![Span::styled("  ".to_string(), theme.thinking)];
+            spans.extend(md_line_spans_with_style(line, theme.thinking));
+            Line::from(spans)
+        })
+        .collect()
+}
+
+fn md_line_spans_with_style(line: Line<'static>, style: Style) -> Vec<Span<'static>> {
+    line.spans
+        .into_iter()
+        .map(|span| Span::styled(span.content.into_owned(), span.style.patch(style)))
+        .collect()
 }
 
 fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
@@ -1093,5 +1108,28 @@ mod tests {
         assert!(lines
             .iter()
             .all(|line| line.to_string().chars().count() <= 18));
+    }
+
+    #[test]
+    fn test_thinking_lines_render_markdown_text() {
+        let theme = Theme::default();
+        let lines = render_thinking_lines("I am **checking** this", 80, &theme);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("checking"));
+        assert!(!rendered.contains("**"));
+    }
+
+    #[test]
+    fn test_thinking_lines_wrap_to_width() {
+        let theme = Theme::default();
+        let lines = render_thinking_lines("abcdefghijabcdefghijabcdefghij", 12, &theme);
+        assert!(lines.len() > 1);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 12));
     }
 }
