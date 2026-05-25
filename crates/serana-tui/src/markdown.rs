@@ -169,7 +169,9 @@ impl<'a> MarkdownRenderer<'a> {
                 self.current_spans
                     .push(Span::styled(marker.to_string(), self.theme.list_bullet));
             }
-            Event::Html(_) | Event::InlineHtml(_) => {}
+            Event::Html(html) | Event::InlineHtml(html) => {
+                self.push_text(html.trim());
+            }
             Event::FootnoteReference(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {}
         }
     }
@@ -844,5 +846,43 @@ mod tests {
             .map(|line| line.to_string())
             .filter(|line| !line.is_empty())
             .all(|line| line.to_string().chars().count() <= 18));
+    }
+
+    #[test]
+    fn test_inline_html_renders_as_text() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("Use <kbd>Esc</kbd> now", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("<kbd>"));
+        assert!(rendered.contains("</kbd>"));
+    }
+
+    #[test]
+    fn test_html_block_renders_as_text() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("<div>\nhello\n</div>", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("<div>"));
+        assert!(rendered.contains("hello"));
+        assert!(rendered.contains("</div>"));
+    }
+
+    #[test]
+    fn test_html_output_fits_requested_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("<span>abcdefghijabcdefghij</span>", &theme, 10);
+        assert!(lines
+            .iter()
+            .map(|line| line.to_string())
+            .filter(|line| !line.is_empty())
+            .all(|line| line.chars().count() <= 10));
     }
 }

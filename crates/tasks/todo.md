@@ -521,3 +521,16 @@ Review:
 - Descriptive link text still appends the target suffix.
 - Added focused tests for duplicate URL links, duplicate mailto links, and descriptive links.
 - Live worktree tests are blocked by unrelated dirty `serana-llm` export edits; clean-checkout verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target-link-verify`.
+
+Success criteria for Markdown HTML slice:
+- [x] Render inline HTML as plain text instead of dropping it.
+- [x] Render HTML blocks as plain text through the normal wrapping path.
+- [x] Keep HTML output width-safe.
+- [x] Add focused tests for inline HTML, block HTML, and width bounds.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Inline and block HTML events now render as plain text through the normal Markdown text path.
+- HTML output uses existing wrapping/clamping behavior.
+- Added focused tests for inline HTML, block HTML, and width limits.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
