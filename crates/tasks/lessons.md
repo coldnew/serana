@@ -53,3 +53,4 @@
 - Status notices should use compact labels plus muted payload text, matching reference model/thinking/custom notice rows better than generic arrows.
 - Thinking traces should go through the same Markdown path as assistant text, then apply thinking styling, so formatting and wrapping stay consistent.
 - Selector chrome should reuse rounded/bordered component language and truncate footer affordances so small terminals do not clip awkwardly.
+- Autocomplete popups need their own visible-window logic; once rows are manually styled, relying on the full item index without scrolling can hide the selected command.

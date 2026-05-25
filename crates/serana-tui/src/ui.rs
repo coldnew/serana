@@ -2,7 +2,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph, Wrap,
+    Block, BorderType, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap,
 };
 use ratatui::Frame;
 
@@ -663,10 +663,11 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
         _ => return,
     };
 
-    let max_visible = 5.min(ac.items.len() as u16);
-    let show_count = ac.items.len() > max_visible as usize;
+    let total_items = ac.items.len();
+    let max_visible = 5.min(total_items);
+    let show_count = total_items > max_visible;
     // Popup height = items + border + optional scroll count
-    let popup_height = max_visible + 2 + u16::from(show_count);
+    let popup_height = max_visible as u16 + 2 + u16::from(show_count);
     // Position: right below the input area, same width
     let popup = Rect {
         x: area.x,
@@ -695,12 +696,13 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
         ));
     frame.render_widget(block, popup);
 
-    let total_items = ac.items.len();
+    let (start, end) = autocomplete_visible_range(ac.selected, total_items, max_visible);
     let items: Vec<ListItem> = ac
         .items
         .iter()
-        .take(max_visible as usize)
         .enumerate()
+        .take(end)
+        .skip(start)
         .map(|(i, item)| {
             let selected = i == ac.selected;
             let name_style = if selected {
@@ -720,12 +722,12 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
 
-    let mut list_state = ListState::default();
-    list_state.select(Some(ac.selected));
-
     let list = List::new(items);
-
-    frame.render_stateful_widget(list, inner, &mut list_state);
+    let list_area = Rect {
+        height: inner.height.saturating_sub(u16::from(show_count)),
+        ..inner
+    };
+    frame.render_widget(list, list_area);
 
     if show_count {
         let count_line = Line::from(Span::styled(
@@ -740,6 +742,24 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
         };
         frame.render_widget(Paragraph::new(count_line), count_area);
     }
+}
+
+fn autocomplete_visible_range(
+    selected: usize,
+    total_items: usize,
+    max_visible: usize,
+) -> (usize, usize) {
+    if total_items == 0 || max_visible == 0 {
+        return (0, 0);
+    }
+
+    let visible = max_visible.min(total_items);
+    let selected = selected.min(total_items - 1);
+    let mut start = selected.saturating_add(1).saturating_sub(visible);
+    if start + visible > total_items {
+        start = total_items - visible;
+    }
+    (start, start + visible)
 }
 
 fn build_status_line(width: usize, app: &App) -> Line<'static> {
@@ -1001,6 +1021,24 @@ mod tests {
             content: content.to_string(),
             status,
         }
+    }
+
+    #[test]
+    fn test_autocomplete_visible_range_starts_at_top() {
+        assert_eq!(autocomplete_visible_range(0, 8, 5), (0, 5));
+        assert_eq!(autocomplete_visible_range(4, 8, 5), (0, 5));
+    }
+
+    #[test]
+    fn test_autocomplete_visible_range_follows_selection() {
+        assert_eq!(autocomplete_visible_range(5, 8, 5), (1, 6));
+        assert_eq!(autocomplete_visible_range(7, 8, 5), (3, 8));
+    }
+
+    #[test]
+    fn test_autocomplete_visible_range_handles_empty_and_clamped_selection() {
+        assert_eq!(autocomplete_visible_range(0, 0, 5), (0, 0));
+        assert_eq!(autocomplete_visible_range(9, 3, 5), (0, 3));
     }
 
     #[test]

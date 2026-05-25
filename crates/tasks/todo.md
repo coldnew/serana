@@ -380,3 +380,17 @@ Review:
 - Dialog footer help is truncated to the available width.
 - Existing filter, select-list rows, and clipped count behavior were left intact.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for autocomplete scrolling slice:
+- [x] Keep the selected autocomplete item visible when selection moves past the first five rows.
+- [x] Reserve popup space for the count line instead of letting list rows overlap it.
+- [x] Preserve existing row styling, cursor marker, and selected/total metadata.
+- [x] Add focused tests for autocomplete visible-range behavior.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Autocomplete now renders a scrolling visible range so the selected command remains visible after moving beyond the first five rows.
+- The popup reserves the final inner row for selected/total metadata instead of letting command rows overlap it.
+- Existing row cursor marker, selected styling, and muted descriptions were preserved.
+- Added focused tests for top, scrolled, empty, and clamped visible-range behavior.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
