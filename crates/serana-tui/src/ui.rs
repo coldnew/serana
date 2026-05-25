@@ -623,12 +623,14 @@ fn render_editor_display_lines(
     }
 
     (0..editor.line_count())
-        .map(|row| {
-            render_editor_display_line(
-                editor.line(row),
-                (row == editor.row()).then_some(editor.col()),
+        .flat_map(|row| {
+            wrap_editor_display_line(
+                render_editor_display_line(
+                    editor.line(row),
+                    (row == editor.row()).then_some(editor.col()),
+                    theme,
+                ),
                 width,
-                theme,
             )
         })
         .collect()
@@ -637,11 +639,10 @@ fn render_editor_display_lines(
 fn render_editor_display_line(
     line_text: &str,
     cursor_col: Option<usize>,
-    width: usize,
     theme: &Theme,
 ) -> Line<'static> {
     let Some(col) = cursor_col else {
-        return clamp_line(Line::from(Span::raw(sanitize_editor_display_text(line_text))), width);
+        return Line::from(Span::raw(sanitize_editor_display_text(line_text)));
     };
 
     let col = col.min(line_text.len());
@@ -665,7 +666,7 @@ fn render_editor_display_line(
         spans.push(Span::raw(sanitize_editor_display_text(&rest[ch_len..])));
     }
 
-    clamp_line(Line::from(spans), width)
+    Line::from(spans)
 }
 
 fn sanitize_editor_display_text(text: &str) -> String {
@@ -678,6 +679,34 @@ fn sanitize_editor_display_text(text: &str) -> String {
         }
     }
     out
+}
+
+fn wrap_editor_display_line(line: Line<'static>, width: usize) -> Vec<Line<'static>> {
+    if width == 0 {
+        return vec![Line::from("")];
+    }
+
+    let mut lines = Vec::new();
+    let mut current = Vec::new();
+    let mut current_width = 0;
+
+    for span in line.spans {
+        let style = span.style;
+        for ch in span.content.chars() {
+            if current_width == width {
+                lines.push(Line::from(current));
+                current = Vec::new();
+                current_width = 0;
+            }
+            current.push(Span::styled(ch.to_string(), style));
+            current_width += 1;
+        }
+    }
+
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(Line::from(current));
+    }
+    lines
 }
 
 /// Render autocomplete dropdown popup below the input area.
@@ -1108,6 +1137,42 @@ mod tests {
         assert!(lines
             .iter()
             .all(|line| line.to_string().chars().count() <= 12));
+    }
+
+    #[test]
+    fn test_editor_display_wraps_long_lines() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("abcdefghij");
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 4, &theme);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.len() >= 3);
+        assert!(rendered
+            .iter()
+            .all(|line| line.chars().count() <= 4));
+    }
+
+    #[test]
+    fn test_editor_display_wrap_preserves_cursor_marker() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("abcdefghij");
+        editor.move_home();
+        for _ in 0..5 {
+            editor.move_right();
+        }
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 4, &theme);
+        assert!(lines.iter().any(|line| line.to_string().contains("▏")));
+        assert!(lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .any(|span| span.content == "f"
+                && span
+                    .style
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::REVERSED)));
     }
 
     #[test]

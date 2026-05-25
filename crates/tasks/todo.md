@@ -424,3 +424,17 @@ Review:
 - Editor display lines are clamped to the input content width.
 - Added focused tests for sanitation, cursor styling, and width limits.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for editor wrapping slice:
+- [x] Wrap long editor display rows into multiple width-safe lines instead of truncating them.
+- [x] Preserve sanitized text and cursor styling across wrapped display lines.
+- [x] Keep placeholder rendering as a single width-safe line.
+- [x] Add focused tests for wrapping and cursor preservation.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Editor display rows now wrap into multiple width-safe lines instead of truncating user text.
+- Sanitized text, cursor marker, and reversed cursor-character styling are preserved through wrapping.
+- Empty-editor placeholder rendering stays a single clamped line.
+- Added focused tests for wrapped long lines and cursor preservation after wrapping.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

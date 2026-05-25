@@ -56,3 +56,4 @@
 - Autocomplete popups need their own visible-window logic; once rows are manually styled, relying on the full item index without scrolling can hide the selected command.
 - Tool renderers should enforce width safety at the component boundary so appended notices and tool-specific previews cannot rely on outer conversation clamps.
 - Editor rendering should sanitize and clamp text before widget rendering; keeping that in a helper makes later wrapping/cursor parity changes easier.
+- Editor display wrapping should happen before the terminal widget sees lines so long prompts remain visible and cursor styling can be preserved across visual rows.
