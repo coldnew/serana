@@ -6,7 +6,7 @@ use ratatui::widgets::{
 };
 use ratatui::Frame;
 
-use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoStatus};
+use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoItem, TodoStatus};
 use crate::markdown::render_markdown;
 use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
@@ -317,19 +317,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if !app.todo_items.is_empty() {
         all_lines.push(Line::from(""));
-        all_lines.push(Line::from(Span::styled("  Tasks", theme.accent)));
-        for (i, todo) in app.todo_items.iter().enumerate() {
-            let (check, style) = match todo.status {
-                TodoStatus::Done => (s.checkbox_checked, theme.dim),
-                TodoStatus::Abandoned => (s.checkbox_abandoned, Style::default().add_modifier(ratatui::style::Modifier::DIM | ratatui::style::Modifier::CROSSED_OUT)),
-                TodoStatus::InProgress => (s.checkbox_in_progress, Style::default().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD)),
-                TodoStatus::Pending => (s.checkbox_unchecked, Style::default()),
-            };
-            all_lines.push(Line::from(Span::styled(
-                format!("  {:>2}. {} {}", i + 1, check, todo.content),
-                style,
-            )));
-        }
+        all_lines.extend(render_todo_lines(&app.todo_items, &theme));
     }
 
     if !app.btw_notes.is_empty() {
@@ -368,6 +356,52 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
         );
 
     frame.render_widget(para, area);
+}
+
+fn render_todo_lines(items: &[TodoItem], theme: &Theme) -> Vec<Line<'static>> {
+    let incomplete = items
+        .iter()
+        .filter(|todo| todo.status == TodoStatus::Pending || todo.status == TodoStatus::InProgress)
+        .count();
+    let label = if incomplete == 1 { "todo" } else { "todos" };
+    let mut lines = vec![Line::from(vec![
+        Span::styled("  Tasks", theme.accent),
+        Span::styled(
+            format!("  {} incomplete {} / {} total", incomplete, label, items.len()),
+            theme.dim,
+        ),
+    ])];
+
+    for todo in items {
+        let (marker, style) = todo_marker_style(todo.status, theme);
+        lines.push(Line::from(vec![
+            Span::raw("  - ["),
+            Span::styled(marker.to_string(), style),
+            Span::raw("] "),
+            Span::styled(todo.content.clone(), style),
+        ]));
+    }
+
+    lines
+}
+
+fn todo_marker_style(status: TodoStatus, theme: &Theme) -> (&'static str, Style) {
+    match status {
+        TodoStatus::Pending => (" ", theme.muted),
+        TodoStatus::InProgress => (
+            "/",
+            Style::new()
+                .fg(theme::AQUAMARINE)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        ),
+        TodoStatus::Done => ("x", theme.dim),
+        TodoStatus::Abandoned => (
+            "-",
+            Style::default().add_modifier(
+                ratatui::style::Modifier::DIM | ratatui::style::Modifier::CROSSED_OUT,
+            ),
+        ),
+    }
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
@@ -787,5 +821,50 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // Render dialog on top if active
     if let Some(ref dialog) = app.active_dialog {
         crate::dialog::render_dialog(frame, dialog);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn todo(content: &str, status: TodoStatus) -> TodoItem {
+        TodoItem {
+            content: content.to_string(),
+            status,
+        }
+    }
+
+    #[test]
+    fn test_todo_lines_show_incomplete_and_total_counts() {
+        let theme = Theme::default();
+        let lines = render_todo_lines(
+            &[
+                todo("one", TodoStatus::Pending),
+                todo("two", TodoStatus::InProgress),
+                todo("three", TodoStatus::Done),
+            ],
+            &theme,
+        );
+        assert!(lines[0].to_string().contains("2 incomplete todos / 3 total"));
+    }
+
+    #[test]
+    fn test_todo_lines_use_reference_status_markers() {
+        let theme = Theme::default();
+        let lines = render_todo_lines(
+            &[
+                todo("pending", TodoStatus::Pending),
+                todo("active", TodoStatus::InProgress),
+                todo("done", TodoStatus::Done),
+                todo("dropped", TodoStatus::Abandoned),
+            ],
+            &theme,
+        );
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line.contains("- [ ] pending")));
+        assert!(rendered.iter().any(|line| line.contains("- [/] active")));
+        assert!(rendered.iter().any(|line| line.contains("- [x] done")));
+        assert!(rendered.iter().any(|line| line.contains("- [-] dropped")));
     }
 }

@@ -301,3 +301,17 @@ Review:
 - Generic result previews now include success/error status and line-count metadata before expanded preview lines.
 - Added focused tests for generic arg summaries, LSP/AST summaries, and multi-line result summaries.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for todo checklist slice:
+- [x] Render todos as checklist rows using reference status markers.
+- [x] Show incomplete/total todo counts in the todo header.
+- [x] Keep status-specific styling for pending, in-progress, done, and abandoned todos.
+- [x] Add focused tests for todo header/counts and status markers.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Todo rendering now uses checklist rows with `[ ]`, `[/]`, `[x]`, and `[-]` status markers.
+- The todo block header shows incomplete and total todo counts.
+- Pending, in-progress, done, and abandoned todos keep distinct styling.
+- Added focused tests for todo counts and marker rendering.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
