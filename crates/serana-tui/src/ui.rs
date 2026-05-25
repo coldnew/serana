@@ -322,21 +322,12 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if !app.btw_notes.is_empty() {
         all_lines.push(Line::from(""));
-        let h = s.box_sharp.horizontal;
-        all_lines.push(Line::from(Span::styled(
-            format!("  {}{} By the way {}{}", s.box_sharp.top_left, h, h, s.box_sharp.top_right),
-            theme.warning,
-        )));
-        for note in &app.btw_notes {
-            all_lines.push(Line::from(vec![
-                Span::styled(format!("  {} ", s.box_sharp.vertical), theme.warning),
-                Span::styled(format!("{} {}", s.bullet, note), theme.muted),
-            ]));
-        }
-        all_lines.push(Line::from(Span::styled(
-            format!("  {}{}", s.box_sharp.bottom_left, h.repeat(2)),
-            theme.warning,
-        )));
+        all_lines.extend(render_btw_lines(
+            &app.btw_notes,
+            &theme,
+            s,
+            area.width as usize,
+        ));
     }
 
     all_lines.push(Line::from(""));
@@ -402,6 +393,68 @@ fn todo_marker_style(status: TodoStatus, theme: &Theme) -> (&'static str, Style)
             ),
         ),
     }
+}
+
+fn render_btw_lines(
+    notes: &[String],
+    theme: &Theme,
+    symbols: &Symbols,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let panel_width = width.saturating_sub(2).max(4);
+    let inner_width = panel_width.saturating_sub(4);
+    let title = truncate_text(" By the way ", panel_width.saturating_sub(2));
+    let fill = panel_width.saturating_sub(2 + title.chars().count());
+    let left_fill = fill / 2;
+    let right_fill = fill - left_fill;
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled(
+            format!(
+                "  {}{}",
+                symbols.box_round.top_left,
+                symbols.box_round.horizontal.repeat(left_fill)
+            ),
+            theme.border,
+        ),
+        Span::styled(title, theme.warning),
+        Span::styled(
+            format!(
+                "{}{}",
+                symbols.box_round.horizontal.repeat(right_fill),
+                symbols.box_round.top_right
+            ),
+            theme.border,
+        ),
+    ])];
+
+    for note in notes {
+        let bullet = format!("{} ", symbols.bullet);
+        let text_width = inner_width.saturating_sub(bullet.chars().count());
+        let note_text = truncate_text(note, text_width);
+        let pad = " ".repeat(text_width.saturating_sub(note_text.chars().count()));
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("  {} ", symbols.box_round.vertical),
+                theme.border,
+            ),
+            Span::styled(bullet, theme.dim),
+            Span::styled(note_text, theme.muted),
+            Span::raw(pad),
+            Span::styled(format!(" {}", symbols.box_round.vertical), theme.border),
+        ]));
+    }
+
+    lines.push(Line::from(Span::styled(
+        format!(
+            "  {}{}{}",
+            symbols.box_round.bottom_left,
+            symbols.box_round.horizontal.repeat(panel_width.saturating_sub(2)),
+            symbols.box_round.bottom_right
+        ),
+        theme.border,
+    )));
+    lines
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
@@ -866,5 +919,37 @@ mod tests {
         assert!(rendered.iter().any(|line| line.contains("- [/] active")));
         assert!(rendered.iter().any(|line| line.contains("- [x] done")));
         assert!(rendered.iter().any(|line| line.contains("- [-] dropped")));
+    }
+
+    #[test]
+    fn test_btw_lines_render_rounded_panel() {
+        let theme = Theme::default();
+        let notes = vec!["remember this".to_string()];
+        let lines = render_btw_lines(&notes, &theme, &crate::symbols::UNICODE, 40);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered[0].contains("╭"));
+        assert!(rendered[0].contains("By the way"));
+        assert!(rendered[1].contains("• remember this"));
+        assert!(rendered[2].contains("╰"));
+    }
+
+    #[test]
+    fn test_btw_lines_fit_requested_width() {
+        let theme = Theme::default();
+        let notes = vec!["a very long note that should be clipped".to_string()];
+        let lines = render_btw_lines(&notes, &theme, &crate::symbols::UNICODE, 24);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 24));
+    }
+
+    #[test]
+    fn test_btw_lines_fit_tiny_width() {
+        let theme = Theme::default();
+        let notes = vec!["tiny".to_string()];
+        let lines = render_btw_lines(&notes, &theme, &crate::symbols::UNICODE, 8);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 8));
     }
 }

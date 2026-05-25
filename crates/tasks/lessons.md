@@ -48,3 +48,4 @@
 - Markdown should wrap inside the component before final terminal clamping; otherwise long prose is silently truncated instead of flowing like the reference component.
 - Tool execution parity benefits from concise per-tool metadata: summarize important args and result size/status before showing previews instead of dumping raw JSON.
 - Todo rendering should use stable checklist markers and aggregate counts; numbered rows make status harder to scan and drift from the reference todo components.
+- Custom/transient panels should be width-aware components with consistent rounded borders instead of one-off sharp-line snippets.

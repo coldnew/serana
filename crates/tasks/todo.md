@@ -315,3 +315,16 @@ Review:
 - Pending, in-progress, done, and abandoned todos keep distinct styling.
 - Added focused tests for todo counts and marker rendering.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for BTW panel slice:
+- [x] Render BTW notes in a rounded custom panel instead of ad hoc sharp lines.
+- [x] Make the panel width-aware so borders and note text fit the content area.
+- [x] Preserve warning/accent label styling and muted note text.
+- [x] Add focused tests for panel borders and width limits.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- BTW notes now render in a rounded, width-aware panel with muted borders.
+- The panel title remains warning-styled and note text remains muted.
+- Added focused tests for rounded panel rendering and width bounds.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
