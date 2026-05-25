@@ -14,6 +14,7 @@ pub struct MarkdownTheme {
     pub list_bullet: Style,
     pub bold: Style,
     pub italic: Style,
+    pub strikethrough: Style,
     pub hr: Style,
 }
 
@@ -32,6 +33,7 @@ impl Default for MarkdownTheme {
             list_bullet: Style::new().fg(theme::CORAL),
             bold: Style::new().add_modifier(ratatui::style::Modifier::BOLD),
             italic: Style::new().add_modifier(ratatui::style::Modifier::ITALIC),
+            strikethrough: Style::new().add_modifier(ratatui::style::Modifier::CROSSED_OUT),
             hr: Style::new().fg(theme::DARK_BORDER),
         }
     }
@@ -222,8 +224,8 @@ impl<'a> MarkdownRenderer<'a> {
                 self.current_style = Some(self.theme.bold);
             }
             Tag::Strikethrough => {
-                self.style_stack.push(Style::new());
-                self.current_style = Some(Style::new());
+                self.style_stack.push(self.theme.strikethrough);
+                self.current_style = Some(self.theme.strikethrough);
             }
             Tag::Link { dest_url, .. } => {
                 self.link_target = Some(dest_url.to_string());
@@ -685,6 +687,20 @@ mod tests {
         let theme = MarkdownTheme::default();
         let lines = render_markdown("**bold** and *italic*", &theme, 80);
         assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_strikethrough() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("~~removed~~", &theme, 80);
+        assert!(lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .any(|span| span.content == "removed"
+                && span
+                    .style
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::CROSSED_OUT)));
     }
 
     #[test]

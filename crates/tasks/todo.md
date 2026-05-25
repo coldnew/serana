@@ -492,3 +492,17 @@ Review:
 - Image placeholders are truncated before the normal markdown wrapper sees them.
 - Added focused tests for image alt/path rendering and width limits.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown strikethrough slice:
+- [x] Give `MarkdownTheme` an explicit strikethrough style.
+- [x] Apply that style to `~~text~~` spans instead of rendering them as normal text.
+- [x] Preserve existing bold/italic/link stack behavior.
+- [x] Add focused tests for strikethrough modifier rendering.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown theme now exposes an explicit strikethrough style.
+- `~~text~~` spans now render with Ratatui's crossed-out modifier.
+- Existing style-stack behavior for other inline styles was left intact.
+- Added a focused span-level strikethrough test.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
