@@ -464,3 +464,17 @@ Review:
 - Normal token wrapping and long-token fallback are split into named helpers.
 - Existing cursor-preserving word-wrap behavior was preserved.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown table slice:
+- [x] Collect Markdown table headers and rows instead of ignoring table tags.
+- [x] Render tables with rounded borders, a header separator, and padded cells.
+- [x] Keep rendered table lines width-safe on narrow terminals.
+- [x] Add focused tests for table structure and width bounds.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown tables now collect header and body rows from pulldown table events.
+- Tables render with rounded borders, a header separator, and padded cells.
+- Narrow tables fall back to truncated pipe-separated rows when there is not enough border/cell width.
+- Added focused tests for table border structure and width safety.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

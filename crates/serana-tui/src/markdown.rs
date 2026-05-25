@@ -67,6 +67,11 @@ struct MarkdownRenderer<'a> {
     list_ordered: bool,
     list_counter: usize,
     list_depth: usize,
+    in_table: bool,
+    in_table_cell: bool,
+    current_table: Vec<Vec<String>>,
+    current_table_row: Vec<String>,
+    current_table_cell: String,
 }
 
 impl<'a> MarkdownRenderer<'a> {
@@ -88,6 +93,11 @@ impl<'a> MarkdownRenderer<'a> {
             list_ordered: false,
             list_counter: 0,
             list_depth: 0,
+            in_table: false,
+            in_table_cell: false,
+            current_table: Vec::new(),
+            current_table_row: Vec::new(),
+            current_table_cell: String::new(),
         }
     }
 
@@ -106,16 +116,26 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Text(text) => {
                 if self.in_code_block {
                     self.code_block_lines.push(text.to_string());
+                } else if self.in_table_cell {
+                    self.current_table_cell.push_str(&text);
                 } else {
                     self.push_text(&text);
                 }
             }
             Event::Code(code) => {
-                self.current_spans
-                    .push(Span::styled(code.to_string(), self.theme.code));
+                if self.in_table_cell {
+                    self.current_table_cell.push_str(&code);
+                } else {
+                    self.current_spans
+                        .push(Span::styled(code.to_string(), self.theme.code));
+                }
             }
             Event::SoftBreak | Event::HardBreak => {
-                self.flush_line();
+                if self.in_table_cell {
+                    self.current_table_cell.push(' ');
+                } else {
+                    self.flush_line();
+                }
             }
             Event::Rule => {
                 let n = self.width.min(80);
@@ -203,7 +223,23 @@ impl<'a> MarkdownRenderer<'a> {
                 self.current_style = Some(self.theme.link);
             }
             Tag::Image { .. } => {}
-            Tag::Table(_) | Tag::TableHead | Tag::TableRow | Tag::TableCell => {}
+            Tag::Table(_) => {
+                self.flush_line();
+                self.in_table = true;
+                self.current_table.clear();
+            }
+            Tag::TableHead => {}
+            Tag::TableRow => {
+                if self.in_table {
+                    self.current_table_row.clear();
+                }
+            }
+            Tag::TableCell => {
+                if self.in_table {
+                    self.in_table_cell = true;
+                    self.current_table_cell.clear();
+                }
+            }
             Tag::FootnoteDefinition(_)
             | Tag::MetadataBlock(_)
             | Tag::DefinitionList
@@ -295,7 +331,32 @@ impl<'a> MarkdownRenderer<'a> {
                 self.current_style = self.style_stack.last().copied();
             }
             TagEnd::Image => {}
-            TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow | TagEnd::TableCell => {}
+            TagEnd::Table => {
+                self.in_table = false;
+                let table = std::mem::take(&mut self.current_table);
+                self.lines.extend(render_table_lines(table, self.width, self.theme));
+                self.lines.push(Line::from(""));
+            }
+            TagEnd::TableHead => {
+                if self.in_table && !self.current_table_row.is_empty() {
+                    self.current_table
+                        .push(std::mem::take(&mut self.current_table_row));
+                }
+            }
+            TagEnd::TableRow => {
+                if self.in_table && !self.current_table_row.is_empty() {
+                    self.current_table
+                        .push(std::mem::take(&mut self.current_table_row));
+                }
+            }
+            TagEnd::TableCell => {
+                if self.in_table_cell {
+                    self.in_table_cell = false;
+                    self.current_table_row
+                        .push(self.current_table_cell.trim().to_string());
+                    self.current_table_cell.clear();
+                }
+            }
             TagEnd::FootnoteDefinition
             | TagEnd::MetadataBlock(_)
             | TagEnd::DefinitionList
@@ -465,6 +526,106 @@ fn split_at_char_width(text: &str, width: usize) -> (String, String) {
     (text[..split].to_string(), text[split..].to_string())
 }
 
+fn render_table_lines(
+    rows: Vec<Vec<String>>,
+    width: usize,
+    theme: &MarkdownTheme,
+) -> Vec<Line<'static>> {
+    if width < 5 || rows.is_empty() {
+        return Vec::new();
+    }
+
+    let column_count = rows.iter().map(Vec::len).max().unwrap_or(0);
+    if column_count == 0 {
+        return Vec::new();
+    }
+
+    let overhead = column_count.saturating_mul(3).saturating_add(1);
+    if width <= overhead {
+        return rows
+            .into_iter()
+            .map(|row| {
+                Line::from(Span::styled(
+                    truncate_to_width(&row.join(" | "), width),
+                    theme.code_block,
+                ))
+            })
+            .collect();
+    }
+
+    let cell_budget = width - overhead;
+    let mut column_widths = vec![cell_budget / column_count; column_count];
+    for width in column_widths.iter_mut().take(cell_budget % column_count) {
+        *width += 1;
+    }
+
+    let mut lines = Vec::new();
+    lines.push(table_border_line("╭", "┬", "╮", &column_widths, theme));
+    lines.push(table_row_line(
+        rows.first().map(Vec::as_slice).unwrap_or(&[]),
+        &column_widths,
+        theme,
+        theme.bold,
+    ));
+    lines.push(table_border_line("├", "┼", "┤", &column_widths, theme));
+    for row in rows.iter().skip(1) {
+        lines.push(table_row_line(row, &column_widths, theme, Style::default()));
+    }
+    lines.push(table_border_line("╰", "┴", "╯", &column_widths, theme));
+    lines
+}
+
+fn table_border_line(
+    left: &str,
+    separator: &str,
+    right: &str,
+    widths: &[usize],
+    theme: &MarkdownTheme,
+) -> Line<'static> {
+    let cells = widths
+        .iter()
+        .map(|width| "─".repeat(*width + 2))
+        .collect::<Vec<_>>()
+        .join(separator);
+    Line::from(Span::styled(
+        format!("{}{}{}", left, cells, right),
+        theme.hr,
+    ))
+}
+
+fn table_row_line(
+    row: &[String],
+    widths: &[usize],
+    theme: &MarkdownTheme,
+    style: Style,
+) -> Line<'static> {
+    let mut spans = Vec::new();
+    spans.push(Span::styled("│".to_string(), theme.hr));
+    for (idx, width) in widths.iter().enumerate() {
+        let cell = row.get(idx).map(String::as_str).unwrap_or("");
+        let text = truncate_to_width(cell, *width);
+        let pad = " ".repeat(width.saturating_sub(text.chars().count()));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(text, style));
+        spans.push(Span::raw(pad));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled("│".to_string(), theme.hr));
+    }
+    Line::from(spans)
+}
+
+fn truncate_to_width(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_string();
+    }
+    if width <= 1 {
+        return "…".chars().take(width).collect();
+    }
+    let mut out: String = text.chars().take(width - 1).collect();
+    out.push('…');
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,5 +694,31 @@ mod tests {
         assert!(rendered.iter().any(|line| line.starts_with("- ")));
         assert!(rendered.iter().any(|line| line.starts_with("  ")));
         assert!(rendered.iter().all(|line| line.chars().count() <= 10));
+    }
+
+    #[test]
+    fn test_table_renders_with_borders() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("| Name | Value |\n| --- | --- |\n| alpha | beta |", &theme, 40);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line.starts_with("╭")));
+        assert!(rendered.iter().any(|line| line.contains("Name")));
+        assert!(rendered.iter().any(|line| line.contains("alpha")));
+        assert!(rendered.iter().any(|line| line.starts_with("╰")));
+    }
+
+    #[test]
+    fn test_table_lines_fit_requested_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown(
+            "| Name | Value |\n| --- | --- |\n| a very long name | a very long value |",
+            &theme,
+            18,
+        );
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered
+            .iter()
+            .filter(|line| !line.is_empty())
+            .all(|line| line.chars().count() <= 18));
     }
 }

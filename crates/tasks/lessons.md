@@ -59,3 +59,4 @@
 - Editor display wrapping should happen before the terminal widget sees lines so long prompts remain visible and cursor styling can be preserved across visual rows.
 - Editor wrapping should tokenize styled text rather than plain strings so word-boundary wrapping does not erase cursor marker or reversed-character spans.
 - When an editor renderer grows behavior, split tokenization from line-building early; future parity changes like visible-width handling then have one obvious place to land.
+- Pulldown table headers arrive through `TableHead`, not necessarily a `TableRow`; collect that row explicitly before rendering Markdown tables.
