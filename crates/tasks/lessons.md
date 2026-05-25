@@ -55,3 +55,4 @@
 - Selector chrome should reuse rounded/bordered component language and truncate footer affordances so small terminals do not clip awkwardly.
 - Autocomplete popups need their own visible-window logic; once rows are manually styled, relying on the full item index without scrolling can hide the selected command.
 - Tool renderers should enforce width safety at the component boundary so appended notices and tool-specific previews cannot rely on outer conversation clamps.
+- Editor rendering should sanitize and clamp text before widget rendering; keeping that in a helper makes later wrapping/cursor parity changes easier.

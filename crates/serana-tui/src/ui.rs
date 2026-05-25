@@ -7,6 +7,7 @@ use ratatui::widgets::{
 use ratatui::Frame;
 
 use crate::app::{App, AppMode, ChatMessage, MessageRole, TodoItem, TodoStatus};
+use crate::editor::Editor;
 use crate::markdown::render_markdown;
 use crate::symbols::Symbols;
 use crate::theme::{self, Theme};
@@ -584,57 +585,8 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
         AppMode::Processing => Style::new().fg(theme::CORAL),
     };
 
-    let mut text_lines: Vec<Line<'static>> = Vec::new();
-
-    if editor.is_empty() && editor.line_count() <= 1 {
-        let placeholder = match app.mode {
-            AppMode::Processing => "Waiting for AI response...",
-            _ => "Type your message... (Shift+Enter for newline)",
-        };
-        text_lines.push(Line::from(Span::styled(placeholder, theme.dim)));
-    } else {
-        for row in 0..editor.line_count() {
-            let line_text = editor.line(row);
-            let mut spans = Vec::new();
-
-            if row == editor.row() {
-                // Current line — render with cursor
-                let col = editor.col();
-                let mut byte_pos = 0;
-                for ch in line_text.chars() {
-                    if byte_pos == col {
-                        // Cursor position (before this char)
-                        spans.push(Span::styled(
-                            "▏",
-                            Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD),
-                        ));
-                    }
-                    if byte_pos >= col && byte_pos < col + ch.len_utf8() {
-                        // Character at cursor gets highlight
-                        spans.push(Span::styled(
-                            ch.to_string(),
-                            Style::default().add_modifier(ratatui::style::Modifier::REVERSED),
-                        ));
-                    } else {
-                        spans.push(Span::raw(ch.to_string()));
-                    }
-                    byte_pos += ch.len_utf8();
-                }
-                // Cursor at end of line
-                if col >= line_text.len() {
-                    spans.push(Span::styled(
-                        "▏",
-                        Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD),
-                    ));
-                }
-            } else {
-                // Non-current line
-                spans.push(Span::raw(line_text.to_string()));
-            }
-
-            text_lines.push(Line::from(spans));
-        }
-    }
+    let content_width = area.width.saturating_sub(6) as usize;
+    let text_lines = render_editor_display_lines(editor, app.mode, content_width, &theme);
 
     let line_count = text_lines.len().max(1);
     let height = (line_count as u16 + 2).min(area.height); // +2 for borders
@@ -654,6 +606,78 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
         ));
 
     frame.render_widget(para, area);
+}
+
+fn render_editor_display_lines(
+    editor: &Editor,
+    mode: AppMode,
+    width: usize,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
+    if editor.is_empty() && editor.line_count() <= 1 {
+        let placeholder = match mode {
+            AppMode::Processing => "Waiting for AI response...",
+            _ => "Type your message... (Shift+Enter for newline)",
+        };
+        return vec![clamp_line(Line::from(Span::styled(placeholder, theme.dim)), width)];
+    }
+
+    (0..editor.line_count())
+        .map(|row| {
+            render_editor_display_line(
+                editor.line(row),
+                (row == editor.row()).then_some(editor.col()),
+                width,
+                theme,
+            )
+        })
+        .collect()
+}
+
+fn render_editor_display_line(
+    line_text: &str,
+    cursor_col: Option<usize>,
+    width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let Some(col) = cursor_col else {
+        return clamp_line(Line::from(Span::raw(sanitize_editor_display_text(line_text))), width);
+    };
+
+    let col = col.min(line_text.len());
+    let (before, rest) = line_text.split_at(col);
+    let mut spans = Vec::new();
+    spans.push(Span::raw(sanitize_editor_display_text(before)));
+    spans.push(Span::styled(
+        "▏",
+        theme.accent.add_modifier(ratatui::style::Modifier::BOLD),
+    ));
+
+    if let Some(ch) = rest.chars().next() {
+        let ch_len = ch.len_utf8();
+        let cursor_text = sanitize_editor_display_text(&rest[..ch_len]);
+        if !cursor_text.is_empty() {
+            spans.push(Span::styled(
+                cursor_text,
+                Style::default().add_modifier(ratatui::style::Modifier::REVERSED),
+            ));
+        }
+        spans.push(Span::raw(sanitize_editor_display_text(&rest[ch_len..])));
+    }
+
+    clamp_line(Line::from(spans), width)
+}
+
+fn sanitize_editor_display_text(text: &str) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        match ch {
+            '\t' => out.push_str("    "),
+            ch if ch.is_control() => {}
+            ch => out.push(ch),
+        }
+    }
+    out
 }
 
 /// Render autocomplete dropdown popup below the input area.
@@ -1039,6 +1063,51 @@ mod tests {
     fn test_autocomplete_visible_range_handles_empty_and_clamped_selection() {
         assert_eq!(autocomplete_visible_range(0, 0, 5), (0, 0));
         assert_eq!(autocomplete_visible_range(9, 3, 5), (0, 3));
+    }
+
+    #[test]
+    fn test_editor_display_sanitizes_tabs_and_controls() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("a\tb\u{0007}c");
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 80, &theme);
+        let text = lines[0].to_string();
+        assert!(text.contains("a    bc"));
+        assert!(!text.contains('\u{0007}'));
+    }
+
+    #[test]
+    fn test_editor_display_keeps_cursor_style() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("abc");
+        editor.move_left();
+        editor.move_left();
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 80, &theme);
+        let line = &lines[0];
+        assert!(line.to_string().contains("▏"));
+        assert!(line
+            .spans
+            .iter()
+            .any(|span| span.content == "b"
+                && span
+                    .style
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::REVERSED)));
+    }
+
+    #[test]
+    fn test_editor_display_lines_fit_requested_width() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("a long editor line that should be clamped");
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 12, &theme);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 12));
     }
 
     #[test]

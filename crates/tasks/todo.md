@@ -408,3 +408,19 @@ Review:
 - The shared truncation helper now counts characters instead of bytes.
 - Added focused tests for long tool output and style-preserving line clamps.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for editor display sanitation slice:
+- [x] Render editor text through a dedicated display-line helper.
+- [x] Replace tabs and strip control characters before editor text reaches the terminal.
+- [x] Keep cursor marker and cursor-character styling on the current editor row.
+- [x] Clamp editor display lines to the input content width.
+- [x] Add focused tests for sanitation, cursor styling, and width limits.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Input text rendering now flows through `render_editor_display_lines` instead of being assembled inline in `render_input`.
+- Editor display text replaces tabs with spaces and strips control characters before rendering.
+- Current-row cursor marker and reversed cursor-character styling were preserved.
+- Editor display lines are clamped to the input content width.
+- Added focused tests for sanitation, cursor styling, and width limits.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
