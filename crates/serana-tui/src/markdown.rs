@@ -325,7 +325,7 @@ impl<'a> MarkdownRenderer<'a> {
                     }
                 }
                 for spans in rendered_lines {
-                    self.lines.push(Line::from(spans));
+                    self.lines.extend(wrap_spans(spans, self.width, Vec::new()));
                 }
                 self.code_block_lines.clear();
                 self.code_block_lang.clear();
@@ -700,6 +700,28 @@ mod tests {
             let s = l.clone().to_string();
             s.contains("fn main()")
         }));
+    }
+
+    #[test]
+    fn test_raw_code_block_wraps_to_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("```\nabcdefghijabcdefghij\n```", &theme, 8);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line == "  abcdef"));
+        assert!(rendered
+            .iter()
+            .filter(|line| !line.is_empty())
+            .all(|line| line.chars().count() <= 8));
+    }
+
+    #[test]
+    fn test_highlighted_code_block_wraps_to_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("```rust\nlet value = abcdefghijabcdefghij;\n```", &theme, 12);
+        assert!(lines
+            .iter()
+            .filter(|line| !line.to_string().is_empty())
+            .all(|line| line.to_string().chars().count() <= 12));
     }
 
     #[test]

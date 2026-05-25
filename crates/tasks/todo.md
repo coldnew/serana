@@ -548,3 +548,17 @@ Review:
 - Existing link target de-duplication tests still pass.
 - Added a focused span-level underline test for link text.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown code block width slice:
+- [x] Wrap raw code block lines through the markdown width wrapper.
+- [x] Wrap highlighted code block spans through the markdown width wrapper.
+- [x] Preserve code fence lines and code indentation.
+- [x] Add focused tests for long raw and highlighted code block lines.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Code block content lines now flow through `wrap_spans` before being appended to markdown output.
+- Both raw and syntax-highlighted code block lines are width-safe.
+- Code fence lines and the existing two-space code indentation were preserved.
+- Added focused tests for long raw and highlighted fenced code blocks.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

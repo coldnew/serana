@@ -65,3 +65,4 @@
 - Link renderers should track visible text during nested link events so autolinks and `mailto:` links do not duplicate their target in the transcript.
 - HTML markdown events should stay visible as plain text; dropping them hides user-provided terminal content and diverges from the reference renderer.
 - Link styling should include both color and underline so links remain visually distinct in monochrome or low-contrast terminal themes.
+- Code block renderers should route raw and highlighted spans through the same width wrapper as prose so fenced content cannot escape terminal bounds.
