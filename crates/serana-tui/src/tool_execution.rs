@@ -63,6 +63,9 @@ pub fn render_tool_call(
     }
 
     lines
+        .into_iter()
+        .map(|line| clamp_tool_line(line, width))
+        .collect()
 }
 
 fn tool_header(
@@ -618,11 +621,36 @@ fn format_item(item: &serde_json::Value) -> String {
 
 /// Truncate a string to fit within max_len.
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
         format!("{}…", s.chars().take(max_len.saturating_sub(1)).collect::<String>())
     }
+}
+
+fn clamp_tool_line(line: Line<'static>, width: usize) -> Line<'static> {
+    if width == 0 {
+        return Line::from("");
+    }
+
+    let mut remaining = width;
+    let mut spans = Vec::new();
+    for span in line.spans {
+        let content = span.content.into_owned();
+        let len = content.chars().count();
+        if len <= remaining {
+            remaining -= len;
+            spans.push(Span::styled(content, span.style));
+            continue;
+        }
+
+        if remaining == 0 {
+            break;
+        }
+        spans.push(Span::styled(truncate(&content, remaining), span.style));
+        break;
+    }
+    Line::from(spans)
 }
 
 #[cfg(test)]
@@ -766,5 +794,30 @@ mod tests {
         );
         let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
         assert!(lines.iter().any(|l| l.to_string().contains("3 lines")));
+    }
+
+    #[test]
+    fn test_tool_lines_fit_requested_width() {
+        let tool = make_tool(
+            "bash",
+            ToolCallStatus::Success,
+            r#"{"command":"cargo test --workspace --all-features --very-long-flag-name"}"#,
+            Some("this is a very long output line that should be truncated by the tool renderer"),
+        );
+        let lines = render_tool_call(&tool, &symbols::UNICODE, 32);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 32));
+    }
+
+    #[test]
+    fn test_tool_line_clamp_preserves_prefix_style() {
+        let line = Line::from(vec![
+            Span::styled("  ", Style::new().fg(theme::AQUAMARINE)),
+            Span::styled("very long content", Style::new().fg(theme::DIM_TEAL)),
+        ]);
+        let clamped = clamp_tool_line(line, 8);
+        assert_eq!(clamped.to_string().chars().count(), 8);
+        assert_eq!(clamped.spans[0].style.fg, Some(theme::AQUAMARINE));
     }
 }

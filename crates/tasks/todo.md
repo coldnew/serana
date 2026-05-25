@@ -394,3 +394,17 @@ Review:
 - Existing row cursor marker, selected styling, and muted descriptions were preserved.
 - Added focused tests for top, scrolled, empty, and clamped visible-range behavior.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for tool width-safety slice:
+- [x] Clamp rendered tool-execution lines at the tool component boundary.
+- [x] Preserve existing styles while truncating long spans.
+- [x] Keep image-detection notices width-safe too.
+- [x] Add focused tests for long command/result output.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Tool execution output is now clamped at the `render_tool_call` boundary, including image-detection notices appended after renderer-specific content.
+- Span styles are preserved while long spans are truncated.
+- The shared truncation helper now counts characters instead of bytes.
+- Added focused tests for long tool output and style-preserving line clamps.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
