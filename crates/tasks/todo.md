@@ -478,3 +478,17 @@ Review:
 - Narrow tables fall back to truncated pipe-separated rows when there is not enough border/cell width.
 - Added focused tests for table border structure and width safety.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown image slice:
+- [x] Track Markdown image destination and alt text instead of treating the alt text as plain text.
+- [x] Render image markdown as a compact width-safe placeholder line.
+- [x] Preserve link rendering behavior outside image tags.
+- [x] Add focused tests for image path/alt rendering and width bounds.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown image tags now collect destination URL/path and alt text.
+- Images render as compact `[image: alt] target` placeholders styled like links.
+- Image placeholders are truncated before the normal markdown wrapper sees them.
+- Added focused tests for image alt/path rendering and width limits.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

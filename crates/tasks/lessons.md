@@ -60,3 +60,4 @@
 - Editor wrapping should tokenize styled text rather than plain strings so word-boundary wrapping does not erase cursor marker or reversed-character spans.
 - When an editor renderer grows behavior, split tokenization from line-building early; future parity changes like visible-width handling then have one obvious place to land.
 - Pulldown table headers arrive through `TableHead`, not necessarily a `TableRow`; collect that row explicitly before rendering Markdown tables.
+- Pulldown image alt text arrives as nested text events; track image state so alt text does not leak as plain paragraph text without the image target.

@@ -56,6 +56,8 @@ struct MarkdownRenderer<'a> {
     lines: Vec<Line<'static>>,
     current_spans: Vec<Span<'static>>,
     link_target: Option<String>,
+    image_target: Option<String>,
+    image_alt: String,
     style_stack: Vec<Style>,
     current_style: Option<Style>,
     in_code_block: bool,
@@ -82,6 +84,8 @@ impl<'a> MarkdownRenderer<'a> {
             lines: Vec::new(),
             current_spans: Vec::new(),
             link_target: None,
+            image_target: None,
+            image_alt: String::new(),
             style_stack: Vec::new(),
             current_style: None,
             in_code_block: false,
@@ -116,6 +120,8 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Text(text) => {
                 if self.in_code_block {
                     self.code_block_lines.push(text.to_string());
+                } else if self.image_target.is_some() {
+                    self.image_alt.push_str(&text);
                 } else if self.in_table_cell {
                     self.current_table_cell.push_str(&text);
                 } else {
@@ -125,6 +131,8 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Code(code) => {
                 if self.in_table_cell {
                     self.current_table_cell.push_str(&code);
+                } else if self.image_target.is_some() {
+                    self.image_alt.push_str(&code);
                 } else {
                     self.current_spans
                         .push(Span::styled(code.to_string(), self.theme.code));
@@ -222,7 +230,10 @@ impl<'a> MarkdownRenderer<'a> {
                 self.style_stack.push(self.theme.link);
                 self.current_style = Some(self.theme.link);
             }
-            Tag::Image { .. } => {}
+            Tag::Image { dest_url, .. } => {
+                self.image_target = Some(dest_url.to_string());
+                self.image_alt.clear();
+            }
             Tag::Table(_) => {
                 self.flush_line();
                 self.in_table = true;
@@ -330,7 +341,15 @@ impl<'a> MarkdownRenderer<'a> {
                 self.style_stack.pop();
                 self.current_style = self.style_stack.last().copied();
             }
-            TagEnd::Image => {}
+            TagEnd::Image => {
+                if let Some(target) = self.image_target.take() {
+                    let alt = std::mem::take(&mut self.image_alt);
+                    self.current_spans.push(Span::styled(
+                        format_image_placeholder(&alt, &target, self.width),
+                        self.theme.link,
+                    ));
+                }
+            }
             TagEnd::Table => {
                 self.in_table = false;
                 let table = std::mem::take(&mut self.current_table);
@@ -626,6 +645,16 @@ fn truncate_to_width(text: &str, width: usize) -> String {
     out
 }
 
+fn format_image_placeholder(alt: &str, target: &str, width: usize) -> String {
+    let alt = alt.trim();
+    let label = if alt.is_empty() {
+        "image".to_string()
+    } else {
+        alt.to_string()
+    };
+    truncate_to_width(&format!("[image: {}] {}", label, target), width)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -720,5 +749,29 @@ mod tests {
             .iter()
             .filter(|line| !line.is_empty())
             .all(|line| line.chars().count() <= 18));
+    }
+
+    #[test]
+    fn test_image_renders_alt_and_target() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("See ![chart](/tmp/chart.png)", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("[image: chart]"));
+        assert!(rendered.contains("/tmp/chart.png"));
+    }
+
+    #[test]
+    fn test_image_placeholder_fits_requested_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("![very long alt text](/tmp/a-very-long-image-name.png)", &theme, 18);
+        assert!(lines
+            .iter()
+            .map(|line| line.to_string())
+            .filter(|line| !line.is_empty())
+            .all(|line| line.to_string().chars().count() <= 18));
     }
 }
