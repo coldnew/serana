@@ -687,26 +687,89 @@ fn wrap_editor_display_line(line: Line<'static>, width: usize) -> Vec<Line<'stat
     }
 
     let mut lines = Vec::new();
-    let mut current = Vec::new();
+    let mut current: Vec<(char, Style)> = Vec::new();
     let mut current_width = 0;
+    let mut tokens: Vec<(Vec<(char, Style)>, bool)> = Vec::new();
 
     for span in line.spans {
         let style = span.style;
         for ch in span.content.chars() {
-            if current_width == width {
-                lines.push(Line::from(current));
-                current = Vec::new();
-                current_width = 0;
+            let is_whitespace = ch.is_whitespace();
+            if let Some((token, token_is_whitespace)) = tokens.last_mut() {
+                if *token_is_whitespace == is_whitespace {
+                    token.push((ch, style));
+                    continue;
+                }
             }
-            current.push(Span::styled(ch.to_string(), style));
-            current_width += 1;
+            tokens.push((vec![(ch, style)], is_whitespace));
         }
     }
 
+    for (token, is_whitespace) in tokens {
+        if current.is_empty() && is_whitespace {
+            continue;
+        }
+
+        let token_width = token.len();
+        if token_width > width {
+            let mut idx = 0;
+            if !current.is_empty() && current_width < width {
+                let take = (width - current_width).min(token_width);
+                current.extend_from_slice(&token[..take]);
+                idx = take;
+                lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
+                current = Vec::new();
+                current_width = 0;
+            } else if !current.is_empty() {
+                lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
+                current = Vec::new();
+                current_width = 0;
+            }
+
+            while idx + width <= token_width {
+                lines.push(line_from_styled_chars(token[idx..idx + width].to_vec()));
+                idx += width;
+            }
+            if idx < token_width {
+                current = token[idx..].to_vec();
+                current_width = current.len();
+            }
+            continue;
+        }
+
+        if current_width + token_width > width {
+            lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
+            current = Vec::new();
+            current_width = 0;
+            if is_whitespace {
+                continue;
+            }
+        }
+
+        current.extend(token);
+        current_width += token_width;
+    }
+
     if !current.is_empty() || lines.is_empty() {
-        lines.push(Line::from(current));
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
     }
     lines
+}
+
+fn trim_trailing_editor_whitespace(mut chars: Vec<(char, Style)>) -> Vec<(char, Style)> {
+    while chars.last().is_some_and(|(ch, _)| ch.is_whitespace()) {
+        chars.pop();
+    }
+    chars
+}
+
+fn line_from_styled_chars(chars: Vec<(char, Style)>) -> Line<'static> {
+    Line::from(
+        chars
+            .into_iter()
+            .map(|(ch, style)| Span::styled(ch.to_string(), style))
+            .collect::<Vec<_>>(),
+    )
 }
 
 /// Render autocomplete dropdown popup below the input area.
@@ -1173,6 +1236,30 @@ mod tests {
                     .style
                     .add_modifier
                     .contains(ratatui::style::Modifier::REVERSED)));
+    }
+
+    #[test]
+    fn test_editor_display_wraps_at_words() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("hello world again");
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 8, &theme);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert_eq!(rendered[0], "hello");
+        assert_eq!(rendered[1], "world");
+        assert!(rendered.iter().all(|line| line.chars().count() <= 8));
+    }
+
+    #[test]
+    fn test_editor_display_breaks_long_words() {
+        let theme = Theme::default();
+        let mut editor = Editor::new();
+        editor.set_content("abcdefghij");
+
+        let lines = render_editor_display_lines(&editor, AppMode::Input, 4, &theme);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert_eq!(rendered, vec!["abcd", "efgh", "ij▏"]);
     }
 
     #[test]

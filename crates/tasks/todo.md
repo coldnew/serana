@@ -438,3 +438,17 @@ Review:
 - Empty-editor placeholder rendering stays a single clamped line.
 - Added focused tests for wrapped long lines and cursor preservation after wrapping.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for editor word-wrap slice:
+- [x] Prefer wrapping editor display rows at whitespace boundaries.
+- [x] Fall back to character-level splitting for words longer than the content width.
+- [x] Preserve cursor marker and reversed cursor-character styling through word wrapping.
+- [x] Add focused tests for word wrapping and long-word fallback.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Editor display wrapping now groups whitespace and word tokens so rows wrap at word boundaries when possible.
+- Long words still split at the content width as a fallback.
+- Cursor marker and reversed cursor-character styling are preserved as styled characters through wrapping.
+- Added focused tests for word-boundary wrapping and long-word splitting.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
