@@ -576,3 +576,18 @@ Review:
 - Task-list continuation prefixes include both the list bullet and checkbox marker.
 - Added focused tests for checked, unchecked, and wrapped task list items.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown footnote slice:
+- [x] Enable pulldown footnote parsing.
+- [x] Render inline footnote references as visible `[^label]` markers.
+- [x] Render footnote definitions with their `[^label]:` prefix.
+- [x] Keep rendered footnote content width-safe.
+- [x] Add focused tests for references, definitions, and width bounds.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown footnote parsing is now enabled in pulldown options.
+- Inline footnote references render as visible styled `[^label]` markers.
+- Footnote definitions render with a styled `[^label]:` prefix.
+- Added focused tests for references, definitions, and width safety.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

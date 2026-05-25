@@ -48,7 +48,10 @@ pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<L
     let normalized = text.replace('\t', "   ");
     let parser = Parser::new_ext(
         &normalized,
-        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS,
+        Options::ENABLE_TABLES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_TASKLISTS
+            | Options::ENABLE_FOOTNOTES,
     );
     let renderer = MarkdownRenderer::new(theme, width);
     renderer.render_events(parser)
@@ -174,7 +177,13 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Html(html) | Event::InlineHtml(html) => {
                 self.push_text(html.trim());
             }
-            Event::FootnoteReference(_) | Event::InlineMath(_) | Event::DisplayMath(_) => {}
+            Event::FootnoteReference(label) => {
+                self.current_spans.push(Span::styled(
+                    format!("[^{}]", label),
+                    self.theme.link,
+                ));
+            }
+            Event::InlineMath(_) | Event::DisplayMath(_) => {}
         }
     }
 
@@ -267,8 +276,14 @@ impl<'a> MarkdownRenderer<'a> {
                     self.current_table_cell.clear();
                 }
             }
-            Tag::FootnoteDefinition(_)
-            | Tag::MetadataBlock(_)
+            Tag::FootnoteDefinition(label) => {
+                self.flush_line();
+                self.current_spans.push(Span::styled(
+                    format!("[^{}]: ", label),
+                    self.theme.link,
+                ));
+            }
+            Tag::MetadataBlock(_)
             | Tag::DefinitionList
             | Tag::DefinitionListTitle
             | Tag::DefinitionListDefinition
@@ -393,8 +408,11 @@ impl<'a> MarkdownRenderer<'a> {
                     self.current_table_cell.clear();
                 }
             }
-            TagEnd::FootnoteDefinition
-            | TagEnd::MetadataBlock(_)
+            TagEnd::FootnoteDefinition => {
+                self.flush_line();
+                self.lines.push(Line::from(""));
+            }
+            TagEnd::MetadataBlock(_)
             | TagEnd::DefinitionList
             | TagEnd::DefinitionListTitle
             | TagEnd::DefinitionListDefinition
@@ -861,6 +879,41 @@ mod tests {
         assert!(rendered.iter().any(|line| line.starts_with("- [ ] ")));
         assert!(rendered.iter().any(|line| line.starts_with("      ")));
         assert!(rendered.iter().all(|line| line.chars().count() <= 12));
+    }
+
+    #[test]
+    fn test_footnote_reference_renders_marker() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("See note[^a].", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("[^a]"));
+    }
+
+    #[test]
+    fn test_footnote_definition_renders_prefix() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("[^a]: footnote body", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("[^a]: footnote body"));
+    }
+
+    #[test]
+    fn test_footnote_definition_fits_requested_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("[^a]: abcdefghijabcdefghij", &theme, 10);
+        assert!(lines
+            .iter()
+            .map(|line| line.to_string())
+            .filter(|line| !line.is_empty())
+            .all(|line| line.chars().count() <= 10));
     }
 
     #[test]

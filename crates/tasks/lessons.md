@@ -67,3 +67,4 @@
 - Link styling should include both color and underline so links remain visually distinct in monochrome or low-contrast terminal themes.
 - Code block renderers should route raw and highlighted spans through the same width wrapper as prose so fenced content cannot escape terminal bounds.
 - Markdown task-list syntax needs the pulldown task-list option enabled; otherwise `[ ]` and `[x]` arrive as ordinary text and marker events never fire.
+- Footnotes also require the pulldown option; render both reference and definition markers or the transcript loses navigational structure.
