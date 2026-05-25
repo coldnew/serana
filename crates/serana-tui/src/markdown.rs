@@ -51,7 +51,8 @@ pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<L
         Options::ENABLE_TABLES
             | Options::ENABLE_STRIKETHROUGH
             | Options::ENABLE_TASKLISTS
-            | Options::ENABLE_FOOTNOTES,
+            | Options::ENABLE_FOOTNOTES
+            | Options::ENABLE_MATH,
     );
     let renderer = MarkdownRenderer::new(theme, width);
     renderer.render_events(parser)
@@ -183,7 +184,20 @@ impl<'a> MarkdownRenderer<'a> {
                     self.theme.link,
                 ));
             }
-            Event::InlineMath(_) | Event::DisplayMath(_) => {}
+            Event::InlineMath(math) => {
+                self.current_spans.push(Span::styled(
+                    format!("${}$", math),
+                    self.theme.code,
+                ));
+            }
+            Event::DisplayMath(math) => {
+                self.flush_line();
+                self.current_spans.push(Span::styled(
+                    format!("$${}$$", math),
+                    self.theme.code_block,
+                ));
+                self.flush_line();
+            }
         }
     }
 
@@ -914,6 +928,41 @@ mod tests {
             .map(|line| line.to_string())
             .filter(|line| !line.is_empty())
             .all(|line| line.chars().count() <= 10));
+    }
+
+    #[test]
+    fn test_inline_math_renders_as_text() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("Use $a+b$ now", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("$a+b$"));
+    }
+
+    #[test]
+    fn test_display_math_renders_as_text() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("$$\na+b\n$$", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("$$a+b$$"));
+    }
+
+    #[test]
+    fn test_math_output_fits_requested_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("$abcdefghijabcdefghij$", &theme, 8);
+        assert!(lines
+            .iter()
+            .map(|line| line.to_string())
+            .filter(|line| !line.is_empty())
+            .all(|line| line.chars().count() <= 8));
     }
 
     #[test]

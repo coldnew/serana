@@ -591,3 +591,18 @@ Review:
 - Footnote definitions render with a styled `[^label]:` prefix.
 - Added focused tests for references, definitions, and width safety.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown math slice:
+- [x] Enable pulldown math parsing if supported locally.
+- [x] Render inline math as visible `$...$` text instead of dropping it.
+- [x] Render display math as visible `$$...$$` text instead of dropping it.
+- [x] Keep rendered math width-safe.
+- [x] Add focused tests for inline math, display math, and width bounds.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown math parsing is now enabled in pulldown options.
+- Inline math renders as visible styled `$...$` text.
+- Display math renders as visible styled `$$...$$` text.
+- Added focused tests for inline math, display math, and width safety.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
