@@ -3,7 +3,7 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, ListState, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, ListState, Paragraph};
 
 use crate::theme::{self, Theme};
 
@@ -210,6 +210,7 @@ pub fn render_dialog(frame: &mut ratatui::Frame, dialog: &Dialog) {
             Style::new().fg(theme::AQUAMARINE).add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(theme::AQUAMARINE));
     frame.render_widget(block, popup_area);
 
@@ -276,10 +277,7 @@ pub fn render_dialog(frame: &mut ratatui::Frame, dialog: &Dialog) {
     }
 
     // Help line
-    let help = Line::from(Span::styled(
-        "↑↓: navigate  Enter: select  Esc: cancel  Type: filter",
-        theme.dim,
-    ));
+    let help = dialog_help_line(inner[2].width as usize, &theme);
     frame.render_widget(Paragraph::new(help), inner[2]);
 }
 
@@ -375,6 +373,13 @@ fn truncate_text(text: &str, width: usize) -> String {
     out
 }
 
+fn dialog_help_line(width: usize, theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        truncate_text("↑↓: navigate  Enter: select  Esc: cancel  Type: filter", width),
+        theme.dim,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,5 +472,13 @@ mod tests {
         assert!(text.starts_with("› very long…"));
         assert!(!text.contains('\n'));
         assert!(!text.contains('\t'));
+    }
+
+    #[test]
+    fn test_dialog_help_line_truncates_to_width() {
+        let theme = Theme::default();
+        let line = dialog_help_line(18, &theme);
+        assert!(line.to_string().chars().count() <= 18);
+        assert!(line.to_string().ends_with('…'));
     }
 }

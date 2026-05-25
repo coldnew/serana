@@ -367,3 +367,16 @@ Review:
 - Rendered thinking spans are patched with the existing thinking style.
 - Added focused tests for Markdown formatting and wrapping behavior.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for dialog chrome slice:
+- [x] Render selector dialogs with rounded border chrome.
+- [x] Keep the selector help/footer text width-safe.
+- [x] Preserve existing filter, list, and count behavior.
+- [x] Add focused tests for width-safe dialog help text.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Selector dialogs now use rounded popup borders.
+- Dialog footer help is truncated to the available width.
+- Existing filter, select-list rows, and clipped count behavior were left intact.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
