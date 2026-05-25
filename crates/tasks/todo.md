@@ -341,3 +341,16 @@ Review:
 - The panel includes the active spinner frame, cancel hint, and pending message preview.
 - Added focused tests for loader structure and width limits.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for status notice slice:
+- [x] Render status messages as labeled notice rows instead of flat arrow lines.
+- [x] Make status notices width-aware and safe on narrow terminals.
+- [x] Preserve informational styling for labels and muted styling for message text.
+- [x] Add focused tests for notice labels and width limits.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Status messages now render as `[status]` notice rows instead of arrow-prefixed lines.
+- Notice text is truncated to the available width and remains muted.
+- Added focused tests for label rendering and width limits.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

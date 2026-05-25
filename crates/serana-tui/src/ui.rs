@@ -301,12 +301,11 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if !app.status_messages.is_empty() {
         all_lines.push(Line::from(""));
-        for msg in &app.status_messages {
-            all_lines.push(Line::from(Span::styled(
-                format!("  {} {}", s.arrow, msg),
-                theme.info,
-            )));
-        }
+        all_lines.extend(render_status_notice_lines(
+            &app.status_messages,
+            &theme,
+            area.width as usize,
+        ));
     }
 
     if !app.todo_items.is_empty() {
@@ -535,6 +534,27 @@ fn spans_text_width(spans: &[Span<'static>]) -> usize {
         .iter()
         .map(|span| span.content.chars().count())
         .sum()
+}
+
+fn render_status_notice_lines(
+    messages: &[String],
+    theme: &Theme,
+    width: usize,
+) -> Vec<Line<'static>> {
+    let label = "[status]";
+    let prefix_width = 2 + label.chars().count() + 1;
+    let text_width = width.saturating_sub(prefix_width);
+    messages
+        .iter()
+        .map(|msg| {
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(label.to_string(), theme.info),
+                Span::raw(" "),
+                Span::styled(truncate_text(msg, text_width), theme.muted),
+            ])
+        })
+        .collect()
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
@@ -1050,6 +1070,26 @@ mod tests {
         let theme = Theme::default();
         let pending = vec!["a very long pending status message".to_string()];
         let lines = render_processing_lines(&pending, 0, &theme, &crate::symbols::UNICODE, 18);
+        assert!(lines
+            .iter()
+            .all(|line| line.to_string().chars().count() <= 18));
+    }
+
+    #[test]
+    fn test_status_notice_lines_use_label() {
+        let theme = Theme::default();
+        let messages = vec!["Switched to model: gpt-4.1".to_string()];
+        let lines = render_status_notice_lines(&messages, &theme, 80);
+        let text = lines[0].to_string();
+        assert!(text.contains("[status]"));
+        assert!(text.contains("Switched to model"));
+    }
+
+    #[test]
+    fn test_status_notice_lines_fit_requested_width() {
+        let theme = Theme::default();
+        let messages = vec!["a very long status notice that should be clipped".to_string()];
+        let lines = render_status_notice_lines(&messages, &theme, 18);
         assert!(lines
             .iter()
             .all(|line| line.to_string().chars().count() <= 18));

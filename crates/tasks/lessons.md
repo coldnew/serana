@@ -50,3 +50,4 @@
 - Todo rendering should use stable checklist markers and aggregate counts; numbered rows make status harder to scan and drift from the reference todo components.
 - Custom/transient panels should be width-aware components with consistent rounded borders instead of one-off sharp-line snippets.
 - Processing states should use the same framed loader language as execution components: border, spinner, concise message, and width-bounded previews.
+- Status notices should use compact labels plus muted payload text, matching reference model/thinking/custom notice rows better than generic arrows.
