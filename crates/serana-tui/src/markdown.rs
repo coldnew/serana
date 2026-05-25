@@ -48,7 +48,7 @@ pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<L
     let normalized = text.replace('\t', "   ");
     let parser = Parser::new_ext(
         &normalized,
-        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH,
+        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS,
     );
     let renderer = MarkdownRenderer::new(theme, width);
     renderer.render_events(parser)
@@ -167,7 +167,7 @@ impl<'a> MarkdownRenderer<'a> {
                 )));
             }
             Event::TaskListMarker(checked) => {
-                let marker = if checked { "✓ " } else { "○ " };
+                let marker = if checked { "[x] " } else { "[ ] " };
                 self.current_spans
                     .push(Span::styled(marker.to_string(), self.theme.list_bullet));
             }
@@ -448,7 +448,15 @@ fn list_continuation_prefix(spans: &[Span<'static>]) -> Vec<Span<'static>> {
             width += text.chars().count();
             continue;
         }
-        if text.ends_with(". ") || text == "- " || text == "✓ " || text == "○ " {
+        if text == "- " {
+            width += text.chars().count();
+            continue;
+        }
+        if text.starts_with("[x] ") || text.starts_with("[ ] ") {
+            width += 4;
+            break;
+        }
+        if text.ends_with(". ") {
             width += text.chars().count();
             break;
         }
@@ -834,6 +842,25 @@ mod tests {
         assert!(rendered.iter().any(|line| line.starts_with("- ")));
         assert!(rendered.iter().any(|line| line.starts_with("  ")));
         assert!(rendered.iter().all(|line| line.chars().count() <= 10));
+    }
+
+    #[test]
+    fn test_task_list_markers_use_checkboxes() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("- [x] done\n- [ ] pending", &theme, 80);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line.contains("- [x] done")));
+        assert!(rendered.iter().any(|line| line.contains("- [ ] pending")));
+    }
+
+    #[test]
+    fn test_task_list_wrap_aligns_continuation() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("- [ ] abcdefghijabcdefghij", &theme, 12);
+        let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+        assert!(rendered.iter().any(|line| line.starts_with("- [ ] ")));
+        assert!(rendered.iter().any(|line| line.starts_with("      ")));
+        assert!(rendered.iter().all(|line| line.chars().count() <= 12));
     }
 
     #[test]

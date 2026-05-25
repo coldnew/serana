@@ -562,3 +562,17 @@ Review:
 - Code fence lines and the existing two-space code indentation were preserved.
 - Added focused tests for long raw and highlighted fenced code blocks.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown task-list marker slice:
+- [x] Render checked markdown task markers as `[x]`.
+- [x] Render unchecked markdown task markers as `[ ]`.
+- [x] Keep wrapped task-list continuation lines aligned under the item text.
+- [x] Add focused tests for checked, unchecked, and wrapped task items.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown task-list parsing is now enabled in pulldown options.
+- Checked and unchecked task markers render as `[x]` and `[ ]`.
+- Task-list continuation prefixes include both the list bullet and checkbox marker.
+- Added focused tests for checked, unchecked, and wrapped task list items.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
