@@ -64,3 +64,4 @@
 - If a Markdown extension is enabled, map it to visible styling; parsing strikethrough while applying an empty style makes the feature look silently unsupported.
 - Link renderers should track visible text during nested link events so autolinks and `mailto:` links do not duplicate their target in the transcript.
 - HTML markdown events should stay visible as plain text; dropping them hides user-provided terminal content and diverges from the reference renderer.
+- Link styling should include both color and underline so links remain visually distinct in monochrome or low-contrast terminal themes.

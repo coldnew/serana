@@ -534,3 +534,17 @@ Review:
 - HTML output uses existing wrapping/clamping behavior.
 - Added focused tests for inline HTML, block HTML, and width limits.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown link underline slice:
+- [x] Render Markdown links with underline styling as well as link color.
+- [x] Keep target suffix spans visually consistent with link text.
+- [x] Preserve existing link target de-duplication behavior.
+- [x] Add focused tests for link underline styling.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown link style now combines aquamarine color with underline styling.
+- Link target suffixes use the same link style, so they remain visually consistent.
+- Existing link target de-duplication tests still pass.
+- Added a focused span-level underline test for link text.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.

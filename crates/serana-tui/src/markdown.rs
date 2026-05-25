@@ -24,7 +24,9 @@ impl Default for MarkdownTheme {
             heading: Style::new()
                 .fg(theme::CORAL)
                 .add_modifier(ratatui::style::Modifier::BOLD),
-            link: Style::new().fg(theme::AQUAMARINE),
+            link: Style::new()
+                .fg(theme::AQUAMARINE)
+                .add_modifier(ratatui::style::Modifier::UNDERLINED),
             code: Style::new().fg(theme::CODE_PURPLE),
             code_block: Style::new().fg(theme::SEAFOAM_GREEN),
             quote: Style::new()
@@ -742,6 +744,20 @@ mod tests {
             .join("\n");
         assert!(rendered.contains("https://example.com"));
         assert!(!rendered.contains("(https://example.com)"));
+    }
+
+    #[test]
+    fn test_link_text_is_underlined() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("[example](https://example.com)", &theme, 80);
+        assert!(lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .any(|span| span.content == "example"
+                && span
+                    .style
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::UNDERLINED)));
     }
 
     #[test]
