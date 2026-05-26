@@ -122,6 +122,8 @@ pub enum KeyAction {
     HungryDeleteForward,
     DabbrevExpand,
     ZapToChar,
+    InsertEmptyLineBelow,
+    InsertEmptyLineAbove,
 }
 
 impl KeyAction {

@@ -782,6 +782,24 @@ impl Buffer {
         self.cursor.col = start;
         self.modified = true;
     }
+
+    pub fn insert_empty_line_below(&mut self) {
+        self.push_undo();
+        let row = self.cursor.row;
+        self.lines.insert(row + 1, String::new());
+        self.cursor.row = row + 1;
+        self.cursor.col = 0;
+        self.modified = true;
+    }
+
+    pub fn insert_empty_line_above(&mut self) {
+        self.push_undo();
+        let row = self.cursor.row;
+        self.lines.insert(row, String::new());
+        self.cursor.row = row;
+        self.cursor.col = 0;
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]

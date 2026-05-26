@@ -498,6 +498,8 @@ impl MoraEditor {
 
             // Emacs: C-t transpose char
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeChar,
+            // Emacs: C-o insert empty line below
+            (KeyModifiers::CONTROL, KeyCode::Char('o')) => KeyAction::InsertEmptyLineBelow,
             // Emacs: M-t transpose word
             (KeyModifiers::ALT, KeyCode::Char('t')) => KeyAction::TransposeWord,
             // Emacs: M-c capitalize word
@@ -1323,6 +1325,12 @@ impl MoraEditor {
                 self.status_message = format!("({}/{})", self.dabbrev_index, self.dabbrev_matches.len());
             }
             KeyAction::ZapToChar => {}
+            KeyAction::InsertEmptyLineBelow => {
+                self.buffer.insert_empty_line_below();
+            }
+            KeyAction::InsertEmptyLineAbove => {
+                self.buffer.insert_empty_line_above();
+            }
         }
     }
 
