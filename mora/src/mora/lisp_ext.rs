@@ -148,9 +148,24 @@ impl MoraLispBridge {
 
         for path in [home_init, Some(local_init)].into_iter().flatten() {
             if path.exists() {
-                if let Ok(code) = std::fs::read_to_string(&path) {
-                    if let Err(e) = self.eval(&code) {
-                        eprintln!("Error loading {}: {}", path.display(), e);
+                match std::fs::read_to_string(&path) {
+                    Ok(code) => {
+                        // Use catch_unwind to prevent crashes from Lisp evaluation
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            self.eval(&code)
+                        }));
+                        match result {
+                            Ok(Ok(_)) => {} // Success
+                            Ok(Err(e)) => {
+                                eprintln!("Error loading {}: {}", path.display(), e);
+                            }
+                            Err(_) => {
+                                eprintln!("Panic loading {}: init file caused a crash", path.display());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error reading {}: {}", path.display(), e);
                     }
                 }
                 break;
