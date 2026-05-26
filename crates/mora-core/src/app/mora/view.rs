@@ -17,12 +17,18 @@ impl View {
     }
 
     pub fn ensure_cursor_visible(&mut self, buf: &Buffer) {
-        if buf.cursor.row < self.scroll_top {
-            self.scroll_top = buf.cursor.row;
-        } else if buf.cursor.row >= self.scroll_top + self.height {
-            self.scroll_top = buf.cursor.row - self.height + 1;
+        let (min_row, max_row) = if let (Some(start), Some(end)) = (buf.narrow_start, buf.narrow_end) {
+            (start, end)
+        } else {
+            (0, buf.line_count().saturating_sub(1))
+        };
+        if buf.cursor.row < self.scroll_top || buf.cursor.row < min_row {
+            self.scroll_top = buf.cursor.row.max(min_row);
+        } else if buf.cursor.row >= self.scroll_top + self.height || buf.cursor.row > max_row {
+            self.scroll_top = buf.cursor.row.saturating_sub(self.height + 1).min(max_row);
         }
-        let digits = buf.line_count().to_string().len().max(3);
+        let max_line = max_row + 1;
+        let digits = max_line.to_string().len().max(3);
         self.gutter_width = digits as u16 + 1;
     }
 

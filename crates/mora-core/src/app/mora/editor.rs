@@ -31,6 +31,7 @@ pub struct MoraEditor {
     pub waiting_op: Option<PendingOp>,
     pub waiting_register: Option<char>,
     pub waiting_prefix: Option<char>,
+    pub waiting_prefix2: Option<char>,
     pub visual_start: Option<(usize, usize)>,
     pub macro_playing_keys: Vec<KeyEvent>,
     pub last_yank_was_kill: bool,
@@ -67,6 +68,7 @@ impl MoraEditor {
             waiting_op: None,
             waiting_register: None,
             waiting_prefix: None,
+            waiting_prefix2: None,
             visual_start: None,
             macro_playing_keys: Vec::new(),
             last_yank_was_kill: false,
@@ -116,12 +118,14 @@ impl MoraEditor {
 
         if let Some(action) = self.pending_action.take() {
             self.execute_action(action);
+            self.clamp_cursor_to_narrow();
             self.view.ensure_cursor_visible(&self.buffer);
             return true;
         }
 
         if let Some(name) = self.waiting_register.take() {
             self.handle_register_key(name, key);
+            self.clamp_cursor_to_narrow();
             self.view.ensure_cursor_visible(&self.buffer);
             return true;
         }
@@ -130,6 +134,7 @@ impl MoraEditor {
 
         let redraw = action != KeyAction::None;
         self.execute_action(action);
+        self.clamp_cursor_to_narrow();
         self.view.ensure_cursor_visible(&self.buffer);
         redraw
     }
@@ -139,6 +144,9 @@ impl MoraEditor {
     }
 
     fn reduce_no_playback(&mut self, key: KeyEvent) -> KeyAction {
+        if let Some(prefix2) = self.waiting_prefix2.take() {
+            return self.handle_prefix2_key(prefix2, key);
+        }
         if let Some(prefix) = self.waiting_prefix.take() {
             return self.handle_prefix_key(prefix, key);
         }
@@ -196,6 +204,11 @@ impl MoraEditor {
                 (KeyModifiers::CONTROL, KeyCode::Char('=')) => KeyAction::GotoLastChange,
                 // C-x C-;: cleanup buffer (delete trailing whitespace)
                 (KeyModifiers::CONTROL, KeyCode::Char(';')) => KeyAction::CleanupBuffer,
+                // C-x n: narrow prefix
+                (_, KeyCode::Char('n')) => {
+                    self.waiting_prefix2 = Some('n');
+                    KeyAction::None
+                }
                 _ => KeyAction::None,
             },
             'c' => match key.code {
@@ -227,6 +240,19 @@ impl MoraEditor {
                     self.status_message = "Goto line: ".to_string();
                     KeyAction::None
                 }
+                _ => KeyAction::None,
+            },
+            _ => KeyAction::None,
+        }
+    }
+
+    fn handle_prefix2_key(&mut self, prefix: char, key: KeyEvent) -> KeyAction {
+        match prefix {
+            'n' => match key.code {
+                // C-x n n: narrow to region
+                KeyCode::Char('n') => KeyAction::NarrowRegion,
+                // C-x n w: widen
+                KeyCode::Char('w') => KeyAction::Widen,
                 _ => KeyAction::None,
             },
             _ => KeyAction::None,
@@ -1625,6 +1651,26 @@ impl MoraEditor {
                 self.buffer.copy_and_comment();
                 self.status_message = "Copy and comment".to_string();
             }
+            KeyAction::NarrowRegion => {
+                if self.mark_ring.is_active() {
+                    if let Some(mark) = self.mark_ring.peek().copied() {
+                        let cur = self.buffer.cursor;
+                        let start = mark.row.min(cur.row);
+                        let end = mark.row.max(cur.row);
+                        self.buffer.narrow_to_region(start, end);
+                        self.mark_ring.set_active(false);
+                        self.status_message = format!("Narrowed to lines {}-{}", start + 1, end + 1);
+                    }
+                } else {
+                    let row = self.buffer.cursor.row;
+                    self.buffer.narrow_to_region(row, row);
+                    self.status_message = format!("Narrowed to line {}", row + 1);
+                }
+            }
+            KeyAction::Widen => {
+                self.buffer.widen();
+                self.status_message = "Widened".to_string();
+            }
         }
     }
 
@@ -1677,6 +1723,23 @@ impl MoraEditor {
         self.last_changes.push_front(pos);
         if self.last_changes.len() > 100 {
             self.last_changes.pop_back();
+        }
+    }
+
+    fn clamp_cursor_to_narrow(&mut self) {
+        if self.buffer.is_narrowed() {
+            let min_row = self.buffer.narrow_start.unwrap_or(0);
+            let max_row = self.buffer.narrow_end.unwrap_or(self.buffer.line_count().saturating_sub(1));
+            if self.buffer.cursor.row < min_row {
+                self.buffer.cursor.row = min_row;
+            }
+            if self.buffer.cursor.row > max_row {
+                self.buffer.cursor.row = max_row;
+            }
+            let line_len = self.buffer.current_line().chars().count();
+            if self.buffer.cursor.col > line_len {
+                self.buffer.cursor.col = line_len;
+            }
         }
     }
 

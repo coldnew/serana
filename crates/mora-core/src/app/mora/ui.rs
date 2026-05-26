@@ -70,7 +70,12 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
     let text_buf = editor.buffer();
     let gutter_w = view.gutter_width;
     let text_width = area.width.saturating_sub(gutter_w);
-    let (vis_start, vis_end) = view.visible_range(text_buf.line_count());
+    let narrow_start = text_buf.narrow_start.unwrap_or(0);
+    let narrow_end = text_buf.narrow_end.unwrap_or(text_buf.line_count().saturating_sub(1));
+    let total = text_buf.line_count();
+    let (vis_start, vis_end) = view.visible_range(total);
+    let render_start = vis_start.max(narrow_start);
+    let render_end = vis_end.min(narrow_end + 1);
 
     let gutter_style = Style::new().fg(Color::Rgb(107, 114, 128));
     let text_style = Style::new().fg(Color::Rgb(232, 236, 244));
@@ -101,7 +106,7 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
         (None, None)
     };
 
-    for (view_row, line_idx) in (vis_start..vis_end).enumerate() {
+    for (view_row, line_idx) in (render_start..render_end).enumerate() {
         let y = area.y + view_row as u16;
         if y >= area.y + area.height {
             break;

@@ -24,6 +24,8 @@ pub struct Buffer {
     pub path: Option<PathBuf>,
     undo_stack: VecDeque<Snapshot>,
     redo_stack: Vec<Snapshot>,
+    pub narrow_start: Option<usize>,
+    pub narrow_end: Option<usize>,
 }
 
 impl Buffer {
@@ -36,6 +38,8 @@ impl Buffer {
             path: None,
             undo_stack: VecDeque::new(),
             redo_stack: Vec::new(),
+            narrow_start: None,
+            narrow_end: None,
         }
     }
 
@@ -54,6 +58,8 @@ impl Buffer {
             path: Some(path.to_path_buf()),
             undo_stack: VecDeque::new(),
             redo_stack: Vec::new(),
+            narrow_start: None,
+            narrow_end: None,
         })
     }
 
@@ -271,14 +277,16 @@ impl Buffer {
     }
 
     pub fn move_up(&mut self) {
-        if self.cursor.row > 0 {
+        let min_row = self.narrow_start.unwrap_or(0);
+        if self.cursor.row > min_row {
             self.cursor.row -= 1;
             self.cursor.col = self.cursor.col.min(self.lines[self.cursor.row].len());
         }
     }
 
     pub fn move_down(&mut self) {
-        if self.cursor.row + 1 < self.lines.len() {
+        let max_row = self.narrow_end.unwrap_or(self.lines.len().saturating_sub(1));
+        if self.cursor.row < max_row {
             self.cursor.row += 1;
             self.cursor.col = self.cursor.col.min(self.lines[self.cursor.row].len());
         }
@@ -293,12 +301,12 @@ impl Buffer {
     }
 
     pub fn move_to_file_start(&mut self) {
-        self.cursor.row = 0;
+        self.cursor.row = self.narrow_start.unwrap_or(0);
         self.cursor.col = 0;
     }
 
     pub fn move_to_file_end(&mut self) {
-        self.cursor.row = self.lines.len() - 1;
+        self.cursor.row = self.narrow_end.unwrap_or(self.lines.len().saturating_sub(1));
         self.cursor.col = self.lines[self.cursor.row].len();
     }
 
@@ -821,6 +829,38 @@ impl Buffer {
         self.lines.insert(row + 1, line);
         self.cursor.row = row + 1;
         self.modified = true;
+    }
+
+    pub fn narrow_to_region(&mut self, start_row: usize, end_row: usize) {
+        let start = start_row.min(end_row);
+        let end = start_row.max(end_row).min(self.lines.len().saturating_sub(1));
+        if start <= end && end < self.lines.len() {
+            self.narrow_start = Some(start);
+            self.narrow_end = Some(end);
+            self.cursor.row = start;
+            self.cursor.col = 0;
+            self.scroll_offset = 0;
+        }
+    }
+
+    pub fn widen(&mut self) {
+        self.narrow_start = None;
+        self.narrow_end = None;
+    }
+
+    pub fn is_narrowed(&self) -> bool {
+        self.narrow_start.is_some()
+    }
+
+    pub fn visible_line_count(&self) -> usize {
+        match (self.narrow_start, self.narrow_end) {
+            (Some(start), Some(end)) => end - start + 1,
+            _ => self.lines.len(),
+        }
+    }
+
+    pub fn narrow_offset(&self) -> usize {
+        self.narrow_start.unwrap_or(0)
     }
 }
 

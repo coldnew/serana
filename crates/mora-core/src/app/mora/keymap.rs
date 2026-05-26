@@ -129,6 +129,8 @@ pub enum KeyAction {
     GotoLastChange,
     CleanupBuffer,
     CopyAndComment,
+    NarrowRegion,
+    Widen,
 }
 
 impl KeyAction {
