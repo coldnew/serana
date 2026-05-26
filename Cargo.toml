@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/mora-core",
+    "crates/mora-lisp",
     "mora",
     "serana",
     "crates/serana-core",
