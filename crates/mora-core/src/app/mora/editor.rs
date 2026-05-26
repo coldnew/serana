@@ -387,7 +387,7 @@ impl MoraEditor {
             }
             (KeyModifiers::ALT, KeyCode::Char('<')) => KeyAction::MoveFileStart,
 
-            (KeyModifiers::CONTROL, KeyCode::Char('d')) => KeyAction::DeleteForward,
+            (KeyModifiers::CONTROL, KeyCode::Char('d')) => KeyAction::HungryDeleteForward,
             (KeyModifiers::CONTROL, KeyCode::Char('k')) => KeyAction::KillLine,
             (KeyModifiers::ALT, KeyCode::Char('d')) => KeyAction::KillWordForward,
             (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
@@ -1235,6 +1235,9 @@ impl MoraEditor {
                     self.mark_ring.clear();
                     self.status_message = "Contract region".to_string();
                 }
+            }
+            KeyAction::HungryDeleteForward => {
+                self.buffer.hungry_delete_forward();
             }
         }
     }

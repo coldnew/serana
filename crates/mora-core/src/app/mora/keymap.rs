@@ -119,6 +119,7 @@ pub enum KeyAction {
     MwimEnd,
     ExpandRegion,
     ContractRegion,
+    HungryDeleteForward,
 }
 
 impl KeyAction {

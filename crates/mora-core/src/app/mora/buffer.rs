@@ -738,6 +738,25 @@ impl Buffer {
         }
         self.modified = true;
     }
+
+    pub fn hungry_delete_forward(&mut self) {
+        let line = &self.lines[self.cursor.row];
+        let chars: Vec<char> = line.chars().collect();
+        let col = self.cursor.col;
+        let mut end = col;
+        while end < chars.len() && chars[end].is_whitespace() {
+            end += 1;
+        }
+        if end == col && end < chars.len() {
+            end += 1;
+        }
+        if end > col {
+            self.push_undo();
+            let new_line: String = chars[..col].iter().chain(chars[end..].iter()).collect();
+            self.lines[self.cursor.row] = new_line;
+            self.modified = true;
+        }
+    }
 }
 
 #[cfg(test)]
