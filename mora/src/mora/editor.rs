@@ -232,12 +232,11 @@ impl MoraEditor {
     fn handle_prefix_key(&mut self, prefix: char, key: KeyEvent) -> KeyAction {
         match prefix {
             'x' => match (key.modifiers, key.code) {
-                (_, KeyCode::Char('s')) | (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                (_, KeyCode::Char('s')) => {
                     self.save_current_buffer();
                     KeyAction::SetMode(EditorMode::Normal)
                 }
                 (_, KeyCode::Char('c')) | (_, KeyCode::Char('k')) => KeyAction::Quit,
-                (KeyModifiers::CONTROL, KeyCode::Char('c')) => KeyAction::ForceQuit,
                 (_, KeyCode::Char('f')) => KeyAction::SetMode(EditorMode::SearchForward),
                 (_, KeyCode::Char('b')) => {
                     let cmd = self.command_input.clone();
@@ -254,25 +253,11 @@ impl MoraEditor {
                     KeyAction::None
                 }
                 (_, KeyCode::Char('u')) => KeyAction::Undo,
-                (KeyModifiers::CONTROL, KeyCode::Char('r')) => KeyAction::Redo,
-                (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
-                    self.status_message = "Redraw screen".to_string();
-                    KeyAction::None
-                }
-                // C-x C-t: transpose line
-                (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeLine,
-                // C-x C-u: uppercase region
-                (KeyModifiers::CONTROL, KeyCode::Char('u')) => KeyAction::UppercaseRegion,
-                // C-x C-l: lowercase region
-                (KeyModifiers::CONTROL, KeyCode::Char('l')) => KeyAction::LowercaseRegion,
-                // C-x C-=: goto last change
-                (KeyModifiers::CONTROL, KeyCode::Char('=')) => KeyAction::GotoLastChange,
-                // C-x C-;: cleanup buffer (delete trailing whitespace)
-                (KeyModifiers::CONTROL, KeyCode::Char(';')) => KeyAction::CleanupBuffer,
-                // C-x C-m: dos2unix
-                (KeyModifiers::CONTROL, KeyCode::Char('m')) => KeyAction::Dos2Unix,
-                // C-x C-f: toggle fold
-                (KeyModifiers::CONTROL, KeyCode::Char('f')) => KeyAction::ToggleFold,
+                (_, KeyCode::Char('t')) => KeyAction::TransposeLine,
+                (_, KeyCode::Char('l')) => KeyAction::LowercaseRegion,
+                (_, KeyCode::Char('=')) => KeyAction::GotoLastChange,
+                (_, KeyCode::Char(';')) => KeyAction::CleanupBuffer,
+                (_, KeyCode::Char('m')) => KeyAction::Dos2Unix,
                 // C-x n: narrow prefix
                 (_, KeyCode::Char('n')) => {
                     self.waiting_prefix2 = Some('n');
@@ -877,10 +862,6 @@ impl MoraEditor {
                 KeyAction::None
             }
 
-            (KeyModifiers::ALT, KeyCode::Char('w')) | (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
-                KeyAction::Save
-            }
-
             (KeyModifiers::CONTROL, KeyCode::Char('l')) => KeyAction::HungryDeleteBackward,
 
             (KeyModifiers::ALT, KeyCode::Char('q')) => {
@@ -939,7 +920,6 @@ impl MoraEditor {
 
             (_, KeyCode::Char(c)) => KeyAction::InsertChar(c),
             (_, KeyCode::Enter) => KeyAction::InsertNewline,
-            (_, KeyCode::Tab) => KeyAction::InsertChar('\t'),
             (_, KeyCode::Backspace) => KeyAction::DeleteBackward,
             (_, KeyCode::Delete) => KeyAction::DeleteForward,
             (_, KeyCode::Left) => KeyAction::MoveLeft,

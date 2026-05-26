@@ -9,6 +9,7 @@ pub mod minor_mode;
 mod rectangle;
 mod register;
 mod status_line;
+pub mod syntax;
 pub mod ui;
 mod view;
 pub mod wasm_ext;

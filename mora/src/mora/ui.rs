@@ -5,6 +5,7 @@ use ratatui::widgets::Widget;
 use super::editor::MoraEditor;
 use super::keymap::EditorMode;
 use super::status_line;
+use super::syntax;
 
 pub struct EditorWidget<'a> {
     editor: &'a MoraEditor,
@@ -69,6 +70,15 @@ impl<'a> Widget for EditorWidget<'a> {
     }
 }
 
+fn syntax_style_for_col(tokens: &[syntax::HighlightToken], col: usize) -> Option<Style> {
+    for tok in tokens {
+        if col >= tok.start && col < tok.end {
+            return Some(tok.kind.to_style());
+        }
+    }
+    None
+}
+
 fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer::Buffer) {
     let view = editor.view();
     let text_buf = editor.buffer();
@@ -92,6 +102,8 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
     let selection_style = Style::new()
         .fg(Color::Rgb(232, 236, 244))
         .bg(Color::Rgb(30, 80, 120));
+
+    let highlighter = syntax::create_highlighter(text_buf.major_mode.name());
 
     let in_visual = editor.mode() == EditorMode::Visual && editor.mark_ring.is_active();
     let (sel_start, sel_end) = if in_visual {
@@ -149,6 +161,7 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
         }
 
         let line_text = text_buf.line(line_idx);
+        let highlight_tokens = highlighter.highlight_line(line_text, line_idx);
         let text_x = area.x + gutter_w;
 
         let mut byte_col = 0;
@@ -176,6 +189,8 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
                 cursor_style
             } else if in_sel {
                 selection_style
+            } else if let Some(syn_style) = syntax_style_for_col(&highlight_tokens, byte_col) {
+                if is_current { syn_style } else { syn_style }
             } else if is_current {
                 current_line_style
             } else {
@@ -311,6 +326,8 @@ fn render_window_content(
         .fg(Color::Rgb(15, 18, 22))
         .bg(Color::Rgb(0, 180, 255));
 
+    let highlighter = syntax::create_highlighter(text_buf.major_mode.name());
+
     let total = text_buf.line_count();
     let (vis_start, vis_end) = view.visible_range(total);
     let render_start = vis_start;
@@ -350,6 +367,7 @@ fn render_window_content(
         }
 
         let line_text = text_buf.line(line_idx);
+        let highlight_tokens = highlighter.highlight_line(line_text, line_idx);
         let text_x = area.x + gutter_w;
 
         let mut byte_col = 0;
@@ -365,6 +383,8 @@ fn render_window_content(
 
             let style = if is_cursor {
                 cursor_style
+            } else if let Some(syn_style) = syntax_style_for_col(&highlight_tokens, byte_col) {
+                syn_style
             } else if is_current {
                 current_line_style
             } else {

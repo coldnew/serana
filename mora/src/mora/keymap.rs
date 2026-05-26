@@ -316,7 +316,7 @@ pub fn parse_command(input: &str) -> KeyAction {
         "indent-region" => KeyAction::IndentLine, // placeholder
         "save-buffer" => KeyAction::Save,
         "save-some-buffers" => KeyAction::Save,
-        "kill-buffer" | "quit" => KeyAction::Quit,
+        "kill-buffer" => KeyAction::Quit,
         "kill-emacs" => KeyAction::ForceQuit,
         "recenter" | "recenter-top-bottom" => KeyAction::None,
         "describe-mode" | "describe-key" => KeyAction::None,
