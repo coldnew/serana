@@ -918,6 +918,58 @@ impl Buffer {
     pub fn is_folded(&self) -> bool {
         self.fold_level.is_some()
     }
+
+    pub fn word_under_cursor(&self) -> String {
+        let line = self.current_line();
+        let col = self.cursor.col;
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() || col >= chars.len() {
+            return String::new();
+        }
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        if !is_word_char(chars[col]) {
+            return String::new();
+        }
+        let mut start = col;
+        while start > 0 && is_word_char(chars[start - 1]) {
+            start -= 1;
+        }
+        let mut end = col;
+        while end < chars.len() && is_word_char(chars[end]) {
+            end += 1;
+        }
+        chars[start..end].iter().collect()
+    }
+
+    pub fn search_forward_from(&self, pattern: &str, from_row: usize, from_col: usize) -> Option<(usize, usize)> {
+        if pattern.is_empty() {
+            return None;
+        }
+        for row in from_row..self.lines.len() {
+            let line = &self.lines[row];
+            let start_col = if row == from_row { from_col } else { 0 };
+            if start_col < line.len() {
+                if let Some(pos) = line[start_col..].find(pattern) {
+                    return Some((row, start_col + pos));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn search_backward_from(&self, pattern: &str, from_row: usize, from_col: usize) -> Option<(usize, usize)> {
+        if pattern.is_empty() {
+            return None;
+        }
+        for row in (0..=from_row).rev() {
+            let line = &self.lines[row];
+            let end_col = if row == from_row { from_col.min(line.len()) } else { line.len() };
+            if let Some(pos) = line[..end_col].rfind(pattern) {
+                return Some((row, pos));
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]

@@ -135,6 +135,12 @@ pub enum KeyAction {
     Unix2Dos,
     ToggleFold,
     MxComplete,
+    ToggleCase,
+    SubstituteLine,
+    SearchWordForward,
+    SearchWordBackward,
+    RepeatLastChange,
+    GotoMatchingBracket,
 }
 
 impl KeyAction {

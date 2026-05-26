@@ -45,6 +45,13 @@ pub struct MoraEditor {
     pub iedit_word: Option<String>,
     pub iedit_regions: Vec<(usize, usize, usize)>,
     pub iedit_cursor_idx: usize,
+    pub waiting_find: bool,
+    pub waiting_find_forward: bool,
+    pub waiting_find_till: bool,
+    pub last_find_char: Option<char>,
+    pub last_find_forward: bool,
+    pub last_find_till: bool,
+    pub last_normal_change: Option<Box<KeyAction>>,
 }
 
 impl MoraEditor {
@@ -82,6 +89,13 @@ impl MoraEditor {
             iedit_word: None,
             iedit_regions: Vec::new(),
             iedit_cursor_idx: 0,
+            waiting_find: false,
+            waiting_find_forward: true,
+            waiting_find_till: false,
+            last_find_char: None,
+            last_find_forward: true,
+            last_find_till: false,
+            last_normal_change: None,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -324,6 +338,37 @@ impl MoraEditor {
     }
 
     fn handle_normal(&mut self, key: KeyEvent) -> KeyAction {
+        if self.waiting_find {
+            self.waiting_find = false;
+            if let KeyCode::Char(c) = key.code {
+                self.last_find_char = Some(c);
+                self.last_find_forward = self.waiting_find_forward;
+                self.last_find_till = self.waiting_find_till;
+                let line = self.buffer.current_line();
+                let col = self.buffer.cursor.col;
+                let chars: Vec<char> = line.chars().collect();
+                if self.waiting_find_forward {
+                    let start = if self.waiting_find_till { col + 1 } else { col };
+                    if let Some(pos) = chars[start..].iter().position(|&ch| ch == c) {
+                        let target = start + pos;
+                        let new_col = if self.waiting_find_till {
+                            target.saturating_sub(1)
+                        } else {
+                            target
+                        };
+                        self.buffer.cursor.col = new_col;
+                    }
+                } else {
+                    let end = if self.waiting_find_till { col } else { col + 1 };
+                    if let Some(pos) = chars[..end].iter().rposition(|&ch| ch == c) {
+                        let new_col = if self.waiting_find_till { pos + 1 } else { pos };
+                        self.buffer.cursor.col = new_col;
+                    }
+                }
+            }
+            return KeyAction::None;
+        }
+
         if self.waiting_g {
             self.waiting_g = false;
             return if key.code == KeyCode::Char('g') {
@@ -396,6 +441,60 @@ impl MoraEditor {
             KeyAction::None if key.code == KeyCode::Char('c') && key.modifiers.is_empty() => {
                 self.waiting_op = Some(PendingOp::Change);
                 return KeyAction::None;
+            }
+            _ => {}
+        }
+
+        match key.code {
+            KeyCode::Char('f') if key.modifiers.is_empty() => {
+                self.waiting_find = true;
+                self.waiting_find_forward = true;
+                self.waiting_find_till = false;
+                return KeyAction::None;
+            }
+            KeyCode::Char('F') if key.modifiers.is_empty() => {
+                self.waiting_find = true;
+                self.waiting_find_forward = false;
+                self.waiting_find_till = false;
+                return KeyAction::None;
+            }
+            KeyCode::Char('t') if key.modifiers.is_empty() => {
+                self.waiting_find = true;
+                self.waiting_find_forward = true;
+                self.waiting_find_till = true;
+                return KeyAction::None;
+            }
+            KeyCode::Char('T') if key.modifiers.is_empty() => {
+                self.waiting_find = true;
+                self.waiting_find_forward = false;
+                self.waiting_find_till = true;
+                return KeyAction::None;
+            }
+            KeyCode::Char(';') if key.modifiers.is_empty() => {
+                self.repeat_last_find(true);
+                return KeyAction::None;
+            }
+            KeyCode::Char(',') if key.modifiers.is_empty() => {
+                self.repeat_last_find(false);
+                return KeyAction::None;
+            }
+            KeyCode::Char('*') if key.modifiers.is_empty() => {
+                return KeyAction::SearchWordForward;
+            }
+            KeyCode::Char('#') if key.modifiers.is_empty() => {
+                return KeyAction::SearchWordBackward;
+            }
+            KeyCode::Char('~') if key.modifiers.is_empty() => {
+                return KeyAction::ToggleCase;
+            }
+            KeyCode::Char('S') if key.modifiers.is_empty() => {
+                return KeyAction::SubstituteLine;
+            }
+            KeyCode::Char('.') if key.modifiers.is_empty() => {
+                return KeyAction::RepeatLastChange;
+            }
+            KeyCode::Char('%') if key.modifiers.is_empty() => {
+                return KeyAction::GotoMatchingBracket;
             }
             _ => {}
         }
@@ -1696,6 +1795,121 @@ impl MoraEditor {
             KeyAction::MxComplete => {
                 self.mx_complete();
             }
+            KeyAction::ToggleCase => {
+                self.record_change();
+                let row = self.buffer.cursor.row;
+                let col = self.buffer.cursor.col;
+                let line = self.buffer.lines[row].clone();
+                if let Some(ch) = line.chars().nth(col) {
+                    let toggled = if ch.is_ascii_uppercase() {
+                        ch.to_ascii_lowercase()
+                    } else if ch.is_ascii_lowercase() {
+                        ch.to_ascii_uppercase()
+                    } else {
+                        ch
+                    };
+                    if toggled != ch {
+                        let mut chars: Vec<char> = line.chars().collect();
+                        chars[col] = toggled;
+                        self.buffer.lines[row] = chars.into_iter().collect();
+                        self.buffer.modified = true;
+                    }
+                    if col + 1 < line.len() {
+                        self.buffer.cursor.col = col + 1;
+                    }
+                }
+                self.last_normal_change = Some(Box::new(KeyAction::ToggleCase));
+            }
+            KeyAction::SubstituteLine => {
+                self.record_change();
+                self.buffer.move_to_line_start();
+                let line = self.buffer.current_line();
+                let len = line.len();
+                if len > 0 {
+                    self.buffer.delete_range(0, len);
+                }
+                self.mode = EditorMode::Insert;
+                self.last_normal_change = Some(Box::new(KeyAction::SubstituteLine));
+            }
+            KeyAction::SearchWordForward => {
+                let word = self.buffer.word_under_cursor();
+                if !word.is_empty() {
+                    self.last_search_forward = Some(word.clone());
+                    let row = self.buffer.cursor.row;
+                    let col = self.buffer.cursor.col + 1;
+                    if let Some((r, c)) = self.buffer.search_forward_from(&word, row, col) {
+                        self.buffer.cursor.row = r;
+                        self.buffer.cursor.col = c;
+                    } else if let Some((r, c)) = self.buffer.search_forward_from(&word, 0, 0) {
+                        self.buffer.cursor.row = r;
+                        self.buffer.cursor.col = c;
+                        self.status_message = "Search wrapped".to_string();
+                    }
+                }
+            }
+            KeyAction::SearchWordBackward => {
+                let word = self.buffer.word_under_cursor();
+                if !word.is_empty() {
+                    self.last_search_backward = Some(word.clone());
+                    let row = self.buffer.cursor.row;
+                    let col = self.buffer.cursor.col;
+                    if let Some((r, c)) = self.buffer.search_backward_from(&word, row, col) {
+                        self.buffer.cursor.row = r;
+                        self.buffer.cursor.col = c;
+                    } else {
+                        let last_row = self.buffer.line_count().saturating_sub(1);
+                        let last_col = self.buffer.lines[last_row].len().saturating_sub(1);
+                        if let Some((r, c)) = self.buffer.search_backward_from(&word, last_row, last_col) {
+                            self.buffer.cursor.row = r;
+                            self.buffer.cursor.col = c;
+                            self.status_message = "Search wrapped".to_string();
+                        }
+                    }
+                }
+            }
+            KeyAction::RepeatLastChange => {
+                if let Some(ref action) = self.last_normal_change {
+                    let action = (**action).clone();
+                    self.execute_action(action);
+                }
+            }
+            KeyAction::GotoMatchingBracket => {
+                let line = self.buffer.current_line();
+                let col = self.buffer.cursor.col;
+                if let Some(ch) = line.chars().nth(col) {
+                    let (open, close, forward) = match ch {
+                        '(' => ('(', ')', true),
+                        ')' => ('(', ')', false),
+                        '[' => ('[', ']', true),
+                        ']' => ('[', ']', false),
+                        '{' => ('{', '}', true),
+                        '}' => ('{', '}', false),
+                        _ => (ch, ch, true),
+                    };
+                    let mut depth = 0i32;
+                    if forward {
+                        let chars: Vec<char> = line.chars().collect();
+                        for i in col..chars.len() {
+                            if chars[i] == open { depth += 1; }
+                            else if chars[i] == close { depth -= 1; }
+                            if depth == 0 {
+                                self.buffer.cursor.col = i;
+                                return;
+                            }
+                        }
+                    } else {
+                        let chars: Vec<char> = line.chars().collect();
+                        for i in (0..=col).rev() {
+                            if chars[i] == close { depth += 1; }
+                            else if chars[i] == open { depth -= 1; }
+                            if depth == 0 {
+                                self.buffer.cursor.col = i;
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1925,6 +2139,28 @@ impl MoraEditor {
         }
         self.macro_state.cancel_playback();
         None
+    }
+
+    fn repeat_last_find(&mut self, same_direction: bool) {
+        if let Some(c) = self.last_find_char {
+            let forward = if same_direction { self.last_find_forward } else { !self.last_find_forward };
+            let till = self.last_find_till;
+            let line = self.buffer.current_line();
+            let col = self.buffer.cursor.col;
+            let chars: Vec<char> = line.chars().collect();
+            if forward {
+                let start = if till { col + 1 } else { col };
+                if let Some(pos) = chars[start..].iter().position(|&ch| ch == c) {
+                    let target = start + pos;
+                    self.buffer.cursor.col = if till { target.saturating_sub(1) } else { target };
+                }
+            } else {
+                let end = if till { col } else { col + 1 };
+                if let Some(pos) = chars[..end].iter().rposition(|&ch| ch == c) {
+                    self.buffer.cursor.col = if till { pos + 1 } else { pos };
+                }
+            }
+        }
     }
 }
 
