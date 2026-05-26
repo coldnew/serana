@@ -80,6 +80,26 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
     let cursor_style = Style::new()
         .fg(Color::Rgb(15, 18, 22))
         .bg(Color::Rgb(0, 180, 255));
+    let selection_style = Style::new()
+        .fg(Color::Rgb(232, 236, 244))
+        .bg(Color::Rgb(30, 80, 120));
+
+    let in_visual = editor.mode() == EditorMode::Visual && editor.mark_ring.is_active();
+    let (sel_start, sel_end) = if in_visual {
+        if let Some(mark) = editor.mark_ring.peek() {
+            let cursor = text_buf.cursor;
+            let (a, b) = if mark.row < cursor.row || (mark.row == cursor.row && mark.col <= cursor.col) {
+                (*mark, cursor)
+            } else {
+                (cursor, *mark)
+            };
+            (Some(a), Some(b))
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
 
     for (view_row, line_idx) in (vis_start..vis_end).enumerate() {
         let y = area.y + view_row as u16;
@@ -127,8 +147,20 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
             let is_cursor =
                 is_current && byte_col == text_buf.cursor.col && editor.mode() != EditorMode::Normal;
 
+            let in_sel = sel_start.map_or(false, |start| {
+                sel_end.map_or(false, |end| {
+                    line_idx > start.row && line_idx < end.row
+                        || (line_idx == start.row && line_idx == end.row
+                            && byte_col >= start.col && byte_col < end.col)
+                        || (line_idx == start.row && byte_col >= start.col)
+                        || (line_idx == end.row && byte_col < end.col)
+                })
+            });
+
             let style = if is_cursor {
                 cursor_style
+            } else if in_sel {
+                selection_style
             } else if is_current {
                 current_line_style
             } else {
@@ -169,9 +201,16 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
 
         while display_col < text_width {
             let x = text_x + display_col;
+            let fill_sel = sel_start.map_or(false, |start| {
+                sel_end.map_or(false, |end| {
+                    line_idx > start.row && line_idx < end.row
+                })
+            });
             buf[(x, y)]
                 .set_char(' ')
-                .set_style(if is_current {
+                .set_style(if fill_sel {
+                    selection_style
+                } else if is_current {
                     Style::new().bg(Color::Rgb(25, 28, 35))
                 } else {
                     Style::default()
