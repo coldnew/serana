@@ -64,6 +64,7 @@ pub struct MoraEditor {
     pub waiting_ace_jump: bool,
     pub ace_jump_target: Option<char>,
     pub ace_jump_hints: Vec<(usize, usize, char)>,
+    pub waiting_z: bool,
 }
 
 impl MoraEditor {
@@ -120,6 +121,7 @@ impl MoraEditor {
             waiting_ace_jump: false,
             ace_jump_target: None,
             ace_jump_hints: Vec::new(),
+            waiting_z: false,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -637,8 +639,24 @@ impl MoraEditor {
             }
         }
 
+        if self.waiting_z {
+            self.waiting_z = false;
+            return match key.code {
+                KeyCode::Char('o') => KeyAction::OpenFold,
+ KeyCode::Char('c') => KeyAction::CloseFold,
+                KeyCode::Char('a') => KeyAction::ToggleFoldEvil,
+                KeyCode::Char('r') => KeyAction::ReduceFolds,
+                KeyCode::Char('m') => KeyAction::MaximizeFolds,
+                _ => KeyAction::None,
+            };
+        }
+
         if key.code == KeyCode::Char('g') && key.modifiers.is_empty() {
             self.waiting_g = true;
+            return KeyAction::None;
+        }
+        if key.code == KeyCode::Char('z') && key.modifiers.is_empty() {
+            self.waiting_z = true;
             return KeyAction::None;
         }
 
@@ -1273,6 +1291,21 @@ impl MoraEditor {
         match action {
             KeyAction::None => {}
             KeyAction::AceJump => {}
+            KeyAction::OpenFold => {
+                self.buffer.open_fold();
+            }
+            KeyAction::CloseFold => {
+                self.buffer.close_fold();
+            }
+            KeyAction::ToggleFoldEvil => {
+                self.buffer.toggle_fold();
+            }
+            KeyAction::ReduceFolds => {
+                self.buffer.reduce_folds();
+            }
+            KeyAction::MaximizeFolds => {
+                self.buffer.maximize_folds();
+            }
 
             KeyAction::MoveLeft => self.buffer.move_left(),
             KeyAction::MoveRight => self.buffer.move_right(),

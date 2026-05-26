@@ -155,6 +155,11 @@ pub enum KeyAction {
     DeleteSurround(char),
     AddSurround(char),
     AceJump,
+    OpenFold,
+    CloseFold,
+    ToggleFoldEvil,
+    ReduceFolds,
+    MaximizeFolds,
 }
 
 impl KeyAction {
@@ -188,6 +193,7 @@ pub fn normal_key(key: KeyEvent) -> KeyAction {
         (_, KeyCode::Char('0')) | (_, KeyCode::Home) => KeyAction::MoveLineStart,
         (_, KeyCode::Char('$')) | (_, KeyCode::End) => KeyAction::MoveLineEnd,
         (_, KeyCode::Char('g')) => KeyAction::None,
+        (_, KeyCode::Char('z')) => KeyAction::None,
         (_, KeyCode::Char('G')) => KeyAction::MoveFileEnd,
 
         (_, KeyCode::Char('x')) => KeyAction::DeleteForward,

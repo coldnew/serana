@@ -1039,6 +1039,60 @@ impl Buffer {
         self.fold_level.is_some()
     }
 
+    pub fn open_fold(&mut self) {
+        let row = self.cursor.row;
+        if !self.is_line_folded(row) {
+            return;
+        }
+        let indent = self.lines[row].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        for i in row..self.folded_lines.len() {
+            let line_indent = self.lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            if line_indent <= indent && i > row {
+                break;
+            }
+            if self.folded_lines[i] && line_indent > indent {
+                self.folded_lines[i] = false;
+            }
+        }
+    }
+
+    pub fn close_fold(&mut self) {
+        let row = self.cursor.row;
+        let indent = self.lines[row].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        if self.fold_level.is_none() {
+            self.fold_level = Some(indent);
+            self.folded_lines = vec![false; self.lines.len()];
+        }
+        for i in (row + 1)..self.lines.len() {
+            let line_indent = self.lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            if line_indent <= indent && !self.lines[i].trim().is_empty() {
+                break;
+            }
+            if line_indent > indent && !self.lines[i].trim().is_empty() {
+                self.folded_lines[i] = true;
+            }
+        }
+    }
+
+    pub fn reduce_folds(&mut self) {
+        if self.fold_level.is_some() {
+            for i in 0..self.folded_lines.len() {
+                self.folded_lines[i] = false;
+            }
+            self.fold_level = None;
+        }
+    }
+
+    pub fn maximize_folds(&mut self) {
+        if self.fold_level.is_some() {
+            self.fold_level = Some(0);
+            self.folded_lines = self.lines.iter().map(|line| {
+                let line_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                line_indent > 0 && !line.trim().is_empty()
+            }).collect();
+        }
+    }
+
     pub fn word_under_cursor(&self) -> String {
         let line = self.current_line();
         let col = self.cursor.col;
