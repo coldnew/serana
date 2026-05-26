@@ -147,12 +147,12 @@ pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
             "i:Insert  /:Search  ::Cmd  v:Visual  Ctrl-S:Save  u:Undo  Ctrl-E:Emacs"
         }
         EditorMode::Insert => "Esc:Normal  Ctrl-S:Save  Arrows:Move",
-        EditorMode::Command => "Enter:Exec  Esc:Cancel",
+        EditorMode::Command => "Enter:Exec  Tab:Complete  Esc:Cancel",
         EditorMode::SearchForward | EditorMode::SearchBackward => {
             "Enter:Search  Esc:Cancel  n:Next  N:Prev"
         }
         EditorMode::Emacs => {
-            "C-g:Normal  C-x C-s:Save  C-SPC:Mark  C-w:Kill  M-w:Copy  C-y:Yank  C-t:Transp  M-c:Cap  M-u:Up  M-l:Low  M-/:Complete  M-z:Zap  C-o:Line  C-;:Iedit"
+            "C-g:Normal  M-x:Commands  C-SPC:Mark  C-w:Kill  M-w:Copy  C-y:Yank  C-t:Transp  M-c:Cap  M-u:Up  M-l:Low  M-/:Complete  M-z:Zap  C-o:Line  C-;:Iedit"
         }
         EditorMode::ReplaceChar => "Press char to replace with  Esc:Cancel",
         EditorMode::Visual => "hjkl/arrows:Move  w/b/e:Word  d/x:Kill  y:Copy  o:Swap  I/A:Insert  Esc/C-g:Exit",
