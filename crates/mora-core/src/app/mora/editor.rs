@@ -40,6 +40,7 @@ pub struct MoraEditor {
     pub dabbrev_matches: Vec<String>,
     pub dabbrev_index: usize,
     pub waiting_zap: bool,
+    pub last_changes: std::collections::VecDeque<(usize, usize)>,
 }
 
 impl MoraEditor {
@@ -72,6 +73,7 @@ impl MoraEditor {
             dabbrev_matches: Vec::new(),
             dabbrev_index: 0,
             waiting_zap: false,
+            last_changes: std::collections::VecDeque::new(),
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -183,6 +185,8 @@ impl MoraEditor {
                 (KeyModifiers::CONTROL, KeyCode::Char('u')) => KeyAction::UppercaseRegion,
                 // C-x C-l: lowercase region
                 (KeyModifiers::CONTROL, KeyCode::Char('l')) => KeyAction::LowercaseRegion,
+                // C-x C-=: goto last change
+                (KeyModifiers::CONTROL, KeyCode::Char('=')) => KeyAction::GotoLastChange,
                 _ => KeyAction::None,
             },
             'c' => match key.code {
@@ -673,16 +677,18 @@ impl MoraEditor {
                 }
             }
 
-            KeyAction::InsertChar(c) => self.buffer.insert_char(c),
-            KeyAction::InsertNewline => self.buffer.insert_newline(),
-            KeyAction::DeleteBackward => self.buffer.delete_backward(),
-            KeyAction::DeleteForward => self.buffer.delete_forward(),
+            KeyAction::InsertChar(c) => { self.record_change(); self.buffer.insert_char(c); }
+            KeyAction::InsertNewline => { self.record_change(); self.buffer.insert_newline(); }
+            KeyAction::DeleteBackward => { self.record_change(); self.buffer.delete_backward(); }
+            KeyAction::DeleteForward => { self.record_change(); self.buffer.delete_forward(); }
             KeyAction::DeleteLine => {
+                self.record_change();
                 self.kill_line_to_ring();
                 self.buffer.delete_line();
             }
-            KeyAction::DeleteToEol => self.buffer.delete_to_eol(),
+            KeyAction::DeleteToEol => { self.record_change(); self.buffer.delete_to_eol(); }
             KeyAction::KillLine => {
+                self.record_change();
                 let row = self.buffer.cursor.row;
                 let col = self.buffer.cursor.col;
                 let line = &self.buffer.lines[row];
@@ -708,6 +714,7 @@ impl MoraEditor {
                 }
             }
             KeyAction::KillWordForward => {
+                self.record_change();
                 let start = self.buffer.cursor.col;
                 self.buffer.move_word_forward();
                 let end = self.buffer.cursor.col;
@@ -726,6 +733,7 @@ impl MoraEditor {
                 }
             }
             KeyAction::DeleteWordBackward => {
+                self.record_change();
                 let line = self.buffer.lines[self.buffer.cursor.row].clone();
                 let col = self.buffer.cursor.col;
                 if col > 0 {
@@ -870,6 +878,7 @@ impl MoraEditor {
             }
 
             KeyAction::Yank => {
+                self.record_change();
                 if let Some(entry) = self.kill_ring.yank() {
                     let text = &entry.text;
                     let row = self.buffer.cursor.row + 1;
@@ -1011,6 +1020,7 @@ impl MoraEditor {
                 self.status_message = "Yanked line".to_string();
             }
             KeyAction::PasteAfter => {
+                self.record_change();
                 if let Some(entry) = self.kill_ring.yank() {
                     let text = &entry.text;
                     let paste_row = self.buffer.cursor.row + 1;
@@ -1028,11 +1038,13 @@ impl MoraEditor {
             }
 
             KeyAction::IndentLine => {
+                self.record_change();
                 let line = &mut self.buffer.lines[self.buffer.cursor.row];
                 line.insert_str(0, "    ");
                 self.buffer.modified = true;
             }
             KeyAction::UnindentLine => {
+                self.record_change();
                 let line = &mut self.buffer.lines[self.buffer.cursor.row];
                 if line.starts_with("    ") {
                     *line = line[4..].to_string();
@@ -1056,6 +1068,7 @@ impl MoraEditor {
             }
 
             KeyAction::JoinLines => {
+                self.record_change();
                 if self.buffer.cursor.row + 1 < self.buffer.line_count() {
                     let next = self.buffer.lines[self.buffer.cursor.row + 1].clone();
                     let current = &mut self.buffer.lines[self.buffer.cursor.row];
@@ -1069,6 +1082,7 @@ impl MoraEditor {
             }
 
             KeyAction::ReplaceChar(c) => {
+                self.record_change();
                 let row = self.buffer.cursor.row;
                 let col = self.buffer.cursor.col;
                 if col < self.buffer.lines[row].len() {
@@ -1137,23 +1151,23 @@ impl MoraEditor {
                 self.command_input = saved_cmd;
             }
 
-            KeyAction::TransposeChar => self.buffer.transpose_char(),
-            KeyAction::TransposeWord => self.buffer.transpose_word(),
-            KeyAction::TransposeLine => self.buffer.transpose_line(),
-            KeyAction::CapitalizeWord => self.buffer.capitalize_word(),
-            KeyAction::UppercaseWord => self.buffer.uppercase_word(),
-            KeyAction::LowercaseWord => self.buffer.lowercase_word(),
+            KeyAction::TransposeChar => { self.record_change(); self.buffer.transpose_char(); }
+            KeyAction::TransposeWord => { self.record_change(); self.buffer.transpose_word(); }
+            KeyAction::TransposeLine => { self.record_change(); self.buffer.transpose_line(); }
+            KeyAction::CapitalizeWord => { self.record_change(); self.buffer.capitalize_word(); }
+            KeyAction::UppercaseWord => { self.record_change(); self.buffer.uppercase_word(); }
+            KeyAction::LowercaseWord => { self.record_change(); self.buffer.lowercase_word(); }
             KeyAction::UppercaseRegion => {
-                if let Some(mark) = self.mark_ring.peek() {
-                    let m = (mark.row, mark.col);
-                    self.buffer.uppercase_region(m);
+                if let Some(mark) = self.mark_ring.peek().copied() {
+                    self.record_change();
+                    self.buffer.uppercase_region((mark.row, mark.col));
                     self.status_message = "Uppercase region".to_string();
                 }
             }
             KeyAction::LowercaseRegion => {
-                if let Some(mark) = self.mark_ring.peek() {
-                    let m = (mark.row, mark.col);
-                    self.buffer.lowercase_region(m);
+                if let Some(mark) = self.mark_ring.peek().copied() {
+                    self.record_change();
+                    self.buffer.lowercase_region((mark.row, mark.col));
                     self.status_message = "Lowercase region".to_string();
                 }
             }
@@ -1269,6 +1283,7 @@ impl MoraEditor {
                 }
             }
             KeyAction::HungryDeleteForward => {
+                self.record_change();
                 self.buffer.hungry_delete_forward();
             }
             KeyAction::DabbrevExpand => {
@@ -1326,10 +1341,24 @@ impl MoraEditor {
             }
             KeyAction::ZapToChar => {}
             KeyAction::InsertEmptyLineBelow => {
+                self.record_change();
                 self.buffer.insert_empty_line_below();
             }
             KeyAction::InsertEmptyLineAbove => {
+                self.record_change();
                 self.buffer.insert_empty_line_above();
+            }
+            KeyAction::GotoLastChange => {
+                if let Some((row, col)) = self.last_changes.pop_front() {
+                    if row < self.buffer.line_count() {
+                        self.buffer.cursor.row = row;
+                        let line_len = self.buffer.current_line().chars().count();
+                        self.buffer.cursor.col = col.min(line_len);
+                        self.status_message = "Goto last change".to_string();
+                    }
+                } else {
+                    self.status_message = "No more last changes".to_string();
+                }
             }
         }
     }
@@ -1375,6 +1404,14 @@ impl MoraEditor {
             }
             result.push_str(&self.buffer.lines[end.row][..end.col]);
             result
+        }
+    }
+
+    fn record_change(&mut self) {
+        let pos = (self.buffer.cursor.row, self.buffer.cursor.col);
+        self.last_changes.push_front(pos);
+        if self.last_changes.len() > 100 {
+            self.last_changes.pop_back();
         }
     }
 

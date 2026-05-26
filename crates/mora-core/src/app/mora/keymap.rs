@@ -124,6 +124,7 @@ pub enum KeyAction {
     ZapToChar,
     InsertEmptyLineBelow,
     InsertEmptyLineAbove,
+    GotoLastChange,
 }
 
 impl KeyAction {
