@@ -36,6 +36,9 @@ pub struct MoraEditor {
     pub last_yank_was_kill: bool,
     pub repeat_count: Option<usize>,
     pub expand_region_level: usize,
+    pub dabbrev_prefix: Option<String>,
+    pub dabbrev_matches: Vec<String>,
+    pub dabbrev_index: usize,
 }
 
 impl MoraEditor {
@@ -64,6 +67,9 @@ impl MoraEditor {
             last_yank_was_kill: false,
             repeat_count: None,
             expand_region_level: 0,
+            dabbrev_prefix: None,
+            dabbrev_matches: Vec::new(),
+            dabbrev_index: 0,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -487,6 +493,8 @@ impl MoraEditor {
                 self.waiting_prefix = Some('g');
                 KeyAction::None
             }
+            // Emacs: M-/ dabbrev-expand
+            (KeyModifiers::ALT, KeyCode::Char('/')) => KeyAction::DabbrevExpand,
 
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
@@ -1238,6 +1246,59 @@ impl MoraEditor {
             }
             KeyAction::HungryDeleteForward => {
                 self.buffer.hungry_delete_forward();
+            }
+            KeyAction::DabbrevExpand => {
+                let line = self.buffer.current_line();
+                let chars: Vec<char> = line.chars().collect();
+                let col = self.buffer.cursor.col;
+                let mut start = col;
+                while start > 0 && start - 1 < chars.len() && !chars[start - 1].is_whitespace() {
+                    start -= 1;
+                }
+                let prefix: String = chars[start..col].iter().collect();
+                if prefix.is_empty() {
+                    return;
+                }
+                let is_continuation = self.dabbrev_prefix.as_ref() == Some(&prefix);
+                if !is_continuation {
+                    let mut matches = Vec::new();
+                    for (i, l) in self.buffer.lines.iter().enumerate() {
+                        let lchars: Vec<char> = l.chars().collect();
+                        for w in 0..lchars.len() {
+                            if w > 0 && lchars[w - 1].is_whitespace() {
+                                continue;
+                            }
+                            if w == 0 && i > 0 {
+                                continue;
+                            }
+                            let mut end = w;
+                            while end < lchars.len() && !lchars[end].is_whitespace() {
+                                end += 1;
+                            }
+                            let word: String = lchars[w..end].iter().collect();
+                            if word.len() > prefix.len() && word.starts_with(&prefix) {
+                                if !matches.contains(&word) {
+                                    matches.push(word);
+                                }
+                            }
+                        }
+                    }
+                    if matches.is_empty() {
+                        self.status_message = "No completions".to_string();
+                        return;
+                    }
+                    self.dabbrev_prefix = Some(prefix.clone());
+                    self.dabbrev_matches = matches;
+                    self.dabbrev_index = 0;
+                }
+                if self.dabbrev_matches.is_empty() {
+                    self.status_message = "No completions".to_string();
+                    return;
+                }
+                let replacement = self.dabbrev_matches[self.dabbrev_index].clone();
+                self.buffer.replace_range(start, col, &replacement);
+                self.dabbrev_index = (self.dabbrev_index + 1) % self.dabbrev_matches.len();
+                self.status_message = format!("({}/{})", self.dabbrev_index, self.dabbrev_matches.len());
             }
         }
     }

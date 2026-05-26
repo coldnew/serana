@@ -120,6 +120,7 @@ pub enum KeyAction {
     ExpandRegion,
     ContractRegion,
     HungryDeleteForward,
+    DabbrevExpand,
 }
 
 impl KeyAction {
