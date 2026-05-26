@@ -967,35 +967,56 @@ impl Buffer {
         let line = self.current_line();
         let col = self.cursor.col;
         let chars: Vec<char> = line.chars().collect();
-        if chars.is_empty() {
+        if chars.is_empty() || col >= chars.len() {
             return (col, col);
         }
-        // Find the opening bracket at or before cursor
-        let mut open_pos = col;
-        while open_pos < chars.len() && chars[open_pos] != open {
-            if open_pos == 0 { return (col, col); }
-            open_pos -= 1;
-        }
-        if open_pos >= chars.len() || chars[open_pos] != open {
-            // Search backward
-            open_pos = col;
+        let is_same = open == close;
+        let open_pos = if chars[col] == open {
+            Some(col)
+        } else if chars[col] == close && !is_same {
+            // Find matching open bracket backward
+            let mut depth = 1;
+            let mut pos = col;
             loop {
-                if chars[open_pos] == open { break; }
-                if open_pos == 0 { return (col, col); }
-                open_pos -= 1;
+                if pos == 0 { return (col, col); }
+                pos -= 1;
+                if chars[pos] == close { depth += 1; }
+                if chars[pos] == open {
+                    depth -= 1;
+                    if depth == 0 { break Some(pos); }
+                }
             }
+        } else {
+            // Search backward for open bracket
+            let mut pos = col;
+            loop {
+                if chars[pos] == open { break Some(pos); }
+                if pos == 0 { break None; }
+                pos -= 1;
+            }
+        };
+        let open_pos = match open_pos { Some(p) => p, None => return (col, col) };
+        // Find matching close bracket forward
+        if is_same {
+            // For same-char delimiters (quotes), find the next occurrence
+            let mut pos = open_pos + 1;
+            while pos < chars.len() {
+                if chars[pos] == close {
+                    return (open_pos + 1, pos);
+                }
+                pos += 1;
+            }
+            return (col, col);
         }
-        // Find matching close bracket
         let mut depth = 1;
         let mut pos = open_pos + 1;
         while pos < chars.len() && depth > 0 {
             if chars[pos] == open { depth += 1; }
             if chars[pos] == close { depth -= 1; }
-            if depth == 0 { break; }
             pos += 1;
         }
         if depth != 0 { return (col, col); }
-        let close_pos = pos;
+        let close_pos = pos - 1;
         if open_pos + 1 >= close_pos {
             return (open_pos + 1, open_pos + 1);
         }
@@ -1003,38 +1024,11 @@ impl Buffer {
     }
 
     pub fn around_bracket_range(&self, open: char, close: char) -> (usize, usize) {
-        let line = self.current_line();
-        let col = self.cursor.col;
-        let chars: Vec<char> = line.chars().collect();
-        if chars.is_empty() {
-            return (col, col);
+        let (inner_start, inner_end) = self.inner_bracket_range(open, close);
+        if inner_start == inner_end && inner_start == self.cursor.col {
+            return (self.cursor.col, self.cursor.col);
         }
-        // Find the opening bracket at or before cursor
-        let mut open_pos = col;
-        while open_pos < chars.len() && chars[open_pos] != open {
-            if open_pos == 0 { return (col, col); }
-            open_pos -= 1;
-        }
-        if open_pos >= chars.len() || chars[open_pos] != open {
-            open_pos = col;
-            loop {
-                if chars[open_pos] == open { break; }
-                if open_pos == 0 { return (col, col); }
-                open_pos -= 1;
-            }
-        }
-        // Find matching close bracket
-        let mut depth = 1;
-        let mut pos = open_pos + 1;
-        while pos < chars.len() && depth > 0 {
-            if chars[pos] == open { depth += 1; }
-            if chars[pos] == close { depth -= 1; }
-            if depth == 0 { break; }
-            pos += 1;
-        }
-        if depth != 0 { return (col, col); }
-        let close_pos = pos;
-        (open_pos, close_pos + 1)
+        (inner_start.saturating_sub(1), inner_end + 1)
     }
 
     pub fn around_word_range(&self) -> (usize, usize) {
@@ -1269,5 +1263,55 @@ mod tests {
         let (start, end) = buf.around_word_range();
         assert_eq!(start, 5); // end of line, so includes leading space
         assert_eq!(end, 11);
+    }
+
+    #[test]
+    fn test_inner_bracket_range_parens() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo(bar baz)");
+        buf.cursor.col = 5; // inside parens, on 'b'
+        let (start, end) = buf.inner_bracket_range('(', ')');
+        assert_eq!(start, 4);
+        assert_eq!(end, 11); // before closing paren
+    }
+
+    #[test]
+    fn test_around_bracket_range_parens() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo(bar baz)");
+        buf.cursor.col = 5;
+        let (start, end) = buf.around_bracket_range('(', ')');
+        assert_eq!(start, 3);
+        assert_eq!(end, 12); // including closing paren
+    }
+
+    #[test]
+    fn test_inner_bracket_range_braces() {
+        let mut buf = Buffer::new();
+        buf.insert_string("if { x = 1; }");
+        buf.cursor.col = 7; // inside braces
+        let (start, end) = buf.inner_bracket_range('{', '}');
+        assert_eq!(start, 4); // after '{' at col 3
+        assert_eq!(end, 12);  // before '}' at col 12
+    }
+
+    #[test]
+    fn test_inner_bracket_range_quotes() {
+        let mut buf = Buffer::new();
+        buf.insert_string("let s = \"hello\";");
+        buf.cursor.col = 10; // inside quotes
+        let (start, end) = buf.inner_bracket_range('"', '"');
+        assert_eq!(start, 9);
+        assert_eq!(end, 14);
+    }
+
+    #[test]
+    fn test_inner_bracket_range_empty() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo()");
+        buf.cursor.col = 4; // inside empty parens
+        let (start, end) = buf.inner_bracket_range('(', ')');
+        assert_eq!(start, 4);
+        assert_eq!(end, 4);
     }
 }
