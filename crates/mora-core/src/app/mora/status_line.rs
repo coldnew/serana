@@ -144,7 +144,7 @@ pub fn render_command_line(editor: &MoraEditor, width: usize) -> Line<'static> {
 pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
     let hints = match mode {
         EditorMode::Normal => {
-            "i:Insert  /:Search  ::Cmd  v:Visual  Ctrl-S:Save  u:Undo  Ctrl-E:Emacs"
+            "i:Insert  f/F/t/T:Find  ;/,:Repeat  *:Search  ~:Case  S:Sub  .:Repeat  %:Match  /:Search  ::Cmd  v:Visual  u:Undo  Ctrl-E:Emacs"
         }
         EditorMode::Insert => "Esc:Normal  Ctrl-S:Save  Arrows:Move",
         EditorMode::Command => "Enter:Exec  Tab:Complete  Esc:Cancel",
