@@ -154,6 +154,7 @@ pub enum KeyAction {
     ChangeSurround(char, char),
     DeleteSurround(char),
     AddSurround(char),
+    AceJump,
 }
 
 impl KeyAction {

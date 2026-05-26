@@ -61,6 +61,9 @@ pub struct MoraEditor {
     pub surround_new_char: Option<char>,
     pub surround_range: Option<(usize, usize)>,
     pub waiting_surround_add: bool,
+    pub waiting_ace_jump: bool,
+    pub ace_jump_target: Option<char>,
+    pub ace_jump_hints: Vec<(usize, usize, char)>,
 }
 
 impl MoraEditor {
@@ -114,6 +117,9 @@ impl MoraEditor {
             surround_new_char: None,
             surround_range: None,
             waiting_surround_add: false,
+            waiting_ace_jump: false,
+            ace_jump_target: None,
+            ace_jump_hints: Vec::new(),
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -181,6 +187,11 @@ impl MoraEditor {
         }
         if let Some(prefix) = self.waiting_prefix.take() {
             return self.handle_prefix_key(prefix, key);
+        }
+
+        // Ace-jump: waiting for target char or hint key
+        if self.waiting_ace_jump {
+            return self.handle_ace_jump(key);
         }
 
         match self.mode {
@@ -255,6 +266,12 @@ impl MoraEditor {
                 }
                 // C-c ;: copy and comment
                 KeyCode::Char(';') => KeyAction::CopyAndComment,
+                // C-c SPC: ace-jump
+                KeyCode::Char(' ') => {
+                    self.waiting_ace_jump = true;
+                    self.status_message = "Ace jump char: ".to_string();
+                    KeyAction::None
+                }
                 _ => KeyAction::None,
             },
             'r' => match (key.modifiers, key.code) {
@@ -1255,6 +1272,7 @@ impl MoraEditor {
     fn execute_action(&mut self, action: KeyAction) {
         match action {
             KeyAction::None => {}
+            KeyAction::AceJump => {}
 
             KeyAction::MoveLeft => self.buffer.move_left(),
             KeyAction::MoveRight => self.buffer.move_right(),
@@ -2517,6 +2535,53 @@ impl MoraEditor {
                 }
             }
         }
+    }
+
+    fn handle_ace_jump(&mut self, key: KeyEvent) -> KeyAction {
+        // Step 1: waiting for target char
+        if self.ace_jump_target.is_none() {
+            if let KeyCode::Char(c) = key.code {
+                self.ace_jump_target = Some(c);
+                self.ace_jump_hints.clear();
+                // Find all visible occurrences of target char
+                let hint_chars: Vec<char> = "asdfghjkl".chars().collect();
+                let view_start = self.view.scroll_top;
+                let view_end = (view_start + self.view.height).min(self.buffer.lines.len());
+                let mut hint_idx = 0;
+                for row in view_start..view_end {
+                    let line = &self.buffer.lines[row];
+                    for (col, ch) in line.chars().enumerate() {
+                        if ch == c && hint_idx < hint_chars.len() {
+                            self.ace_jump_hints.push((row, col, hint_chars[hint_idx]));
+                            hint_idx += 1;
+                        }
+                    }
+                }
+                if self.ace_jump_hints.is_empty() {
+                    self.waiting_ace_jump = false;
+                    self.ace_jump_target = None;
+                    self.status_message = format!("No '{}' found", c);
+                    return KeyAction::None;
+                }
+                self.status_message = format!("Jump to: {}", 
+                    self.ace_jump_hints.iter().map(|(_, _, h)| *h).collect::<String>());
+            } else {
+                self.waiting_ace_jump = false;
+                self.ace_jump_target = None;
+            }
+            return KeyAction::None;
+        }
+        // Step 2: waiting for hint key
+        if let KeyCode::Char(c) = key.code {
+            if let Some((row, col, _)) = self.ace_jump_hints.iter().find(|(_, _, h)| *h == c) {
+                self.buffer.cursor.row = *row;
+                self.buffer.cursor.col = *col;
+            }
+        }
+        self.waiting_ace_jump = false;
+        self.ace_jump_target = None;
+        self.ace_jump_hints.clear();
+        KeyAction::None
     }
 }
 
