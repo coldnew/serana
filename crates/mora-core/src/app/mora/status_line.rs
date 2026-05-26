@@ -145,7 +145,7 @@ pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
             "Enter:Search  Esc:Cancel  n:Next  N:Prev"
         }
         EditorMode::Emacs => {
-            "C-g:Normal  C-x C-s:Save  C-x C-c:Quit  C-SPC:Mark  C-w:Kill  M-w:Copy  C-y:Yank  C-t:Transp  M-c:Cap  M-u:Up  M-l:Low  M-g:Goto"
+            "C-g:Normal  C-x C-s:Save  C-x C-c:Quit  C-SPC:Mark  C-w:Kill  M-w:Copy  C-y:Yank  C-t:Transp  M-c:Cap  M-u:Up  M-l:Low  M-/:Complete  M-z:Zap  C-o:Line"
         }
         EditorMode::ReplaceChar => "Press char to replace with  Esc:Cancel",
         EditorMode::Visual => "hjkl/arrows:Move  w/b/e:Word  d/x:Kill  y:Copy  o:Swap  I/A:Insert  Esc/C-g:Exit",
