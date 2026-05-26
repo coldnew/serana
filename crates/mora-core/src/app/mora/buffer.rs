@@ -941,6 +941,60 @@ impl Buffer {
         chars[start..end].iter().collect()
     }
 
+    pub fn inner_word_range(&self) -> (usize, usize) {
+        let line = self.current_line();
+        let col = self.cursor.col;
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() || col >= chars.len() {
+            return (col, col);
+        }
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        if !is_word_char(chars[col]) {
+            return (col, col);
+        }
+        let mut start = col;
+        while start > 0 && is_word_char(chars[start - 1]) {
+            start -= 1;
+        }
+        let mut end = col;
+        while end < chars.len() && is_word_char(chars[end]) {
+            end += 1;
+        }
+        (start, end)
+    }
+
+    pub fn around_word_range(&self) -> (usize, usize) {
+        let line = self.current_line();
+        let col = self.cursor.col;
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() || col >= chars.len() {
+            return (col, col);
+        }
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+        if !is_word_char(chars[col]) {
+            return (col, col);
+        }
+        let mut start = col;
+        while start > 0 && is_word_char(chars[start - 1]) {
+            start -= 1;
+        }
+        let mut end = col;
+        while end < chars.len() && is_word_char(chars[end]) {
+            end += 1;
+        }
+        // Include trailing whitespace for "around"
+        while end < chars.len() && chars[end].is_whitespace() {
+            end += 1;
+        }
+        // If at end, include leading whitespace
+        if end == chars.len() {
+            while start > 0 && chars[start - 1].is_whitespace() {
+                start -= 1;
+            }
+        }
+        (start, end)
+    }
+
     pub fn search_forward_from(&self, pattern: &str, from_row: usize, from_col: usize) -> Option<(usize, usize)> {
         if pattern.is_empty() {
             return None;
@@ -1101,5 +1155,45 @@ mod tests {
         assert_eq!(buf.search_backward_from("hello", 2, 0), Some((0, 0)));
         assert_eq!(buf.search_backward_from("bar", 2, 0), Some((1, 4)));
         assert_eq!(buf.search_backward_from("missing", 2, 0), None);
+    }
+
+    #[test]
+    fn test_inner_word_range() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world");
+        buf.cursor.col = 2; // inside "hello"
+        let (start, end) = buf.inner_word_range();
+        assert_eq!(start, 0);
+        assert_eq!(end, 5);
+
+        buf.cursor.col = 7; // inside "world"
+        let (start, end) = buf.around_word_range();
+        assert_eq!(start, 5); // end of line, so includes leading space
+        assert_eq!(end, 11);
+    }
+
+    #[test]
+    fn test_inner_word_range_on_space() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world");
+        buf.cursor.col = 5; // on the space
+        let (start, end) = buf.inner_word_range();
+        assert_eq!(start, 5);
+        assert_eq!(end, 5);
+    }
+
+    #[test]
+    fn test_around_word_range() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world");
+        buf.cursor.col = 2; // inside "hello"
+        let (start, end) = buf.around_word_range();
+        assert_eq!(start, 0);
+        assert_eq!(end, 6); // "hello" + trailing space
+
+        buf.cursor.col = 7; // inside "world"
+        let (start, end) = buf.around_word_range();
+        assert_eq!(start, 5); // end of line, so includes leading space
+        assert_eq!(end, 11);
     }
 }

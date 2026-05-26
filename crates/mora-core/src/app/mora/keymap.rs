@@ -143,6 +143,10 @@ pub enum KeyAction {
     GotoMatchingBracket,
     DeleteToStartOfLine,
     YankWord,
+    DeleteInnerWord,
+    DeleteAroundWord,
+    ChangeInnerWord,
+    ChangeAroundWord,
 }
 
 impl KeyAction {

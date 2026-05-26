@@ -52,6 +52,9 @@ pub struct MoraEditor {
     pub last_find_forward: bool,
     pub last_find_till: bool,
     pub last_normal_change: Option<Box<KeyAction>>,
+    pub waiting_text_object: bool,
+    pub text_object_inner: bool,
+    pub waiting_visual_text_object: bool,
 }
 
 impl MoraEditor {
@@ -96,6 +99,9 @@ impl MoraEditor {
             last_find_forward: true,
             last_find_till: false,
             last_normal_change: None,
+            waiting_text_object: false,
+            text_object_inner: true,
+            waiting_visual_text_object: false,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -378,8 +384,37 @@ impl MoraEditor {
             };
         }
 
+        if self.waiting_text_object {
+            self.waiting_text_object = false;
+            let op = self.waiting_op.take();
+            let inner = self.text_object_inner;
+            return if let KeyCode::Char(c) = key.code {
+                match (op, inner, c) {
+                    (Some(PendingOp::Delete), true, 'w') => KeyAction::DeleteInnerWord,
+                    (Some(PendingOp::Delete), false, 'w') => KeyAction::DeleteAroundWord,
+                    (Some(PendingOp::Change), true, 'w') => {
+                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                        KeyAction::DeleteInnerWord
+                    }
+                    (Some(PendingOp::Change), false, 'w') => {
+                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                        KeyAction::DeleteAroundWord
+                    }
+                    _ => KeyAction::None,
+                }
+            } else {
+                KeyAction::None
+            };
+        }
+
         if let Some(op) = self.waiting_op {
             self.waiting_op = None;
+            if let KeyCode::Char('i') | KeyCode::Char('a') = key.code {
+                self.text_object_inner = key.code == KeyCode::Char('i');
+                self.waiting_op = Some(op);
+                self.waiting_text_object = true;
+                return KeyAction::None;
+            }
             return if key.code == KeyCode::Char(op_char(op)) {
                 match op {
                     PendingOp::Delete => KeyAction::DeleteLine,
@@ -967,6 +1002,37 @@ impl MoraEditor {
             };
         }
 
+        if self.waiting_visual_text_object {
+            self.waiting_visual_text_object = false;
+            let inner = self.text_object_inner;
+            if let KeyCode::Char('w') | KeyCode::Char('W') = key.code {
+                let (start, end) = if inner {
+                    self.buffer.inner_word_range()
+                } else {
+                    self.buffer.around_word_range()
+                };
+                let row = self.buffer.cursor.row;
+                let mark = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                // Expand selection: move cursor to include the word range
+                // If mark is before word start, keep mark and move cursor to word end
+                // If mark is after word end, keep mark and move cursor to word start
+                if mark.col <= start {
+                    self.buffer.cursor.col = end;
+                } else {
+                    self.buffer.cursor.col = start;
+                }
+                return KeyAction::None;
+            }
+            return KeyAction::None;
+        }
+
+        // Check for text object prefix (i/a) in visual mode
+        if let KeyCode::Char('i') | KeyCode::Char('a') = key.code {
+            self.text_object_inner = key.code == KeyCode::Char('i');
+            self.waiting_visual_text_object = true;
+            return KeyAction::None;
+        }
+
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc)
             | (KeyModifiers::CONTROL, KeyCode::Char('g'))
@@ -1197,6 +1263,35 @@ impl MoraEditor {
                     let word: String = chars[col..end].iter().collect();
                     self.kill_ring.kill(&word, false);
                     self.status_message = "Yanked word".to_string();
+                }
+            }
+
+            KeyAction::DeleteInnerWord => {
+                self.record_change();
+                let (start, end) = self.buffer.inner_word_range();
+                if end > start {
+                    self.buffer.delete_range(start, end);
+                }
+            }
+            KeyAction::DeleteAroundWord => {
+                self.record_change();
+                let (start, end) = self.buffer.around_word_range();
+                if end > start {
+                    self.buffer.delete_range(start, end);
+                }
+            }
+            KeyAction::ChangeInnerWord => {
+                self.record_change();
+                let (start, end) = self.buffer.inner_word_range();
+                if end > start {
+                    self.buffer.delete_range(start, end);
+                }
+            }
+            KeyAction::ChangeAroundWord => {
+                self.record_change();
+                let (start, end) = self.buffer.around_word_range();
+                if end > start {
+                    self.buffer.delete_range(start, end);
                 }
             }
 
