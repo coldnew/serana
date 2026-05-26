@@ -52,7 +52,8 @@ pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<L
             | Options::ENABLE_STRIKETHROUGH
             | Options::ENABLE_TASKLISTS
             | Options::ENABLE_FOOTNOTES
-            | Options::ENABLE_MATH,
+            | Options::ENABLE_MATH
+            | Options::ENABLE_DEFINITION_LIST,
     );
     let renderer = MarkdownRenderer::new(theme, width);
     renderer.render_events(parser)
@@ -83,6 +84,7 @@ struct MarkdownRenderer<'a> {
     current_table: Vec<Vec<String>>,
     current_table_row: Vec<String>,
     current_table_cell: String,
+    in_definition_definition: bool,
 }
 
 impl<'a> MarkdownRenderer<'a> {
@@ -112,6 +114,7 @@ impl<'a> MarkdownRenderer<'a> {
             current_table: Vec::new(),
             current_table_row: Vec::new(),
             current_table_cell: String::new(),
+            in_definition_definition: false,
         }
     }
 
@@ -297,11 +300,20 @@ impl<'a> MarkdownRenderer<'a> {
                     self.theme.link,
                 ));
             }
-            Tag::MetadataBlock(_)
-            | Tag::DefinitionList
-            | Tag::DefinitionListTitle
-            | Tag::DefinitionListDefinition
-            | Tag::HtmlBlock => {}
+            Tag::DefinitionList => {
+                self.flush_line();
+            }
+            Tag::DefinitionListTitle => {
+                self.flush_line();
+                self.current_style = Some(self.theme.bold);
+            }
+            Tag::DefinitionListDefinition => {
+                self.flush_line();
+                self.in_definition_definition = true;
+                self.current_spans
+                    .push(Span::styled(": ".to_string(), self.theme.list_bullet));
+            }
+            Tag::MetadataBlock(_) | Tag::HtmlBlock => {}
         }
     }
 
@@ -426,11 +438,19 @@ impl<'a> MarkdownRenderer<'a> {
                 self.flush_line();
                 self.lines.push(Line::from(""));
             }
-            TagEnd::MetadataBlock(_)
-            | TagEnd::DefinitionList
-            | TagEnd::DefinitionListTitle
-            | TagEnd::DefinitionListDefinition
-            | TagEnd::HtmlBlock => {}
+            TagEnd::DefinitionList => {
+                self.flush_line();
+                self.lines.push(Line::from(""));
+            }
+            TagEnd::DefinitionListTitle => {
+                self.flush_line();
+                self.current_style = None;
+            }
+            TagEnd::DefinitionListDefinition => {
+                self.flush_line();
+                self.in_definition_definition = false;
+            }
+            TagEnd::MetadataBlock(_) | TagEnd::HtmlBlock => {}
         }
     }
 
@@ -454,6 +474,8 @@ impl<'a> MarkdownRenderer<'a> {
             let mut spans = std::mem::take(&mut self.current_spans);
             let continuation_prefix = if self.in_list {
                 list_continuation_prefix(&spans)
+            } else if self.in_definition_definition {
+                vec![Span::raw("  ")]
             } else {
                 Vec::new()
             };
@@ -963,6 +985,44 @@ mod tests {
             .map(|line| line.to_string())
             .filter(|line| !line.is_empty())
             .all(|line| line.chars().count() <= 8));
+    }
+
+    #[test]
+    fn test_definition_list_renders_term_and_definition() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("Term\n: Definition", &theme, 80);
+        let rendered = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("Term"));
+        assert!(rendered.contains(": Definition"));
+    }
+
+    #[test]
+    fn test_definition_list_term_is_bold() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("Term\n: Definition", &theme, 80);
+        assert!(lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .any(|span| span.content == "Term"
+                && span
+                    .style
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::BOLD)));
+    }
+
+    #[test]
+    fn test_definition_list_output_fits_requested_width() {
+        let theme = MarkdownTheme::default();
+        let lines = render_markdown("Term\n: abcdefghijabcdefghij", &theme, 10);
+        assert!(lines
+            .iter()
+            .map(|line| line.to_string())
+            .filter(|line| !line.is_empty())
+            .all(|line| line.chars().count() <= 10));
     }
 
     #[test]

@@ -606,3 +606,17 @@ Review:
 - Display math renders as visible styled `$$...$$` text.
 - Added focused tests for inline math, display math, and width safety.
 - Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
+
+Success criteria for Markdown definition-list slice:
+- [x] Enable pulldown definition-list parsing.
+- [x] Render definition terms and definitions visibly instead of dropping their structure.
+- [x] Keep rendered definition-list output width-safe.
+- [x] Add focused tests for definition-list rendering and width bounds.
+- [x] Run focused `serana-tui` tests.
+
+Review:
+- Markdown definition-list parsing is now enabled in pulldown options.
+- Definition terms render as bold text and definitions render with a visible `: ` marker.
+- Definition continuations are width-safe through the existing Markdown wrapper.
+- Added focused tests for rendering, term styling, and width safety.
+- Verification passed with `cargo test -q -p serana-tui --target-dir /tmp/serana-target`.
