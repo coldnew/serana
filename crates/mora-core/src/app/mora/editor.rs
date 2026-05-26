@@ -169,6 +169,10 @@ impl MoraEditor {
                 }
                 // C-x C-t: transpose line
                 (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeLine,
+                // C-x C-u: uppercase region
+                (KeyModifiers::CONTROL, KeyCode::Char('u')) => KeyAction::UppercaseRegion,
+                // C-x C-l: lowercase region
+                (KeyModifiers::CONTROL, KeyCode::Char('l')) => KeyAction::LowercaseRegion,
                 _ => KeyAction::None,
             },
             'c' => match key.code {
@@ -187,6 +191,15 @@ impl MoraEditor {
                         self.macro_state.start_playback(c);
                     }
                     self.command_input = saved_cmd;
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            'g' => match key.code {
+                KeyCode::Char('g') => {
+                    self.mode = EditorMode::Command;
+                    self.command_input.clear();
+                    self.status_message = "Goto line: ".to_string();
                     KeyAction::None
                 }
                 _ => KeyAction::None,
@@ -467,6 +480,11 @@ impl MoraEditor {
             (KeyModifiers::ALT, KeyCode::Char('c')) => KeyAction::CapitalizeWord,
             // Emacs: M-l lowercase word
             (KeyModifiers::ALT, KeyCode::Char('l')) => KeyAction::LowercaseWord,
+            // Emacs: M-g prefix (goto)
+            (KeyModifiers::ALT, KeyCode::Char('g')) => {
+                self.waiting_prefix = Some('g');
+                KeyAction::None
+            }
 
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
@@ -1091,6 +1109,20 @@ impl MoraEditor {
             KeyAction::CapitalizeWord => self.buffer.capitalize_word(),
             KeyAction::UppercaseWord => self.buffer.uppercase_word(),
             KeyAction::LowercaseWord => self.buffer.lowercase_word(),
+            KeyAction::UppercaseRegion => {
+                if let Some(mark) = self.mark_ring.peek() {
+                    let m = (mark.row, mark.col);
+                    self.buffer.uppercase_region(m);
+                    self.status_message = "Uppercase region".to_string();
+                }
+            }
+            KeyAction::LowercaseRegion => {
+                if let Some(mark) = self.mark_ring.peek() {
+                    let m = (mark.row, mark.col);
+                    self.buffer.lowercase_region(m);
+                    self.status_message = "Lowercase region".to_string();
+                }
+            }
             KeyAction::PopMark => {
                 if let Some(pos) = self.mark_ring.pop() {
                     self.buffer.cursor = pos;

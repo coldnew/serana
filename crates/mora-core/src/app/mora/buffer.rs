@@ -692,6 +692,52 @@ impl Buffer {
         self.cursor.col = Self::col_byte_index(&self.lines[row], i);
         self.modified = true;
     }
+
+    pub fn uppercase_region(&mut self, mark: (usize, usize)) {
+        let (sr, sc, er, ec) = if (mark.0, mark.1) <= (self.cursor.row, self.cursor.col) {
+            (mark.0, mark.1, self.cursor.row, self.cursor.col)
+        } else {
+            (self.cursor.row, self.cursor.col, mark.0, mark.1)
+        };
+        self.push_undo();
+        for row in sr..=er {
+            let line_chars: Vec<char> = self.lines[row].chars().collect();
+            let line_len = line_chars.len();
+            let col_start = if row == sr { sc } else { 0 };
+            let col_end = if row == er { ec.min(line_len) } else { line_len };
+            let mut new_chars = line_chars;
+            for j in col_start..col_end {
+                if j < new_chars.len() {
+                    new_chars[j] = new_chars[j].to_uppercase().next().unwrap_or(new_chars[j]);
+                }
+            }
+            self.lines[row] = new_chars.into_iter().collect();
+        }
+        self.modified = true;
+    }
+
+    pub fn lowercase_region(&mut self, mark: (usize, usize)) {
+        let (sr, sc, er, ec) = if (mark.0, mark.1) <= (self.cursor.row, self.cursor.col) {
+            (mark.0, mark.1, self.cursor.row, self.cursor.col)
+        } else {
+            (self.cursor.row, self.cursor.col, mark.0, mark.1)
+        };
+        self.push_undo();
+        for row in sr..=er {
+            let line_chars: Vec<char> = self.lines[row].chars().collect();
+            let line_len = line_chars.len();
+            let col_start = if row == sr { sc } else { 0 };
+            let col_end = if row == er { ec.min(line_len) } else { line_len };
+            let mut new_chars = line_chars;
+            for j in col_start..col_end {
+                if j < new_chars.len() {
+                    new_chars[j] = new_chars[j].to_lowercase().next().unwrap_or(new_chars[j]);
+                }
+            }
+            self.lines[row] = new_chars.into_iter().collect();
+        }
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
