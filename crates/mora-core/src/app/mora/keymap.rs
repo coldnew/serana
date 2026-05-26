@@ -122,6 +122,7 @@ pub enum KeyAction {
     ExpandRegion,
     ContractRegion,
     HungryDeleteForward,
+    HungryDeleteBackward,
     DabbrevExpand,
     ZapToChar,
     InsertEmptyLineBelow,

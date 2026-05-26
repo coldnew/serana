@@ -783,6 +783,29 @@ impl Buffer {
         }
     }
 
+    pub fn hungry_delete_backward(&mut self) {
+        let line = &self.lines[self.cursor.row];
+        let chars: Vec<char> = line.chars().collect();
+        let col = self.cursor.col;
+        if col == 0 {
+            return;
+        }
+        let mut start = col;
+        while start > 0 && chars[start - 1].is_whitespace() {
+            start -= 1;
+        }
+        if start == col && start > 0 {
+            start -= 1;
+        }
+        if start < col {
+            self.push_undo();
+            let new_line: String = chars[..start].iter().chain(chars[col..].iter()).collect();
+            self.lines[self.cursor.row] = new_line;
+            self.cursor.col = start;
+            self.modified = true;
+        }
+    }
+
     pub fn replace_range(&mut self, start: usize, end: usize, replacement: &str) {
         self.push_undo();
         let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
@@ -1313,5 +1336,45 @@ mod tests {
         let (start, end) = buf.inner_bracket_range('(', ')');
         assert_eq!(start, 4);
         assert_eq!(end, 4);
+    }
+
+    #[test]
+    fn test_hungry_delete_backward_whitespace() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo   bar");
+        buf.cursor.col = 6; // after spaces, on 'b'
+        buf.hungry_delete_backward();
+        assert_eq!(buf.lines[0], "foobar");
+        assert_eq!(buf.cursor.col, 3);
+    }
+
+    #[test]
+    fn test_hungry_delete_backward_single_char() {
+        let mut buf = Buffer::new();
+        buf.insert_string("abc");
+        buf.cursor.col = 2; // on 'c'
+        buf.hungry_delete_backward();
+        assert_eq!(buf.lines[0], "ac");
+        assert_eq!(buf.cursor.col, 1);
+    }
+
+    #[test]
+    fn test_hungry_delete_backward_at_start() {
+        let mut buf = Buffer::new();
+        buf.insert_string("abc");
+        buf.cursor.col = 0;
+        buf.hungry_delete_backward();
+        assert_eq!(buf.lines[0], "abc");
+        assert_eq!(buf.cursor.col, 0);
+    }
+
+    #[test]
+    fn test_hungry_delete_backward_mixed() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo  bar  baz");
+        buf.cursor.col = 10; // on 'b' of baz
+        buf.hungry_delete_backward();
+        assert_eq!(buf.lines[0], "foo  barbaz");
+        assert_eq!(buf.cursor.col, 8);
     }
 }

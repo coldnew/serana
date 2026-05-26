@@ -55,6 +55,7 @@ pub struct MoraEditor {
     pub waiting_text_object: bool,
     pub text_object_inner: bool,
     pub waiting_visual_text_object: bool,
+    pub execute_once_mode: Option<EditorMode>,
 }
 
 impl MoraEditor {
@@ -102,6 +103,7 @@ impl MoraEditor {
             waiting_text_object: false,
             text_object_inner: true,
             waiting_visual_text_object: false,
+            execute_once_mode: None,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -588,6 +590,11 @@ impl MoraEditor {
             self.pending_action = Some(post);
         }
 
+        // If execute_once_mode is set, return to the saved mode after this action
+        if let Some(return_mode) = self.execute_once_mode.take() {
+            self.mode = return_mode;
+        }
+
         action
     }
 
@@ -698,13 +705,7 @@ impl MoraEditor {
                 KeyAction::Save
             }
 
-            (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
-                self.status_message = "Recentered".to_string();
-                let half = self.view.height / 2;
-                let row = self.buffer.cursor.row;
-                self.view.scroll_top = row.saturating_sub(half);
-                KeyAction::None
-            }
+            (KeyModifiers::CONTROL, KeyCode::Char('l')) => KeyAction::HungryDeleteBackward,
 
             (KeyModifiers::ALT, KeyCode::Char('q')) => {
                 self.toggle_record_macro();
@@ -727,8 +728,12 @@ impl MoraEditor {
 
             // Emacs: C-t transpose char
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeChar,
-            // Emacs: C-o insert empty line below
-            (KeyModifiers::CONTROL, KeyCode::Char('o')) => KeyAction::InsertEmptyLineBelow,
+            // Emacs: C-o execute one normal command then return to emacs mode
+            (KeyModifiers::CONTROL, KeyCode::Char('o')) => {
+                self.execute_once_mode = Some(EditorMode::Emacs);
+                self.mode = EditorMode::Normal;
+                KeyAction::None
+            }
             // Emacs: M-t transpose word
             (KeyModifiers::ALT, KeyCode::Char('t')) => KeyAction::TransposeWord,
             // Emacs: M-c capitalize word
@@ -1889,6 +1894,10 @@ impl MoraEditor {
             KeyAction::HungryDeleteForward => {
                 self.record_change();
                 self.buffer.hungry_delete_forward();
+            }
+            KeyAction::HungryDeleteBackward => {
+                self.record_change();
+                self.buffer.hungry_delete_backward();
             }
             KeyAction::DabbrevExpand => {
                 let line = self.buffer.current_line();
