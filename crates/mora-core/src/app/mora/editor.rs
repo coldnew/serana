@@ -167,6 +167,8 @@ impl MoraEditor {
                     self.status_message = "Redraw screen".to_string();
                     KeyAction::None
                 }
+                // C-x C-t: transpose line
+                (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeLine,
                 _ => KeyAction::None,
             },
             'c' => match key.code {
@@ -1084,6 +1086,7 @@ impl MoraEditor {
 
             KeyAction::TransposeChar => self.buffer.transpose_char(),
             KeyAction::TransposeWord => self.buffer.transpose_word(),
+            KeyAction::TransposeLine => self.buffer.transpose_line(),
         }
     }
 

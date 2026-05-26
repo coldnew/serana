@@ -107,6 +107,7 @@ pub enum KeyAction {
     IndentRegion(RectRegion),
     TransposeChar,
     TransposeWord,
+    TransposeLine,
 }
 
 impl KeyAction {

@@ -553,6 +553,19 @@ impl Buffer {
         self.cursor.col = Self::col_byte_index(&self.lines[row], word2_end);
         self.modified = true;
     }
+
+    pub fn transpose_line(&mut self) {
+        let row = self.cursor.row;
+        if row == 0 {
+            return;
+        }
+        self.push_undo();
+        let line = self.lines.remove(row);
+        self.lines.insert(row - 1, line);
+        self.cursor.row = row - 1;
+        self.cursor.col = 0;
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
