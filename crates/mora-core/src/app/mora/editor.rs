@@ -1693,14 +1693,64 @@ impl MoraEditor {
                     self.status_message = "Unfolded".to_string();
                 }
             }
+            KeyAction::MxComplete => {
+                self.mx_complete();
+            }
         }
     }
 
     fn execute_command(&mut self) {
         let input = self.command_input.clone();
+        let trimmed = input.trim();
+
+        // Handle M-x commands that need special treatment
+        match trimmed {
+            "iedit" | "multi-cursor-edit" => {
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                self.start_iedit();
+                return;
+            }
+            "goto-line" | "goto-line-number" => {
+                self.command_input.clear();
+                self.status_message = "Goto line: ".to_string();
+                // Stay in command mode for user to type line number
+                return;
+            }
+            "recenter" | "recenter-top-bottom" => {
+                let half = self.view.height / 2;
+                let row = self.buffer.cursor.row;
+                self.view.scroll_top = row.saturating_sub(half);
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                self.status_message = "Recentered".to_string();
+                return;
+            }
+            "describe-mode" => {
+                let desc = match self.mode {
+                    EditorMode::Emacs => "Emacs mode: C-x prefix, C-c prefix, M-x commands",
+                    EditorMode::Normal => "Normal mode: vi-style keybindings",
+                    _ => "Current mode",
+                };
+                self.status_message = desc.to_string();
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                return;
+            }
+            "what-cursor-position" => {
+                self.status_message = format!("Line {} Col {} ({} lines total)",
+                    self.buffer.cursor.row + 1,
+                    self.buffer.cursor.col + 1,
+                    self.buffer.line_count());
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                return;
+            }
+            _ => {}
+        }
+
         let action = match self.mode {
             EditorMode::Command => {
-                let trimmed = input.trim();
                 if trimmed == "wq" || trimmed == "x" {
                     if self.buffer.path.is_some() {
                         let _ = self.buffer.save();
@@ -1722,6 +1772,43 @@ impl MoraEditor {
             && self.mode != EditorMode::SearchBackward
         {
             self.command_input.clear();
+        }
+    }
+
+    fn mx_complete(&mut self) {
+        let commands = [
+            "capitalize-word", "cleanup-buffer", "copy-and-comment",
+            "describe-mode", "dos2unix", "goto-last-change", "goto-line",
+            "iedit", "kill-buffer", "kill-emacs", "lowercase-word",
+            "lowercase-region", "multi-cursor-edit", "narrow-to-region",
+            "recenter", "replace-string", "save-buffer", "save-some-buffers",
+            "toggle-fold", "transpose-char", "transpose-line", "transpose-word",
+            "unix2dos", "uppercase-region", "uppercase-word",
+            "what-cursor-position", "widen",
+        ];
+        let input = self.command_input.trim();
+        if input.is_empty() {
+            return;
+        }
+        let matches: Vec<&str> = commands.iter()
+            .filter(|c| c.starts_with(input))
+            .copied()
+            .collect();
+        if matches.len() == 1 {
+            self.command_input = matches[0].to_string();
+        } else if matches.len() > 1 {
+            // Find common prefix
+            let common = matches.iter().fold(matches[0].to_string(), |acc, m| {
+                acc.chars().zip(m.chars())
+                    .take_while(|(a, b)| a == b)
+                    .map(|(a, _)| a)
+                    .collect()
+            });
+            if common.len() > input.len() {
+                self.command_input = common;
+            } else {
+                self.status_message = matches.join("  ");
+            }
         }
     }
 

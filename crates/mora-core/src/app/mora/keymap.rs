@@ -134,6 +134,7 @@ pub enum KeyAction {
     Dos2Unix,
     Unix2Dos,
     ToggleFold,
+    MxComplete,
 }
 
 impl KeyAction {
@@ -232,6 +233,7 @@ pub fn command_key(key: KeyEvent) -> KeyAction {
     match (key.modifiers, key.code) {
         (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
         (_, KeyCode::Enter) => KeyAction::ExecuteInput,
+        (_, KeyCode::Tab) => KeyAction::MxComplete,
         (_, KeyCode::Char(c)) => KeyAction::InputChar(c),
         (_, KeyCode::Backspace) => KeyAction::InputBackspace,
         _ => KeyAction::None,
@@ -256,6 +258,34 @@ pub fn parse_command(input: &str) -> KeyAction {
         }
         s if s.starts_with('%') => parse_substitute(&s[1..], true),
         s if s.starts_with("s/") => parse_substitute(s, false),
+        // M-x Emacs-style commands
+        "goto-line" | "goto-line-number" => KeyAction::GotoLine(0),
+        "replace-string" => KeyAction::ReplaceAll(String::new(), String::new()),
+        "cleanup-buffer" | "delete-trailing-whitespace" => KeyAction::CleanupBuffer,
+        "dos2unix" | "unix-line-endings" => KeyAction::Dos2Unix,
+        "unix2dos" | "dos-line-endings" => KeyAction::Unix2Dos,
+        "toggle-fold" | "folding" => KeyAction::ToggleFold,
+        "narrow-to-region" => KeyAction::NarrowRegion,
+        "widen" => KeyAction::Widen,
+        "copy-and-comment" => KeyAction::CopyAndComment,
+        "goto-last-change" => KeyAction::GotoLastChange,
+        "transpose-char" => KeyAction::TransposeChar,
+        "transpose-word" => KeyAction::TransposeWord,
+        "transpose-line" => KeyAction::TransposeLine,
+        "capitalize-word" => KeyAction::CapitalizeWord,
+        "uppercase-word" => KeyAction::UppercaseWord,
+        "lowercase-word" => KeyAction::LowercaseWord,
+        "uppercase-region" => KeyAction::UppercaseRegion,
+        "lowercase-region" => KeyAction::LowercaseRegion,
+        "iedit" | "multi-cursor-edit" => KeyAction::None, // handled specially
+        "indent-region" => KeyAction::IndentLine, // placeholder
+        "save-buffer" => KeyAction::Save,
+        "save-some-buffers" => KeyAction::Save,
+        "kill-buffer" | "quit" => KeyAction::Quit,
+        "kill-emacs" => KeyAction::ForceQuit,
+        "recenter" | "recenter-top-bottom" => KeyAction::None,
+        "describe-mode" | "describe-key" => KeyAction::None,
+        "what-cursor-position" => KeyAction::None,
         _ => KeyAction::None,
     }
 }
