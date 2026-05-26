@@ -121,6 +121,7 @@ pub enum KeyAction {
     ContractRegion,
     HungryDeleteForward,
     DabbrevExpand,
+    ZapToChar,
 }
 
 impl KeyAction {

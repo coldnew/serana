@@ -770,6 +770,18 @@ impl Buffer {
         self.cursor.col = start + replacement.chars().count();
         self.modified = true;
     }
+
+    pub fn delete_range(&mut self, start: usize, end: usize) {
+        self.push_undo();
+        let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
+        let new_line: String = chars[..start].iter()
+            .copied()
+            .chain(chars[end..].iter().copied())
+            .collect();
+        self.lines[self.cursor.row] = new_line;
+        self.cursor.col = start;
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]

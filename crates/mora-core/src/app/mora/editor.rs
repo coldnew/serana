@@ -39,6 +39,7 @@ pub struct MoraEditor {
     pub dabbrev_prefix: Option<String>,
     pub dabbrev_matches: Vec<String>,
     pub dabbrev_index: usize,
+    pub waiting_zap: bool,
 }
 
 impl MoraEditor {
@@ -70,6 +71,7 @@ impl MoraEditor {
             dabbrev_prefix: None,
             dabbrev_matches: Vec::new(),
             dabbrev_index: 0,
+            waiting_zap: false,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -361,6 +363,20 @@ impl MoraEditor {
     }
 
     fn handle_emacs(&mut self, key: KeyEvent) -> KeyAction {
+        if self.waiting_zap {
+            self.waiting_zap = false;
+            if let KeyCode::Char(c) = key.code {
+                let line = self.buffer.current_line();
+                let chars: Vec<char> = line.chars().collect();
+                let col = self.buffer.cursor.col;
+                if let Some(pos) = chars[col..].iter().position(|&ch| ch == c) {
+                    let end = col + pos + 1;
+                    self.buffer.delete_range(col, end);
+                }
+            }
+            return KeyAction::None;
+        }
+
         match (key.modifiers, key.code) {
             (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
                 self.waiting_prefix = Some('x');
@@ -495,6 +511,12 @@ impl MoraEditor {
             }
             // Emacs: M-/ dabbrev-expand
             (KeyModifiers::ALT, KeyCode::Char('/')) => KeyAction::DabbrevExpand,
+            // Emacs: M-z zap-to-char
+            (KeyModifiers::ALT, KeyCode::Char('z')) => {
+                self.waiting_zap = true;
+                self.status_message = "Zap to char: ".to_string();
+                KeyAction::None
+            }
 
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
@@ -1300,6 +1322,7 @@ impl MoraEditor {
                 self.dabbrev_index = (self.dabbrev_index + 1) % self.dabbrev_matches.len();
                 self.status_message = format!("({}/{})", self.dabbrev_index, self.dabbrev_matches.len());
             }
+            KeyAction::ZapToChar => {}
         }
     }
 
