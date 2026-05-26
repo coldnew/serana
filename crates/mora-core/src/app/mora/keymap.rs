@@ -151,6 +151,9 @@ pub enum KeyAction {
     DeleteToEndOfWord,
     DeleteInnerBrackets(char, char),
     DeleteAroundBrackets(char, char),
+    ChangeSurround(char, char),
+    DeleteSurround(char),
+    AddSurround(char),
 }
 
 impl KeyAction {

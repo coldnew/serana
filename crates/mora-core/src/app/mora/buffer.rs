@@ -871,6 +871,103 @@ impl Buffer {
         self.modified = true;
     }
 
+    pub fn change_surround(&mut self, _old_char: char, new_char: char, start: usize, end: usize) {
+        self.push_undo();
+        let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
+        if start < chars.len() && end < chars.len() && start < end {
+            let close_char = match new_char {
+                '(' => ')',
+                '{' => '}',
+                '[' => ']',
+                '<' => '>',
+                c => c,
+            };
+            let mut new_chars: Vec<char> = Vec::new();
+            new_chars.extend_from_slice(&chars[..start]);
+            new_chars.push(new_char);
+            if end > start + 1 {
+                new_chars.extend_from_slice(&chars[start + 1..end]);
+            }
+            new_chars.push(close_char);
+            new_chars.extend_from_slice(&chars[end + 1..]);
+            self.lines[self.cursor.row] = new_chars.into_iter().collect();
+            self.modified = true;
+        }
+    }
+
+    pub fn delete_surround(&mut self, start: usize, end: usize) {
+        self.push_undo();
+        let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
+        if start < chars.len() && end < chars.len() && start < end {
+            let mut new_chars: Vec<char> = Vec::new();
+            new_chars.extend_from_slice(&chars[..start]);
+            if end > start + 1 {
+                new_chars.extend_from_slice(&chars[start + 1..end]);
+            }
+            new_chars.extend_from_slice(&chars[end + 1..]);
+            self.lines[self.cursor.row] = new_chars.into_iter().collect();
+            self.cursor.col = start;
+            self.modified = true;
+        }
+    }
+
+    pub fn add_surround(&mut self, surround_char: char, start: usize, end: usize) {
+        self.push_undo();
+        let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
+        let close_char = match surround_char {
+            '(' => ')',
+            '{' => '}',
+            '[' => ']',
+            '<' => '>',
+            c => c,
+        };
+        if start <= chars.len() && end <= chars.len() && start <= end {
+            let mut new_chars: Vec<char> = Vec::new();
+            new_chars.extend_from_slice(&chars[..start]);
+            new_chars.push(surround_char);
+            new_chars.extend_from_slice(&chars[start..end]);
+            new_chars.push(close_char);
+            new_chars.extend_from_slice(&chars[end..]);
+            self.lines[self.cursor.row] = new_chars.into_iter().collect();
+            self.modified = true;
+        }
+    }
+
+    pub fn find_surround_pair(&self, target: char) -> Option<(usize, usize)> {
+        let line = &self.lines[self.cursor.row];
+        let chars: Vec<char> = line.chars().collect();
+        let col = self.cursor.col;
+        let close_char = match target {
+            '(' => ')',
+            '{' => '}',
+            '[' => ']',
+            c => c, // quotes use same char
+        };
+        // Search backward for opening char
+        let mut open_pos = None;
+        for i in (0..=col.min(chars.len().saturating_sub(1))).rev() {
+            if chars[i] == target {
+                open_pos = Some(i);
+                break;
+            }
+        }
+        // Search forward for closing char
+        let mut close_pos = None;
+        if let Some(open) = open_pos {
+            for i in open + 1..chars.len() {
+                if chars[i] == close_char {
+                    close_pos = Some(i);
+                    break;
+                }
+            }
+        }
+        if let (Some(open), Some(close)) = (open_pos, close_pos) {
+            Some((open, close))
+        } else {
+            None
+        }
+    }
+
     pub fn narrow_to_region(&mut self, start_row: usize, end_row: usize) {
         let start = start_row.min(end_row);
         let end = start_row.max(end_row).min(self.lines.len().saturating_sub(1));
@@ -1376,5 +1473,65 @@ mod tests {
         buf.hungry_delete_backward();
         assert_eq!(buf.lines[0], "foo  barbaz");
         assert_eq!(buf.cursor.col, 8);
+    }
+
+    #[test]
+    fn test_find_surround_pair_parens() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo(bar baz)");
+        buf.cursor.col = 5; // inside parens
+        let result = buf.find_surround_pair('(');
+        assert_eq!(result, Some((3, 11)));
+    }
+
+    #[test]
+    fn test_find_surround_pair_quotes() {
+        let mut buf = Buffer::new();
+        buf.insert_string("let s = \"hello\";");
+        buf.cursor.col = 10; // inside quotes
+        let result = buf.find_surround_pair('"');
+        assert_eq!(result, Some((8, 14)));
+    }
+
+    #[test]
+    fn test_change_surround() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo(bar)");
+        buf.change_surround('(', '[', 3, 7);
+        assert_eq!(buf.lines[0], "foo[bar]");
+    }
+
+    #[test]
+    fn test_change_surround_quotes() {
+        let mut buf = Buffer::new();
+        buf.insert_string("let s = \"hello\";");
+        buf.change_surround('"', '\'', 8, 14);
+        assert_eq!(buf.lines[0], "let s = 'hello';");
+    }
+
+    #[test]
+    fn test_delete_surround() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo(bar)");
+        buf.cursor.col = 5;
+        buf.delete_surround(3, 7);
+        assert_eq!(buf.lines[0], "foobar");
+        assert_eq!(buf.cursor.col, 3);
+    }
+
+    #[test]
+    fn test_add_surround() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world");
+        buf.add_surround('"', 0, 5); // surround "hello" (exclusive end)
+        assert_eq!(buf.lines[0], "\"hello\" world");
+    }
+
+    #[test]
+    fn test_add_surround_parens() {
+        let mut buf = Buffer::new();
+        buf.insert_string("foo bar baz");
+        buf.add_surround('(', 4, 7); // surround "bar" (exclusive end, no trailing space)
+        assert_eq!(buf.lines[0], "foo (bar) baz");
     }
 }

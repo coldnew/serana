@@ -56,6 +56,11 @@ pub struct MoraEditor {
     pub text_object_inner: bool,
     pub waiting_visual_text_object: bool,
     pub execute_once_mode: Option<EditorMode>,
+    pub waiting_surround_s: Option<PendingOp>,
+    pub surround_old_char: Option<char>,
+    pub surround_new_char: Option<char>,
+    pub surround_range: Option<(usize, usize)>,
+    pub waiting_surround_add: bool,
 }
 
 impl MoraEditor {
@@ -104,6 +109,11 @@ impl MoraEditor {
             text_object_inner: true,
             waiting_visual_text_object: false,
             execute_once_mode: None,
+            waiting_surround_s: None,
+            surround_old_char: None,
+            surround_new_char: None,
+            surround_range: None,
+            waiting_surround_add: false,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -433,6 +443,105 @@ impl MoraEditor {
             };
         }
 
+        // Evil-surround: intercept d/c/y followed by 's'
+        if let Some(op) = self.waiting_surround_s.take() {
+            if key.code == KeyCode::Char('s') && key.modifiers.is_empty() {
+                match op {
+                    PendingOp::Change => {
+                        // cs - wait for old_char then new_char
+                        self.status_message = "cs".to_string();
+                        self.surround_old_char = Some('\0'); // sentinel: waiting for first char
+                        return KeyAction::None;
+                    }
+                    PendingOp::Delete => {
+                        // ds - wait for target char
+                        self.status_message = "ds".to_string();
+                        self.surround_new_char = Some('\0'); // sentinel: waiting for char
+                        return KeyAction::None;
+                    }
+                    PendingOp::Yank => {
+                        // ys - wait for text-object then surround char
+                        self.waiting_surround_add = true;
+                        self.status_message = "ys".to_string();
+                        return KeyAction::None;
+                    }
+                }
+            } else {
+                // Not 's', fall through to normal operator-pending
+                self.waiting_op = Some(op);
+            }
+        }
+
+        // cs: waiting for old_char then new_char
+        if let Some(old) = self.surround_old_char {
+            if old == '\0' {
+                // Waiting for first char (old surround)
+                if let KeyCode::Char(c) = key.code {
+                    self.surround_old_char = Some(c);
+                    self.status_message = format!("cs{}", c);
+                }
+                return KeyAction::None;
+            } else {
+                // Waiting for second char (new surround)
+                if let KeyCode::Char(new) = key.code {
+                    self.surround_old_char = None;
+                    return KeyAction::ChangeSurround(old, new);
+                }
+                self.surround_old_char = None;
+                return KeyAction::None;
+            }
+        }
+
+        // ds: waiting for target char
+        if let Some(sentinel) = self.surround_new_char.take() {
+            if sentinel == '\0' {
+                if let KeyCode::Char(c) = key.code {
+                    return KeyAction::DeleteSurround(c);
+                }
+                return KeyAction::None;
+            }
+        }
+
+        // ys: waiting for text-object then surround char
+        if self.waiting_surround_add {
+            if self.surround_range.is_some() {
+                // Already have range, waiting for surround char
+                if let KeyCode::Char(c) = key.code {
+                    let range = self.surround_range.take();
+                    self.waiting_surround_add = false;
+                    if let Some((start, end)) = range {
+                        self.buffer.cursor.col = start;
+                        self.surround_range = Some((start, end));
+                        return KeyAction::AddSurround(c);
+                    }
+                }
+                self.waiting_surround_add = false;
+                self.surround_range = None;
+                return KeyAction::None;
+            }
+            // Waiting for text-object key
+            if let KeyCode::Char(c) = key.code {
+                let range = match c {
+                    'w' => Some(self.buffer.around_word_range()),
+                    'W' => Some(self.buffer.inner_word_range()),
+                    '(' | ')' => Some(self.buffer.around_bracket_range('(', ')')),
+                    '{' | '}' => Some(self.buffer.around_bracket_range('{', '}')),
+                    '[' | ']' => Some(self.buffer.around_bracket_range('[', ']')),
+                    '"' => Some(self.buffer.around_bracket_range('"', '"')),
+                    '\'' => Some(self.buffer.around_bracket_range('\'', '\'')),
+                    '`' => Some(self.buffer.around_bracket_range('`', '`')),
+                    _ => None,
+                };
+                if let Some((start, end)) = range {
+                    self.surround_range = Some((start, end));
+                    self.status_message = format!("ys{}...", c);
+                } else {
+                    self.waiting_surround_add = false;
+                }
+            }
+            return KeyAction::None;
+        }
+
         if let Some(op) = self.waiting_op {
             self.waiting_op = None;
             if let KeyCode::Char('i') | KeyCode::Char('a') = key.code {
@@ -518,15 +627,15 @@ impl MoraEditor {
 
         match &action {
             KeyAction::None if key.code == KeyCode::Char('d') && key.modifiers.is_empty() => {
-                self.waiting_op = Some(PendingOp::Delete);
+                self.waiting_surround_s = Some(PendingOp::Delete);
                 return KeyAction::None;
             }
             KeyAction::None if key.code == KeyCode::Char('y') && key.modifiers.is_empty() => {
-                self.waiting_op = Some(PendingOp::Yank);
+                self.waiting_surround_s = Some(PendingOp::Yank);
                 return KeyAction::None;
             }
             KeyAction::None if key.code == KeyCode::Char('c') && key.modifiers.is_empty() => {
-                self.waiting_op = Some(PendingOp::Change);
+                self.waiting_surround_s = Some(PendingOp::Change);
                 return KeyAction::None;
             }
             _ => {}
@@ -1369,6 +1478,24 @@ impl MoraEditor {
                 let (start, end) = self.buffer.around_bracket_range(open, close);
                 if end > start {
                     self.buffer.delete_range(start, end);
+                }
+            }
+            KeyAction::ChangeSurround(old_char, new_char) => {
+                self.record_change();
+                if let Some((start, end)) = self.buffer.find_surround_pair(old_char) {
+                    self.buffer.change_surround(old_char, new_char, start, end);
+                }
+            }
+            KeyAction::DeleteSurround(target) => {
+                self.record_change();
+                if let Some((start, end)) = self.buffer.find_surround_pair(target) {
+                    self.buffer.delete_surround(start, end);
+                }
+            }
+            KeyAction::AddSurround(surround_char) => {
+                self.record_change();
+                if let Some((start, end)) = self.surround_range.take() {
+                    self.buffer.add_surround(surround_char, start, end);
                 }
             }
 
