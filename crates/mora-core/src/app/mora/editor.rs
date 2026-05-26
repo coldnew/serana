@@ -489,8 +489,19 @@ impl MoraEditor {
     }
 
     fn handle_visual(&mut self, key: KeyEvent) -> KeyAction {
+        if self.waiting_g {
+            self.waiting_g = false;
+            return if key.code == KeyCode::Char('g') {
+                KeyAction::MoveFileStart
+            } else {
+                KeyAction::None
+            };
+        }
+
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) => {
+            (_, KeyCode::Esc)
+            | (KeyModifiers::CONTROL, KeyCode::Char('g'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
                 self.mark_ring.set_active(false);
                 KeyAction::SetMode(EditorMode::Normal)
             }
@@ -498,11 +509,59 @@ impl MoraEditor {
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => KeyAction::MoveDown,
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => KeyAction::MoveUp,
             (_, KeyCode::Char('l')) | (_, KeyCode::Right) => KeyAction::MoveRight,
-            (_, KeyCode::Char('d')) | (_, KeyCode::Char('x')) => KeyAction::KillRegion,
-            (_, KeyCode::Char('y')) => KeyAction::CopyRegion,
             (_, KeyCode::Char('w')) | (_, KeyCode::Char('W')) => KeyAction::MoveWordForward,
             (_, KeyCode::Char('b')) | (_, KeyCode::Char('B')) => KeyAction::MoveWordBackward,
+            (_, KeyCode::Char('e')) | (_, KeyCode::Char('E')) => KeyAction::MoveWordEnd,
+            (_, KeyCode::Char('0')) | (_, KeyCode::Home) => KeyAction::MoveLineStart,
+            (_, KeyCode::Char('$')) | (_, KeyCode::End) => KeyAction::MoveLineEnd,
+            (_, KeyCode::Char('^')) => KeyAction::MoveLineStart,
+            (_, KeyCode::Char('G')) => KeyAction::MoveFileEnd,
+            (_, KeyCode::Char('g')) => {
+                self.waiting_g = true;
+                KeyAction::None
+            }
+            (_, KeyCode::Char('o')) | (_, KeyCode::Char('O')) => {
+                if let Some(mark_pos) = self.mark_ring.peek().copied() {
+                    let cursor = self.buffer.cursor;
+                    self.mark_ring.pop();
+                    self.mark_ring.push(cursor);
+                    self.buffer.cursor = mark_pos;
+                }
+                KeyAction::None
+            }
+            (_, KeyCode::Char('d')) | (_, KeyCode::Char('x')) => KeyAction::KillRegion,
+            (_, KeyCode::Char('y')) => KeyAction::CopyRegion,
             (_, KeyCode::Char('D')) => KeyAction::KillLine,
+            (_, KeyCode::Char('I')) => {
+                if let Some(mark_pos) = self.mark_ring.peek().copied() {
+                    self.buffer.cursor = mark_pos;
+                }
+                self.mark_ring.set_active(false);
+                KeyAction::SetMode(EditorMode::Insert)
+            }
+            (_, KeyCode::Char('A')) => {
+                self.mark_ring.set_active(false);
+                KeyAction::SetMode(EditorMode::Insert)
+            }
+            (_, KeyCode::Char('c')) => {
+                if self.mark_ring.is_active() {
+                    self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                    KeyAction::KillRegion
+                } else {
+                    KeyAction::None
+                }
+            }
+            (_, KeyCode::Char('C')) => {
+                if self.mark_ring.is_active() {
+                    self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                    KeyAction::KillLine
+                } else {
+                    KeyAction::None
+                }
+            }
+            (_, KeyCode::PageUp) => KeyAction::PageUp,
+            (_, KeyCode::PageDown) => KeyAction::PageDown,
+            (_, KeyCode::Backspace) => KeyAction::MoveLeft,
             _ => KeyAction::None,
         }
     }
@@ -521,6 +580,7 @@ impl MoraEditor {
             KeyAction::MoveFileEnd => self.buffer.move_to_file_end(),
             KeyAction::MoveWordForward => self.buffer.move_word_forward(),
             KeyAction::MoveWordBackward => self.buffer.move_word_backward(),
+            KeyAction::MoveWordEnd => self.buffer.move_word_end(),
 
             KeyAction::ScrollUp => self.view.scroll(-3, self.buffer.line_count()),
             KeyAction::ScrollDown => self.view.scroll(3, self.buffer.line_count()),

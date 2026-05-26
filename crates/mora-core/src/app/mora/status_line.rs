@@ -148,7 +148,7 @@ pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
             "C-g:Normal  C-x C-s:Save  C-x C-c:Quit  C-SPC:Mark  C-w:Kill  M-w:Copy  C-y:Yank  M-y:Yank-pop  M-q:Macro"
         }
         EditorMode::ReplaceChar => "Press char to replace with  Esc:Cancel",
-        EditorMode::Visual => "hjkl:Select  d/x:Kill  y:Copy  Esc:Cancel",
+        EditorMode::Visual => "hjkl/arrows:Move  w/b/e:Word  d/x:Kill  y:Copy  o:Swap  I/A:Insert  Esc/C-g:Exit",
     };
 
     let style = Style::new().fg(Color::Rgb(107, 114, 128));
