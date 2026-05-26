@@ -147,6 +147,7 @@ pub enum KeyAction {
     DeleteAroundWord,
     ChangeInnerWord,
     ChangeAroundWord,
+    DeleteToEndOfWord,
 }
 
 impl KeyAction {
@@ -176,6 +177,7 @@ pub fn normal_key(key: KeyEvent) -> KeyAction {
         (_, KeyCode::Char('l')) | (_, KeyCode::Right) => KeyAction::MoveRight,
         (_, KeyCode::Char('w')) => KeyAction::MoveWordForward,
         (_, KeyCode::Char('b')) => KeyAction::MoveWordBackward,
+        (_, KeyCode::Char('e')) | (_, KeyCode::Char('E')) => KeyAction::MoveWordEnd,
         (_, KeyCode::Char('0')) | (_, KeyCode::Home) => KeyAction::MoveLineStart,
         (_, KeyCode::Char('$')) | (_, KeyCode::End) => KeyAction::MoveLineEnd,
         (_, KeyCode::Char('g')) => KeyAction::None,

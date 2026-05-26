@@ -429,6 +429,7 @@ impl MoraEditor {
                 match (op, &motion) {
                     (PendingOp::Delete, KeyAction::MoveWordForward) => KeyAction::DeleteWordForward,
                     (PendingOp::Delete, KeyAction::MoveWordBackward) => KeyAction::DeleteWordBackward,
+                    (PendingOp::Delete, KeyAction::MoveWordEnd) => KeyAction::DeleteToEndOfWord,
                     (PendingOp::Delete, KeyAction::MoveLineEnd) => KeyAction::DeleteToEol,
                     (PendingOp::Delete, KeyAction::MoveLineStart) => KeyAction::DeleteToStartOfLine,
                     (PendingOp::Yank, KeyAction::MoveWordForward) => KeyAction::YankWord,
@@ -440,6 +441,10 @@ impl MoraEditor {
                     (PendingOp::Change, KeyAction::MoveWordBackward) => {
                         self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
                         KeyAction::DeleteWordBackward
+                    }
+                    (PendingOp::Change, KeyAction::MoveWordEnd) => {
+                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                        KeyAction::DeleteToEndOfWord
                     }
                     (PendingOp::Change, KeyAction::MoveLineEnd) => {
                         self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
@@ -1240,6 +1245,27 @@ impl MoraEditor {
                 while end < chars.len() && !chars[end].is_whitespace() { end += 1; }
                 if end > col {
                     self.buffer.delete_range(col, end);
+                }
+            }
+
+            KeyAction::DeleteToEndOfWord => {
+                self.record_change();
+                let line = self.buffer.current_line();
+                let col = self.buffer.cursor.col;
+                let chars: Vec<char> = line.chars().collect();
+                if col < chars.len() {
+                    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+                    let mut end = col;
+                    if is_word(chars[col]) {
+                        while end < chars.len() && is_word(chars[end]) { end += 1; }
+                    } else if chars[col].is_whitespace() {
+                        while end < chars.len() && chars[end].is_whitespace() { end += 1; }
+                    } else {
+                        end += 1;
+                    }
+                    if end > col {
+                        self.buffer.delete_range(col, end);
+                    }
                 }
             }
 
