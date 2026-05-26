@@ -372,8 +372,8 @@ impl MoraEditor {
             (KeyModifiers::CONTROL, KeyCode::Char('f')) => KeyAction::MoveRight,
             (KeyModifiers::CONTROL, KeyCode::Char('p')) => KeyAction::MoveUp,
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => KeyAction::MoveDown,
-            (KeyModifiers::CONTROL, KeyCode::Char('a')) => KeyAction::MoveLineStart,
-            (KeyModifiers::CONTROL, KeyCode::Char('e')) => KeyAction::MoveLineEnd,
+            (KeyModifiers::CONTROL, KeyCode::Char('a')) => KeyAction::MwimBeginning,
+            (KeyModifiers::CONTROL, KeyCode::Char('e')) => KeyAction::MwimEnd,
             (KeyModifiers::CONTROL, KeyCode::Char('v')) => KeyAction::PageDown,
             (KeyModifiers::ALT, KeyCode::Char('v')) => KeyAction::PageUp,
 
@@ -1134,6 +1134,34 @@ impl MoraEditor {
                 let count = self.repeat_count.unwrap_or(0);
                 self.repeat_count = Some(count * 4);
                 self.status_message = format!("C-u {}", self.repeat_count.unwrap_or(4));
+            }
+            KeyAction::MwimBeginning => {
+                let line = self.buffer.current_line();
+                let first_non_ws = line.chars().take_while(|c| c.is_whitespace()).count();
+                let first_non_ws = if first_non_ws >= line.chars().count() { 0 } else { first_non_ws };
+                if self.buffer.cursor.col == first_non_ws && first_non_ws != 0 {
+                    self.buffer.cursor.col = 0;
+                } else {
+                    self.buffer.cursor.col = first_non_ws;
+                }
+            }
+            KeyAction::MwimEnd => {
+                let line = self.buffer.current_line();
+                let chars: Vec<char> = line.chars().collect();
+                let len = chars.len();
+                if len == 0 {
+                    self.buffer.cursor.col = 0;
+                } else {
+                    let last_non_ws = chars.iter().enumerate().rev()
+                        .find(|(_, c)| !c.is_whitespace())
+                        .map(|(i, _)| i + 1)
+                        .unwrap_or(0);
+                    if self.buffer.cursor.col == last_non_ws && last_non_ws != len {
+                        self.buffer.cursor.col = len;
+                    } else {
+                        self.buffer.cursor.col = last_non_ws;
+                    }
+                }
             }
         }
     }
