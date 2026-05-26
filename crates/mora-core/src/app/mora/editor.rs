@@ -460,6 +460,9 @@ impl MoraEditor {
 
             (KeyModifiers::CONTROL, KeyCode::Char('q')) => KeyAction::Quit,
 
+            // Emacs: C-t transpose char
+            (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeChar,
+
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
             (_, KeyCode::Char(c)) => KeyAction::InsertChar(c),
@@ -1076,6 +1079,8 @@ impl MoraEditor {
                 }
                 self.command_input = saved_cmd;
             }
+
+            KeyAction::TransposeChar => self.buffer.transpose_char(),
         }
     }
 

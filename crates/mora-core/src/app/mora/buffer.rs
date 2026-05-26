@@ -474,6 +474,35 @@ impl Buffer {
         }
         count
     }
+
+    pub fn transpose_char(&mut self) {
+        let row = self.cursor.row;
+        let col = self.cursor.col;
+        let line = &self.lines[row];
+        let chars: Vec<char> = line.chars().collect();
+        let char_idx = Self::char_index_at_col(line, col);
+
+        if chars.len() < 2 || char_idx == 0 {
+            return;
+        }
+
+        let swap_idx = if char_idx >= chars.len() {
+            chars.len() - 2
+        } else {
+            char_idx - 1
+        };
+
+        if swap_idx + 1 >= chars.len() {
+            return;
+        }
+
+        self.push_undo();
+        let mut new_chars = chars.clone();
+        new_chars.swap(swap_idx, swap_idx + 1);
+        self.lines[row] = new_chars.into_iter().collect();
+        self.cursor.col = Self::col_byte_index(&self.lines[row], swap_idx + 2);
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
