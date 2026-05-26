@@ -126,6 +126,7 @@ pub enum KeyAction {
     InsertEmptyLineAbove,
     GotoLastChange,
     CleanupBuffer,
+    CopyAndComment,
 }
 
 impl KeyAction {

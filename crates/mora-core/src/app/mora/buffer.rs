@@ -811,6 +811,17 @@ impl Buffer {
         }
         self.modified = true;
     }
+
+    pub fn copy_and_comment(&mut self) {
+        self.push_undo();
+        let row = self.cursor.row;
+        let line = self.lines[row].clone();
+        let commented = format!("// {}", line);
+        self.lines[row] = commented;
+        self.lines.insert(row + 1, line);
+        self.cursor.row = row + 1;
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]

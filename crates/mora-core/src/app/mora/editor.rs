@@ -197,6 +197,8 @@ impl MoraEditor {
                     self.save_current_buffer();
                     KeyAction::SetMode(EditorMode::Normal)
                 }
+                // C-c ;: copy and comment
+                KeyCode::Char(';') => KeyAction::CopyAndComment,
                 _ => KeyAction::None,
             },
             'r' => match (key.modifiers, key.code) {
@@ -1366,6 +1368,11 @@ impl MoraEditor {
                 self.record_change();
                 self.buffer.cleanup_buffer();
                 self.status_message = "Cleaned up buffer".to_string();
+            }
+            KeyAction::CopyAndComment => {
+                self.record_change();
+                self.buffer.copy_and_comment();
+                self.status_message = "Copy and comment".to_string();
             }
         }
     }
