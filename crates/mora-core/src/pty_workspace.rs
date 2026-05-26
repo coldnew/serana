@@ -1,12 +1,9 @@
-//! PTY support for interactive terminal commands and workspace isolation.
-
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
 use serana_core::{Result, Tool};
 
-/// Tool that runs commands with stdin input support.
 pub struct PtyTool;
 
 #[async_trait]
@@ -81,7 +78,6 @@ impl Tool for PtyTool {
     }
 }
 
-/// Workspace isolation: create isolated copies of the workspace for subagents.
 pub mod workspace_isolation {
     use std::path::{Path, PathBuf};
     use tokio::fs;

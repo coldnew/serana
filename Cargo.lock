@@ -1217,6 +1217,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "mora-bin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossterm",
+ "mora-core",
+ "ratatui",
+]
+
+[[package]]
+name = "mora-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "crossterm",
+ "dirs",
+ "ratatui",
+ "serana-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "uuid",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1747,25 +1776,16 @@ name = "serana"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "chrono",
  "clap",
- "dirs",
+ "crossterm",
+ "mora-core",
+ "ratatui",
  "serana-agent",
  "serana-core",
  "serana-llm",
- "serana-lsp",
- "serana-tools",
- "serana-tree-sitter",
  "serana-tui",
- "serde",
- "serde_json",
- "tempfile",
  "tokio",
- "toml",
- "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

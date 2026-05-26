@@ -1,8 +1,3 @@
-//! Plugin system for loading external tools.
-//!
-//! Plugins are TOML files in ~/.serana/plugins/ that define tool name,
-//! description, parameters, and a bash command to execute.
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -12,16 +7,13 @@ use tokio::process::Command;
 
 use serana_core::{Result, Tool};
 
-/// Plugin definition loaded from a TOML file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginDef {
     pub name: String,
     pub description: String,
     #[serde(default)]
     pub parameters: Option<Value>,
-    /// The command to execute. Supports {{param}} template variables.
     pub command: String,
-    /// Timeout in seconds.
     #[serde(default = "default_timeout")]
     pub timeout: u64,
 }
@@ -30,7 +22,6 @@ fn default_timeout() -> u64 {
     30
 }
 
-/// A tool backed by a plugin definition.
 pub struct PluginTool {
     def: PluginDef,
 }
@@ -44,8 +35,6 @@ impl PluginTool {
 #[async_trait]
 impl Tool for PluginTool {
     fn name(&self) -> &'static str {
-        // Leak the name string since Tool requires 'static.
-        // Plugins are loaded once at startup so this is bounded.
         Box::leak(self.def.name.clone().into_boxed_str())
     }
 
@@ -61,7 +50,6 @@ impl Tool for PluginTool {
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
-        // Template substitution: replace {{key}} with input.key values
         let mut cmd_str = self.def.command.clone();
         if let Some(obj) = input.as_object() {
             for (key, value) in obj {
@@ -95,7 +83,6 @@ impl Tool for PluginTool {
     }
 }
 
-/// Load plugin definitions from ~/.serana/plugins/*.toml and .serana/plugins/*.toml.
 pub async fn load_plugins() -> Vec<PluginDef> {
     let mut plugins = Vec::new();
 

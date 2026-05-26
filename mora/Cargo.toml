@@ -1,0 +1,20 @@
+[package]
+name = "mora-bin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mora-core = { path = "../crates/mora-core" }
+clap.workspace = true
+anyhow.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+
+[[bin]]
+name = "mora"
+path = "src/bin/mora.rs"

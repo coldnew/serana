@@ -1,15 +1,9 @@
-//! ACP (Agent Client Protocol) for editor integration.
-//!
-//! JSON-RPC based protocol for driving the agent from editors like Zed.
-//! Maps tool I/O to editor capabilities (terminal, filesystem, permissions).
-
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use serana_core::{Agent, Result};
 
-/// ACP request (JSON-RPC 2.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpRequest {
     pub jsonrpc: String,
@@ -19,7 +13,6 @@ pub struct AcpRequest {
     pub params: Option<Value>,
 }
 
-/// ACP response (JSON-RPC 2.0).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpResponse {
     pub jsonrpc: String,
@@ -30,7 +23,6 @@ pub struct AcpResponse {
     pub error: Option<AcpError>,
 }
 
-/// ACP error object.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpError {
     pub code: i64,
@@ -39,7 +31,6 @@ pub struct AcpError {
     pub data: Option<Value>,
 }
 
-/// ACP notification (no id).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcpNotification {
     pub jsonrpc: String,
@@ -48,11 +39,9 @@ pub struct AcpNotification {
     pub params: Option<Value>,
 }
 
-/// ACP server implementing the Agent Client Protocol.
 pub struct AcpServer;
 
 impl AcpServer {
-    /// Run the ACP event loop over stdio.
     pub async fn run<A: Agent>(agent: &A) -> Result<()> {
         let stdin = tokio::io::stdin();
         let mut stdout = tokio::io::stdout();
@@ -89,7 +78,6 @@ impl AcpServer {
                 }
             };
 
-            // If no id, it's a notification — don't respond
             if request.id.is_none() {
                 continue;
             }
@@ -150,7 +138,6 @@ impl AcpServer {
                     }
                 }
                 "session/request_permission" => {
-                    // Auto-approve for CLI mode; real editors show a prompt
                     let resp = AcpResponse {
                         jsonrpc: "2.0".to_string(),
                         id: request.id,

@@ -1,0 +1,23 @@
+[package]
+name = "serana"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Personal Hermes agent"
+
+[lints]
+workspace = true
+
+[dependencies]
+mora-core = { path = "../crates/mora-core" }
+serana-core = { path = "../crates/serana-core" }
+serana-llm = { path = "../crates/serana-llm" }
+serana-agent = { path = "../crates/serana-agent" }
+serana-tui = { path = "../crates/serana-tui" }
+clap.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true

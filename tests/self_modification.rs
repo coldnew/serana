@@ -1,5 +1,3 @@
-//! Integration tests for Serana self-modification capability.
-
 use std::process::Command;
 
 const SERANA_ROOT: &str = env!("CARGO_MANIFEST_DIR");
@@ -27,6 +25,5 @@ fn git_status_works() {
 #[test]
 fn can_read_own_cargo_toml() {
     let content = std::fs::read_to_string(format!("{}/Cargo.toml", SERANA_ROOT)).unwrap();
-    assert!(content.contains("[package]"));
-    assert!(content.contains("serana"));
+    assert!(content.contains("[workspace]"));
 }

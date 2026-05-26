@@ -1,15 +1,9 @@
-//! RPC mode for driving the agent over stdio.
-//!
-//! NDJSON commands in, response and event frames out.
-//! Enables editor integration and process isolation.
-
 use serde::{Deserialize, Serialize};
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use serana_core::{Agent, Result};
 
-/// An incoming RPC request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcRequest {
     pub id: String,
@@ -23,7 +17,6 @@ pub struct RpcRequest {
     pub model_id: Option<String>,
 }
 
-/// An outgoing RPC response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcResponse {
     pub id: String,
@@ -37,7 +30,6 @@ pub struct RpcResponse {
     pub success: bool,
 }
 
-/// An outgoing RPC event frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcEvent {
     #[serde(rename = "type")]
@@ -48,11 +40,9 @@ pub struct RpcEvent {
     pub tool_name: Option<String>,
 }
 
-/// RPC server that reads NDJSON from stdin and writes responses to stdout.
 pub struct RpcServer;
 
 impl RpcServer {
-    /// Run the RPC event loop. Reads from stdin, dispatches to agent, writes to stdout.
     pub async fn run<A: Agent>(agent: &A) -> Result<()> {
         let stdin = tokio::io::stdin();
         let mut stdout = tokio::io::stdout();
@@ -63,7 +53,7 @@ impl RpcServer {
             line.clear();
             let n = reader.read_line(&mut line).await?;
             if n == 0 {
-                break; // EOF
+                break;
             }
 
             let trimmed = line.trim();
