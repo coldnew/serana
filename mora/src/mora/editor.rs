@@ -1382,8 +1382,20 @@ impl MoraEditor {
                 }
             }
 
-            KeyAction::InsertChar(c) => { self.record_change(); self.buffer.insert_char(c); }
-            KeyAction::InsertNewline => { self.record_change(); self.buffer.insert_newline(); }
+            KeyAction::InsertChar(c) => {
+                self.record_change();
+                self.buffer.insert_char(c);
+                if let Some(action) = self.minor_modes.on_insert_char(c) {
+                    self.execute_action(action);
+                }
+            }
+            KeyAction::InsertNewline => {
+                self.record_change();
+                self.buffer.insert_newline();
+                if let Some(action) = self.minor_modes.on_insert_newline() {
+                    self.execute_action(action);
+                }
+            }
             KeyAction::DeleteBackward => { self.record_change(); self.buffer.delete_backward(); }
             KeyAction::DeleteForward => { self.record_change(); self.buffer.delete_forward(); }
             KeyAction::DeleteLine => {

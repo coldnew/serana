@@ -8,6 +8,8 @@ pub trait MinorMode: std::fmt::Debug {
     fn on_enable(&self) {}
     fn on_disable(&self) {}
     fn priority(&self) -> i32 { 0 }
+    fn on_insert_char(&self, _ch: char) -> Option<KeyAction> { None }
+    fn on_insert_newline(&self) -> Option<KeyAction> { None }
 }
 
 #[derive(Debug)]
@@ -70,6 +72,24 @@ impl MinorModeRegistry {
         None
     }
 
+    pub fn on_insert_char(&self, ch: char) -> Option<KeyAction> {
+        for mode in &self.modes {
+            if let Some(action) = mode.on_insert_char(ch) {
+                return Some(action);
+            }
+        }
+        None
+    }
+
+    pub fn on_insert_newline(&self) -> Option<KeyAction> {
+        for mode in &self.modes {
+            if let Some(action) = mode.on_insert_newline() {
+                return Some(action);
+            }
+        }
+        None
+    }
+
     pub fn modeline_string(&self) -> String {
         let indicators: Vec<&str> = self.modes.iter()
             .map(|m| m.modeline_indicator())
@@ -100,6 +120,9 @@ pub fn all_minor_mode_names() -> Vec<&'static str> {
         "highlight-trailing",
         "auto-save",
         "read-only",
+        "electric-pair",
+        "aggressive-indent",
+        "auto-indent",
     ]
 }
 
@@ -112,6 +135,9 @@ pub fn create_minor_mode(name: &str) -> Option<Box<dyn MinorMode>> {
         "highlight-trailing" | "highlight-trailing-whitespace" => Some(Box::new(HighlightTrailingMode)),
         "auto-save" | "auto-save-mode" => Some(Box::new(AutoSaveMode)),
         "read-only" | "read-only-mode" => Some(Box::new(ReadOnlyMode)),
+        "electric-pair" | "electric-pair-mode" => Some(Box::new(ElectricPairMode)),
+        "aggressive-indent" | "aggressive-indent-mode" => Some(Box::new(AggressiveIndentMode)),
+        "auto-indent" | "auto-indent-mode" => Some(Box::new(AutoIndentMode)),
         _ => None,
     }
 }
@@ -189,6 +215,53 @@ impl MinorMode for ReadOnlyMode {
             }
             _ => None,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ElectricPairMode;
+
+impl MinorMode for ElectricPairMode {
+    fn name(&self) -> &'static str { "electric-pair" }
+    fn modeline_indicator(&self) -> &'static str { "EP" }
+    fn priority(&self) -> i32 { -5 }
+
+    fn on_insert_char(&self, ch: char) -> Option<KeyAction> {
+        match ch {
+            '(' => Some(KeyAction::InsertChar(')')),
+            '[' => Some(KeyAction::InsertChar(']')),
+            '{' => Some(KeyAction::InsertChar('}')),
+            '"' => Some(KeyAction::InsertChar('"')),
+            '\'' => Some(KeyAction::InsertChar('\'')),
+            '`' => Some(KeyAction::InsertChar('`')),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct AggressiveIndentMode;
+
+impl MinorMode for AggressiveIndentMode {
+    fn name(&self) -> &'static str { "aggressive-indent" }
+    fn modeline_indicator(&self) -> &'static str { "AI" }
+    fn priority(&self) -> i32 { -15 }
+
+    fn on_insert_newline(&self) -> Option<KeyAction> {
+        Some(KeyAction::IndentLine)
+    }
+}
+
+#[derive(Debug)]
+pub struct AutoIndentMode;
+
+impl MinorMode for AutoIndentMode {
+    fn name(&self) -> &'static str { "auto-indent" }
+    fn modeline_indicator(&self) -> &'static str { "Ind" }
+    fn priority(&self) -> i32 { -15 }
+
+    fn on_insert_newline(&self) -> Option<KeyAction> {
+        Some(KeyAction::IndentLine)
     }
 }
 
@@ -288,9 +361,12 @@ mod tests {
     #[test]
     fn test_all_names() {
         let names = all_minor_mode_names();
-        assert!(names.len() >= 7);
+        assert!(names.len() >= 10);
         assert!(names.contains(&"line-numbers"));
         assert!(names.contains(&"read-only"));
+        assert!(names.contains(&"electric-pair"));
+        assert!(names.contains(&"aggressive-indent"));
+        assert!(names.contains(&"auto-indent"));
     }
 
     #[test]
@@ -298,6 +374,54 @@ mod tests {
         assert!(create_minor_mode("line-numbers").is_some());
         assert!(create_minor_mode("line-numbers-mode").is_some());
         assert!(create_minor_mode("read-only").is_some());
+        assert!(create_minor_mode("electric-pair").is_some());
+        assert!(create_minor_mode("electric-pair-mode").is_some());
+        assert!(create_minor_mode("aggressive-indent").is_some());
+        assert!(create_minor_mode("auto-indent").is_some());
         assert!(create_minor_mode("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_electric_pair_brackets() {
+        let mode = ElectricPairMode;
+        assert_eq!(mode.on_insert_char('('), Some(KeyAction::InsertChar(')')));
+        assert_eq!(mode.on_insert_char('['), Some(KeyAction::InsertChar(']')));
+        assert_eq!(mode.on_insert_char('{'), Some(KeyAction::InsertChar('}')));
+        assert_eq!(mode.on_insert_char('"'), Some(KeyAction::InsertChar('"')));
+        assert_eq!(mode.on_insert_char('\''), Some(KeyAction::InsertChar('\'')));
+        assert_eq!(mode.on_insert_char('a'), None);
+        assert_eq!(mode.modeline_indicator(), "EP");
+    }
+
+    #[test]
+    fn test_aggressive_indent_hooks() {
+        let mode = AggressiveIndentMode;
+        assert_eq!(mode.on_insert_newline(), Some(KeyAction::IndentLine));
+        assert_eq!(mode.modeline_indicator(), "AI");
+    }
+
+    #[test]
+    fn test_auto_indent_hooks() {
+        let mode = AutoIndentMode;
+        assert_eq!(mode.on_insert_newline(), Some(KeyAction::IndentLine));
+        assert_eq!(mode.modeline_indicator(), "Ind");
+    }
+
+    #[test]
+    fn test_registry_insert_char_hooks() {
+        let mut registry = MinorModeRegistry::new();
+        registry.enable_by_name("electric-pair");
+        assert_eq!(registry.on_insert_char('('), Some(KeyAction::InsertChar(')')));
+        assert_eq!(registry.on_insert_char('a'), None);
+    }
+
+    #[test]
+    fn test_registry_insert_newline_hooks() {
+        let mut registry = MinorModeRegistry::new();
+        registry.enable_by_name("auto-indent");
+        assert_eq!(registry.on_insert_newline(), Some(KeyAction::IndentLine));
+
+        let mut registry2 = MinorModeRegistry::new();
+        assert_eq!(registry2.on_insert_newline(), None);
     }
 }
