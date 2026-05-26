@@ -1062,4 +1062,44 @@ mod tests {
         buf.goto_line(3);
         assert_eq!(buf.cursor.row, 2);
     }
+
+    #[test]
+    fn test_word_under_cursor() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world");
+        buf.cursor.col = 0;
+        assert_eq!(buf.word_under_cursor(), "hello");
+        buf.cursor.col = 3;
+        assert_eq!(buf.word_under_cursor(), "hello");
+        buf.cursor.col = 6;
+        assert_eq!(buf.word_under_cursor(), "world");
+    }
+
+    #[test]
+    fn test_word_under_cursor_with_underscore() {
+        let mut buf = Buffer::new();
+        buf.insert_string("my_var here");
+        buf.cursor.col = 0;
+        assert_eq!(buf.word_under_cursor(), "my_var");
+    }
+
+    #[test]
+    fn test_search_forward_from() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world\nfoo bar\nhello again");
+        assert_eq!(buf.search_forward_from("hello", 0, 0), Some((0, 0)));
+        assert_eq!(buf.search_forward_from("hello", 0, 1), Some((2, 0)));
+        assert_eq!(buf.search_forward_from("bar", 0, 0), Some((1, 4)));
+        assert_eq!(buf.search_forward_from("missing", 0, 0), None);
+    }
+
+    #[test]
+    fn test_search_backward_from() {
+        let mut buf = Buffer::new();
+        buf.insert_string("hello world\nfoo bar\nhello again");
+        assert_eq!(buf.search_backward_from("hello", 2, 5), Some((2, 0)));
+        assert_eq!(buf.search_backward_from("hello", 2, 0), Some((0, 0)));
+        assert_eq!(buf.search_backward_from("bar", 2, 0), Some((1, 4)));
+        assert_eq!(buf.search_backward_from("missing", 2, 0), None);
+    }
 }
