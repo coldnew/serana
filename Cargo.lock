@@ -1225,6 +1225,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "ratatui",
+ "serana-tree-sitter",
  "serde",
  "serde_json",
  "tempfile",
@@ -1887,9 +1888,10 @@ name = "serana-tree-sitter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serana-core",
  "serde",
  "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-c",
  "tree-sitter-go",
  "tree-sitter-javascript",
  "tree-sitter-python",
@@ -2496,6 +2498,26 @@ checksum = "df7cc499ceadd4dcdf7ec6d4cbc34ece92c3fa07821e287aedecd4416c516dca"
 dependencies = [
  "cc",
  "regex",
+]
+
+[[package]]
+name = "tree-sitter-bash"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5244703ad2e08a616d859a0557d7aa290adcd5e0990188a692e628ffe9dce40"
+dependencies = [
+ "cc",
+ "tree-sitter",
+]
+
+[[package]]
+name = "tree-sitter-c"
+version = "0.21.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f956d5351d62652864a4ff3ae861747e7a1940dc96c9998ae400ac0d3ce30427"
+dependencies = [
+ "cc",
+ "tree-sitter",
 ]
 
 [[package]]

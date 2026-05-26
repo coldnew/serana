@@ -1,10 +1,12 @@
-//! Tree-sitter integration for AST parsing and syntax queries
+//! Tree-sitter integration for AST parsing, syntax queries, and syntax highlighting.
 //!
-//! Provides fast parsing of source code into syntax trees and basic symbol queries.
+//! Provides fast parsing of source code into syntax trees, symbol queries,
+//! and syntax highlighting via tree-sitter queries.
+
+pub mod highlight;
 
 use std::path::Path;
 
-use serana_core::Result;
 use serde::Serialize;
 use tree_sitter::{Language, Parser, Query, QueryCursor, Tree};
 
@@ -16,6 +18,8 @@ pub enum LanguageId {
     JavaScript,
     Python,
     Go,
+    Bash,
+    C,
 }
 
 impl LanguageId {
@@ -23,11 +27,36 @@ impl LanguageId {
         match ext {
             "rs" => Some(Self::Rust),
             "ts" | "tsx" => Some(Self::TypeScript),
-            "js" | "jsx" => Some(Self::JavaScript),
-            "py" => Some(Self::Python),
+            "js" | "jsx" | "mjs" | "cjs" => Some(Self::JavaScript),
+            "py" | "pyw" => Some(Self::Python),
             "go" => Some(Self::Go),
+            "sh" | "bash" | "zsh" | "fish" => Some(Self::Bash),
+            "c" | "h" | "cpp" | "hpp" | "cc" | "cxx" => Some(Self::C),
             _ => None,
         }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Rust => "Rust",
+            Self::TypeScript => "TypeScript",
+            Self::JavaScript => "JavaScript",
+            Self::Python => "Python",
+            Self::Go => "Go",
+            Self::Bash => "Bash",
+            Self::C => "C",
+        }
+    }
+}
+
+pub fn language_for_id(id: LanguageId) -> Language {
+    match id {
+        LanguageId::Rust => tree_sitter_rust::language(),
+        LanguageId::JavaScript | LanguageId::TypeScript => tree_sitter_javascript::language(),
+        LanguageId::Python => tree_sitter_python::language(),
+        LanguageId::Go => tree_sitter_go::language(),
+        LanguageId::Bash => tree_sitter_bash::language(),
+        LanguageId::C => tree_sitter_c::language(),
     }
 }
 
@@ -40,18 +69,35 @@ impl ParserManager {
     }
 
     /// Parse a file into a syntax tree.
-    pub fn parse_file(&self, path: &Path, content: &str) -> Result<SyntaxTree> {
-        let language = language_for_path(path)?;
+    pub fn parse_file(&self, path: &Path, content: &str) -> anyhow::Result<SyntaxTree> {
+        let ext = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .ok_or_else(|| anyhow::anyhow!("missing file extension for {}", path.display()))?;
+
+        let lang_id = LanguageId::from_extension(ext)
+            .ok_or_else(|| anyhow::anyhow!("unsupported source language: {}", path.display()))?;
+
+        self.parse_source(lang_id, content)
+    }
+
+    /// Parse source code with an explicit language id.
+    pub fn parse_source(&self, lang_id: LanguageId, content: &str) -> anyhow::Result<SyntaxTree> {
+        let language = language_for_id(lang_id);
         let mut parser = Parser::new();
         parser.set_language(&language)?;
         let tree = parser
             .parse(content, None)
-            .ok_or_else(|| anyhow::anyhow!("tree-sitter failed to parse {}", path.display()))?;
+            .ok_or_else(|| anyhow::anyhow!("tree-sitter failed to parse"))?;
         Ok(SyntaxTree { tree, language })
     }
 
     /// Query function definitions in a syntax tree.
-    pub fn query_functions(&self, tree: &SyntaxTree, content: &str) -> Result<Vec<FunctionDef>> {
+    pub fn query_functions(
+        &self,
+        tree: &SyntaxTree,
+        content: &str,
+    ) -> anyhow::Result<Vec<FunctionDef>> {
         let query = Query::new(&tree.language, function_query(&tree.language)?)?;
         let mut cursor = QueryCursor::new();
         let root = tree.tree.root_node();
@@ -88,7 +134,11 @@ impl ParserManager {
     }
 
     /// Query struct/type definitions in a syntax tree.
-    pub fn query_structs(&self, tree: &SyntaxTree, content: &str) -> Result<Vec<StructDef>> {
+    pub fn query_structs(
+        &self,
+        tree: &SyntaxTree,
+        content: &str,
+    ) -> anyhow::Result<Vec<StructDef>> {
         let query_src = type_query(&tree.language)?;
         if query_src.is_empty() {
             return Ok(Vec::new());
@@ -129,7 +179,7 @@ impl ParserManager {
     }
 
     /// Query imports in a syntax tree.
-    pub fn query_imports(&self, tree: &SyntaxTree, content: &str) -> Result<Vec<Import>> {
+    pub fn query_imports(&self, tree: &SyntaxTree, content: &str) -> anyhow::Result<Vec<Import>> {
         let query_src = import_query(&tree.language)?;
         if query_src.is_empty() {
             return Ok(Vec::new());
@@ -195,24 +245,7 @@ pub struct Import {
     pub start_line: usize,
 }
 
-fn language_for_path(path: &Path) -> Result<Language> {
-    let ext = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .ok_or_else(|| anyhow::anyhow!("missing file extension for {}", path.display()))?;
-
-    match LanguageId::from_extension(ext) {
-        Some(LanguageId::Rust) => Ok(tree_sitter_rust::language()),
-        Some(LanguageId::JavaScript) | Some(LanguageId::TypeScript) => {
-            Ok(tree_sitter_javascript::language())
-        }
-        Some(LanguageId::Python) => Ok(tree_sitter_python::language()),
-        Some(LanguageId::Go) => Ok(tree_sitter_go::language()),
-        None => anyhow::bail!("unsupported source language: {}", path.display()),
-    }
-}
-
-fn function_query(language: &Language) -> Result<&'static str> {
+fn function_query(language: &Language) -> anyhow::Result<&'static str> {
     if *language == tree_sitter_rust::language() {
         Ok(r#"
             (function_item name: (identifier) @name) @item
@@ -237,7 +270,7 @@ fn function_query(language: &Language) -> Result<&'static str> {
     }
 }
 
-fn type_query(language: &Language) -> Result<&'static str> {
+fn type_query(language: &Language) -> anyhow::Result<&'static str> {
     if *language == tree_sitter_rust::language() {
         Ok(r#"
             (struct_item name: (type_identifier) @name) @item
@@ -262,7 +295,7 @@ fn type_query(language: &Language) -> Result<&'static str> {
     }
 }
 
-fn import_query(language: &Language) -> Result<&'static str> {
+fn import_query(language: &Language) -> anyhow::Result<&'static str> {
     if *language == tree_sitter_rust::language() {
         Ok(r#"
             (use_declaration argument: (_) @source)
@@ -329,5 +362,21 @@ impl App {
 
         let structs = manager.query_structs(&tree, source).unwrap();
         assert!(structs.iter().any(|s| s.name == "Worker"));
+    }
+
+    #[test]
+    fn parses_bash() {
+        let manager = ParserManager::new();
+        let source = "#!/bin/bash\necho hello\n";
+        let tree = manager.parse_source(LanguageId::Bash, source).unwrap();
+        assert!(tree.tree.root_node().child_count() > 0);
+    }
+
+    #[test]
+    fn parses_c() {
+        let manager = ParserManager::new();
+        let source = "#include <stdio.h>\nint main() { return 0; }\n";
+        let tree = manager.parse_source(LanguageId::C, source).unwrap();
+        assert!(tree.tree.root_node().child_count() > 0);
     }
 }
