@@ -462,6 +462,8 @@ impl MoraEditor {
 
             // Emacs: C-t transpose char
             (KeyModifiers::CONTROL, KeyCode::Char('t')) => KeyAction::TransposeChar,
+            // Emacs: M-t transpose word
+            (KeyModifiers::ALT, KeyCode::Char('t')) => KeyAction::TransposeWord,
 
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
@@ -1081,6 +1083,7 @@ impl MoraEditor {
             }
 
             KeyAction::TransposeChar => self.buffer.transpose_char(),
+            KeyAction::TransposeWord => self.buffer.transpose_word(),
         }
     }
 

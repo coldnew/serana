@@ -106,6 +106,7 @@ pub enum KeyAction {
     CallMacro,
     IndentRegion(RectRegion),
     TransposeChar,
+    TransposeWord,
 }
 
 impl KeyAction {

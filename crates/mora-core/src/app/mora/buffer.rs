@@ -503,6 +503,56 @@ impl Buffer {
         self.cursor.col = Self::col_byte_index(&self.lines[row], swap_idx + 2);
         self.modified = true;
     }
+
+    pub fn transpose_word(&mut self) {
+        let row = self.cursor.row;
+        let line = self.lines[row].clone();
+        let chars: Vec<char> = line.chars().collect();
+        let len = chars.len();
+        let col = self.cursor.col;
+        let char_idx = Self::char_index_at_col(&line, col);
+
+        let is_word = |c: char| c.is_alphanumeric() || c == '_';
+
+        let mut word2_end = char_idx;
+        while word2_end < len && !is_word(chars[word2_end]) {
+            word2_end += 1;
+        }
+        while word2_end < len && is_word(chars[word2_end]) {
+            word2_end += 1;
+        }
+        let word2_start = {
+            let mut s = word2_end;
+            while s > 0 && is_word(chars[s - 1]) {
+                s -= 1;
+            }
+            s
+        };
+
+        let mut word1_end = word2_start;
+        while word1_end > 0 && !is_word(chars[word1_end - 1]) {
+            word1_end -= 1;
+        }
+        let mut word1_start = word1_end;
+        while word1_start > 0 && is_word(chars[word1_start - 1]) {
+            word1_start -= 1;
+        }
+
+        if word1_start >= word1_end || word2_start >= word2_end || word1_end > word2_start {
+            return;
+        }
+
+        self.push_undo();
+        let word1: String = chars[word1_start..word1_end].iter().collect();
+        let sep: String = chars[word1_end..word2_start].iter().collect();
+        let word2: String = chars[word2_start..word2_end].iter().collect();
+        let rest: String = chars[word2_end..].iter().collect();
+        let prefix: String = chars[..word1_start].iter().collect();
+
+        self.lines[row] = format!("{}{}{}{}{}", prefix, word2, sep, word1, rest);
+        self.cursor.col = Self::col_byte_index(&self.lines[row], word2_end);
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
