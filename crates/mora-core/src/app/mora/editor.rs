@@ -413,8 +413,7 @@ impl MoraEditor {
                 self.status_message = "Mark set".to_string();
                 KeyAction::None
             }
-            (KeyModifiers::CONTROL, KeyCode::Char('u'))
-            | (KeyModifiers::ALT, KeyCode::Char('u')) => {
+            (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
                 if self.mark_ring.is_active() {
                     self.mark_ring.set_active(false);
                     self.status_message = "Mark deactivated".to_string();
@@ -425,6 +424,7 @@ impl MoraEditor {
                 }
                 KeyAction::None
             }
+            (KeyModifiers::ALT, KeyCode::Char('u')) => KeyAction::UppercaseWord,
             (KeyModifiers::ALT, KeyCode::Char('x')) => {
                 self.mode = EditorMode::Command;
                 self.command_input = String::new();
@@ -1090,6 +1090,7 @@ impl MoraEditor {
             KeyAction::TransposeWord => self.buffer.transpose_word(),
             KeyAction::TransposeLine => self.buffer.transpose_line(),
             KeyAction::CapitalizeWord => self.buffer.capitalize_word(),
+            KeyAction::UppercaseWord => self.buffer.uppercase_word(),
         }
     }
 
