@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const MAX_UNDO: usize = 500;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
     pub row: usize,
     pub col: usize,

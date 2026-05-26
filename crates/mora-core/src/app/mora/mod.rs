@@ -1,9 +1,21 @@
 mod buffer;
 mod editor;
 mod keymap;
+mod kill_ring;
+mod macro_state;
+mod mark;
+mod rectangle;
+mod register;
 mod status_line;
 pub mod ui;
 mod view;
+pub mod wasm_ext;
 
 pub use editor::MoraEditor;
 pub use keymap::EditorMode;
+pub use kill_ring::KillRing;
+pub use register::Registers;
+pub use mark::MarkRing;
+pub use macro_state::MacroState;
+pub use rectangle::{RectRegion, kill_rectangle, yank_rectangle, insert_rectangle, clear_rectangle};
+pub use wasm_ext::WasmExtensionHost;

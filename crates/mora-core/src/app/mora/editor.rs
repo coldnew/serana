@@ -1,47 +1,73 @@
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::buffer::Buffer;
 use super::keymap::{self, EditorMode, KeyAction, PendingOp};
+use super::kill_ring::KillRing;
+use super::register::{RegisterValue, Registers};
+use super::macro_state::MacroState;
+use super::mark::MarkRing;
+use super::rectangle::{self, RectRegion};
 use super::view::View;
-
-#[derive(Debug, Default)]
-struct Clipboard {
-    lines: Vec<String>,
-}
+use super::wasm_ext::WasmExtensionHost;
 
 pub struct MoraEditor {
-    buffer: Buffer,
-    mode: EditorMode,
-    view: View,
-    command_input: String,
-    clipboard: Clipboard,
-    last_find_forward: Option<String>,
-    last_find_backward: Option<String>,
-    status_message: String,
-    quit_requested: bool,
-    pending_action: Option<KeyAction>,
-    waiting_g: bool,
-    waiting_op: Option<PendingOp>,
+    pub buffer: Buffer,
+    pub mode: EditorMode,
+    pub view: View,
+    pub command_input: String,
+    pub kill_ring: KillRing,
+    pub registers: Registers,
+    pub mark_ring: MarkRing,
+    pub macro_state: MacroState,
+    pub wasm_host: WasmExtensionHost,
+    pub last_search_forward: Option<String>,
+    pub last_search_backward: Option<String>,
+    pub status_message: String,
+    pub quit_requested: bool,
+    pub pending_action: Option<KeyAction>,
+    pub waiting_g: bool,
+    pub waiting_op: Option<PendingOp>,
+    pub waiting_register: Option<char>,
+    pub waiting_prefix: Option<char>,
+    pub visual_start: Option<(usize, usize)>,
+    pub macro_playing_keys: Vec<KeyEvent>,
+    pub last_yank_was_kill: bool,
+    pub repeat_count: Option<usize>,
 }
 
 impl MoraEditor {
     pub fn new(height: usize) -> Self {
-        Self {
+        let mut editor = Self {
             buffer: Buffer::new(),
             mode: EditorMode::Normal,
             view: View::new(height),
             command_input: String::new(),
-            clipboard: Clipboard::default(),
-            last_find_forward: None,
-            last_find_backward: None,
+            kill_ring: KillRing::new(),
+            registers: Registers::new(),
+            mark_ring: MarkRing::new(),
+            macro_state: MacroState::new(),
+            wasm_host: WasmExtensionHost::new(),
+            last_search_forward: None,
+            last_search_backward: None,
             status_message: String::new(),
             quit_requested: false,
             pending_action: None,
             waiting_g: false,
             waiting_op: None,
+            waiting_register: None,
+            waiting_prefix: None,
+            visual_start: None,
+            macro_playing_keys: Vec::new(),
+            last_yank_was_kill: false,
+            repeat_count: None,
+        };
+        editor.wasm_host.discover();
+        if editor.wasm_host.count() > 0 {
+            editor.status_message = format!("Loaded {} extension(s)", editor.wasm_host.count());
         }
+        editor
     }
 
     pub fn open(path: &Path, height: usize) -> std::io::Result<Self> {
@@ -52,29 +78,12 @@ impl MoraEditor {
         Ok(editor)
     }
 
-    pub fn mode(&self) -> EditorMode {
-        self.mode
-    }
-
-    pub fn buffer(&self) -> &Buffer {
-        &self.buffer
-    }
-
-    pub fn view(&self) -> &View {
-        &self.view
-    }
-
-    pub fn command_input(&self) -> &str {
-        &self.command_input
-    }
-
-    pub fn status_message(&self) -> &str {
-        &self.status_message
-    }
-
-    pub fn quit_requested(&self) -> bool {
-        self.quit_requested
-    }
+    pub fn mode(&self) -> EditorMode { self.mode }
+    pub fn buffer(&self) -> &Buffer { &self.buffer }
+    pub fn view(&self) -> &View { &self.view }
+    pub fn command_input(&self) -> &str { &self.command_input }
+    pub fn status_message(&self) -> &str { &self.status_message }
+    pub fn quit_requested(&self) -> bool { self.quit_requested }
 
     pub fn set_height(&mut self, height: usize) {
         self.view.height = height.max(1);
@@ -82,27 +91,166 @@ impl MoraEditor {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
+        self.macro_state.record_key(&key);
+        if self.macro_state.is_playing() {
+            return true;
+        }
+
         if let Some(action) = self.pending_action.take() {
             self.execute_action(action);
             self.view.ensure_cursor_visible(&self.buffer);
             return true;
         }
 
-        let action = match self.mode {
-            EditorMode::Normal => self.handle_normal(key),
-            EditorMode::Insert => keymap::insert_key(key),
-            EditorMode::Command
-            | EditorMode::SearchForward
-            | EditorMode::SearchBackward => keymap::command_key(key),
-            EditorMode::Emacs => keymap::emacs_key(key),
-            EditorMode::ReplaceChar => self.handle_replace_char(key),
-            EditorMode::Visual => self.handle_visual(key),
-        };
+        if let Some(name) = self.waiting_register.take() {
+            self.handle_register_key(name, key);
+            self.view.ensure_cursor_visible(&self.buffer);
+            return true;
+        }
+
+        let action = self.reduce_no_playback(key);
 
         let redraw = action != KeyAction::None;
         self.execute_action(action);
         self.view.ensure_cursor_visible(&self.buffer);
         redraw
+    }
+
+    pub fn drain_macro_events(&mut self) -> Option<KeyEvent> {
+        self.macro_state.next_event()
+    }
+
+    fn reduce_no_playback(&mut self, key: KeyEvent) -> KeyAction {
+        if let Some(prefix) = self.waiting_prefix.take() {
+            return self.handle_prefix_key(prefix, key);
+        }
+
+        match self.mode {
+            EditorMode::Normal => self.handle_normal(key),
+            EditorMode::Insert => keymap::insert_key(key),
+            EditorMode::Command
+            | EditorMode::SearchForward
+            | EditorMode::SearchBackward => keymap::command_key(key),
+            EditorMode::Emacs => self.handle_emacs(key),
+            EditorMode::ReplaceChar => self.handle_replace_char(key),
+            EditorMode::Visual => self.handle_visual(key),
+        }
+    }
+
+    fn handle_prefix_key(&mut self, prefix: char, key: KeyEvent) -> KeyAction {
+        match prefix {
+            'x' => match (key.modifiers, key.code) {
+                (_, KeyCode::Char('s')) | (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                    self.save_current_buffer();
+                    KeyAction::SetMode(EditorMode::Normal)
+                }
+                (_, KeyCode::Char('c')) | (_, KeyCode::Char('k')) => KeyAction::Quit,
+                (KeyModifiers::CONTROL, KeyCode::Char('c')) => KeyAction::ForceQuit,
+                (_, KeyCode::Char('f')) => KeyAction::SetMode(EditorMode::SearchForward),
+                (_, KeyCode::Char('b')) => {
+                    let cmd = self.command_input.clone();
+                    KeyAction::FindBackward(cmd)
+                }
+                (_, KeyCode::Char('r')) => {
+                    self.waiting_register = Some('r');
+                    self.status_message = "Insert register: ".to_string();
+                    KeyAction::None
+                }
+                (_, KeyCode::Char('h')) => {
+                    self.waiting_register = Some('h');
+                    self.status_message = "Help for: ".to_string();
+                    KeyAction::None
+                }
+                (_, KeyCode::Char('u')) => KeyAction::Undo,
+                (KeyModifiers::CONTROL, KeyCode::Char('r')) => KeyAction::Redo,
+                (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
+                    self.status_message = "Redraw screen".to_string();
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            'c' => match key.code {
+                KeyCode::Char('c') => KeyAction::ForceQuit,
+                KeyCode::Char('s') => {
+                    self.save_current_buffer();
+                    KeyAction::SetMode(EditorMode::Normal)
+                }
+                _ => KeyAction::None,
+            },
+            'r' => match (key.modifiers, key.code) {
+                (_, KeyCode::Char(c)) if c.is_ascii_lowercase() => {
+                    let saved_cmd = self.command_input.clone();
+                    if let Some(RegisterValue::Macro(events)) = self.registers.get(c) {
+                        self.macro_state.load_from_register(c, events);
+                        self.macro_state.start_playback(c);
+                    }
+                    self.command_input = saved_cmd;
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            _ => KeyAction::None,
+        }
+    }
+
+    fn handle_register_key(&mut self, kind: char, key: KeyEvent) {
+        let name = match key.code {
+            KeyCode::Char(c) if c.is_ascii_alphanumeric() || c == '"' => c,
+            _ => {
+                self.status_message = "Invalid register".to_string();
+                return;
+            }
+        };
+        match kind {
+            'c' => {
+                let content = self.buffer.current_line().to_string();
+                self.registers
+                    .set(name, RegisterValue::Text(content));
+                self.status_message = format!("Copied to register {}", name);
+            }
+            'y' => {
+                if let Some(RegisterValue::Text(t)) = self.registers.get(name) {
+                    let row = self.buffer.cursor.row;
+                    self.buffer.lines.insert(row + 1, t.clone());
+                    self.buffer.cursor.row = row + 1;
+                    self.buffer.cursor.col = 0;
+                    self.buffer.modified = true;
+                    self.status_message = format!("Yanked from register {}", name);
+                } else if let Some(RegisterValue::Lines(l)) = self.registers.get(name) {
+                    let row = self.buffer.cursor.row + 1;
+                    for (i, line) in l.iter().enumerate() {
+                        self.buffer.lines.insert(row + i, line.clone());
+                    }
+                    self.buffer.modified = true;
+                    self.status_message = format!("Yanked {} lines from register {}", l.len(), name);
+                }
+            }
+            'i' => {
+                if let Some(RegisterValue::Text(t)) = self.registers.get(name) {
+                    self.buffer.insert_string(t);
+                    self.status_message = format!("Inserted from register {}", name);
+                }
+            }
+            'm' => {
+                self.registers
+                    .set(name, RegisterValue::Position(self.buffer.cursor));
+                self.status_message = format!("Set mark {}", name);
+            }
+            '\'' => {
+                if let Some(RegisterValue::Position(pos)) = self.registers.get(name) {
+                    self.buffer.cursor = *pos;
+                    self.status_message = format!("Jumped to mark {}", name);
+                }
+            }
+            'r' => {
+                if let Some(RegisterValue::Rectangle(r)) = self.registers.get(name) {
+                    self.status_message = format!("Rectangle register {}: {} cols", name, r.len());
+                }
+            }
+            _ => {
+                self.status_message = format!("Register {}: unknown operation", name);
+            }
+        }
     }
 
     fn handle_normal(&mut self, key: KeyEvent) -> KeyAction {
@@ -131,7 +279,35 @@ impl MoraEditor {
             };
         }
 
+        if let Some(count) = self.repeat_count {
+            if let KeyCode::Char(c) = key.code {
+                if c.is_ascii_digit() {
+                    self.repeat_count = Some(count * 10 + (c as u8 - b'0') as usize);
+                    return KeyAction::None;
+                }
+            }
+            let action = keymap::normal_key(key);
+            let n = count.max(1);
+            self.repeat_count = None;
+            match &action {
+                KeyAction::MoveLeft | KeyAction::MoveRight
+                | KeyAction::MoveUp | KeyAction::MoveDown
+                | KeyAction::DeleteForward => {
+                    return self.repeated_action(action, n);
+                }
+                _ => {}
+            }
+            return action;
+        }
+
         let action = keymap::normal_key(key);
+
+        if let KeyCode::Char(c) = key.code {
+            if c.is_ascii_digit() && !action.needs_digit() {
+                self.repeat_count = Some((c as u8 - b'0') as usize);
+                return KeyAction::None;
+            }
+        }
 
         if key.code == KeyCode::Char('g') && key.modifiers.is_empty() {
             self.waiting_g = true;
@@ -161,6 +337,148 @@ impl MoraEditor {
         action
     }
 
+    fn handle_emacs(&mut self, key: KeyEvent) -> KeyAction {
+        match (key.modifiers, key.code) {
+            (KeyModifiers::CONTROL, KeyCode::Char('x')) => {
+                self.waiting_prefix = Some('x');
+                KeyAction::None
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('c')) => {
+                self.waiting_prefix = Some('c');
+                KeyAction::None
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('h')) => {
+                self.waiting_register = Some('h');
+                self.status_message = "Help (C-h): ".to_string();
+                KeyAction::None
+            }
+
+            (KeyModifiers::CONTROL, KeyCode::Char('b')) => KeyAction::MoveLeft,
+            (KeyModifiers::CONTROL, KeyCode::Char('f')) => KeyAction::MoveRight,
+            (KeyModifiers::CONTROL, KeyCode::Char('p')) => KeyAction::MoveUp,
+            (KeyModifiers::CONTROL, KeyCode::Char('n')) => KeyAction::MoveDown,
+            (KeyModifiers::CONTROL, KeyCode::Char('a')) => KeyAction::MoveLineStart,
+            (KeyModifiers::CONTROL, KeyCode::Char('e')) => KeyAction::MoveLineEnd,
+            (KeyModifiers::CONTROL, KeyCode::Char('v')) => KeyAction::PageDown,
+            (KeyModifiers::ALT, KeyCode::Char('v')) => KeyAction::PageUp,
+
+            (KeyModifiers::ALT, KeyCode::Char('f')) => KeyAction::MoveWordForward,
+            (KeyModifiers::ALT, KeyCode::Char('b')) => KeyAction::MoveWordBackward,
+            (KeyModifiers::ALT, KeyCode::Char('a')) => KeyAction::MoveFileStart,
+            (KeyModifiers::ALT, KeyCode::Char('e')) | (KeyModifiers::ALT, KeyCode::Char('>')) => {
+                KeyAction::MoveFileEnd
+            }
+            (KeyModifiers::ALT, KeyCode::Char('<')) => KeyAction::MoveFileStart,
+
+            (KeyModifiers::CONTROL, KeyCode::Char('d')) => KeyAction::DeleteForward,
+            (KeyModifiers::CONTROL, KeyCode::Char('k')) => KeyAction::KillLine,
+            (KeyModifiers::ALT, KeyCode::Char('d')) => KeyAction::KillWordForward,
+            (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
+                if self.mark_ring.is_active() {
+                    KeyAction::KillRegion
+                } else {
+                    KeyAction::DeleteWordBackward
+                }
+            }
+            (KeyModifiers::ALT, KeyCode::Char('w')) => {
+                if self.mark_ring.is_active() {
+                    KeyAction::CopyRegion
+                } else {
+                    KeyAction::None
+                }
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('y')) => KeyAction::Yank,
+            (KeyModifiers::ALT, KeyCode::Char('y')) => KeyAction::YankPop,
+
+            (KeyModifiers::CONTROL, KeyCode::Char('/'))
+            | (KeyModifiers::CONTROL, KeyCode::Char('_')) => KeyAction::Undo,
+            (KeyModifiers::CONTROL, KeyCode::Char('g')) => {
+                self.mode = EditorMode::Normal;
+                self.command_input.clear();
+                KeyAction::None
+            }
+
+            (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
+                KeyAction::SetMode(EditorMode::SearchForward)
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('r')) => {
+                KeyAction::SetMode(EditorMode::SearchBackward)
+            }
+
+            (KeyModifiers::CONTROL, KeyCode::Char(' ')) | (_, KeyCode::Char(' ')) => {
+                self.mark_ring.push(self.buffer.cursor);
+                self.mark_ring.set_active(true);
+                self.status_message = "Mark set".to_string();
+                KeyAction::None
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('u'))
+            | (KeyModifiers::ALT, KeyCode::Char('u')) => {
+                if self.mark_ring.is_active() {
+                    self.mark_ring.set_active(false);
+                    self.status_message = "Mark deactivated".to_string();
+                } else {
+                    self.mark_ring.push(self.buffer.cursor);
+                    self.mark_ring.set_active(true);
+                    self.status_message = "Mark set".to_string();
+                }
+                KeyAction::None
+            }
+            (KeyModifiers::ALT, KeyCode::Char('x')) => {
+                self.mode = EditorMode::Command;
+                self.command_input = String::new();
+                KeyAction::None
+            }
+
+            (KeyModifiers::ALT, KeyCode::Char('w')) | (KeyModifiers::CONTROL, KeyCode::Char('w')) => {
+                KeyAction::Save
+            }
+
+            (KeyModifiers::CONTROL, KeyCode::Char('l')) => {
+                self.status_message = "Recentered".to_string();
+                let half = self.view.height / 2;
+                let row = self.buffer.cursor.row;
+                self.view.scroll_top = row.saturating_sub(half);
+                KeyAction::None
+            }
+
+            (KeyModifiers::ALT, KeyCode::Char('q')) => {
+                self.toggle_record_macro();
+                KeyAction::None
+            }
+
+            (_, KeyCode::Tab) => {
+                if self.mark_ring.is_active() {
+                    let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                    let b = self.buffer.cursor;
+                    let rect = RectRegion::from_corners(a, b);
+                    self.mode = EditorMode::Normal;
+                    self.mark_ring.set_active(false);
+                    return KeyAction::IndentRegion(rect);
+                }
+                KeyAction::IndentLine
+            }
+
+            (KeyModifiers::CONTROL, KeyCode::Char('q')) => KeyAction::Quit,
+
+            (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
+
+            (_, KeyCode::Char(c)) => KeyAction::InsertChar(c),
+            (_, KeyCode::Enter) => KeyAction::InsertNewline,
+            (_, KeyCode::Tab) => KeyAction::InsertChar('\t'),
+            (_, KeyCode::Backspace) => KeyAction::DeleteBackward,
+            (_, KeyCode::Delete) => KeyAction::DeleteForward,
+            (_, KeyCode::Left) => KeyAction::MoveLeft,
+            (_, KeyCode::Right) => KeyAction::MoveRight,
+            (_, KeyCode::Up) => KeyAction::MoveUp,
+            (_, KeyCode::Down) => KeyAction::MoveDown,
+            (_, KeyCode::Home) => KeyAction::MoveLineStart,
+            (_, KeyCode::End) => KeyAction::MoveLineEnd,
+            (_, KeyCode::PageUp) => KeyAction::PageUp,
+            (_, KeyCode::PageDown) => KeyAction::PageDown,
+            _ => KeyAction::None,
+        }
+    }
+
     fn handle_replace_char(&mut self, key: KeyEvent) -> KeyAction {
         self.mode = EditorMode::Normal;
         match key.code {
@@ -172,13 +490,19 @@ impl MoraEditor {
 
     fn handle_visual(&mut self, key: KeyEvent) -> KeyAction {
         match (key.modifiers, key.code) {
-            (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
+            (_, KeyCode::Esc) => {
+                self.mark_ring.set_active(false);
+                KeyAction::SetMode(EditorMode::Normal)
+            }
             (_, KeyCode::Char('h')) | (_, KeyCode::Left) => KeyAction::MoveLeft,
             (_, KeyCode::Char('j')) | (_, KeyCode::Down) => KeyAction::MoveDown,
             (_, KeyCode::Char('k')) | (_, KeyCode::Up) => KeyAction::MoveUp,
             (_, KeyCode::Char('l')) | (_, KeyCode::Right) => KeyAction::MoveRight,
-            (_, KeyCode::Char('d')) | (_, KeyCode::Char('x')) => KeyAction::DeleteLine,
-            (_, KeyCode::Char('y')) => KeyAction::YankLine,
+            (_, KeyCode::Char('d')) | (_, KeyCode::Char('x')) => KeyAction::KillRegion,
+            (_, KeyCode::Char('y')) => KeyAction::CopyRegion,
+            (_, KeyCode::Char('w')) | (_, KeyCode::Char('W')) => KeyAction::MoveWordForward,
+            (_, KeyCode::Char('b')) | (_, KeyCode::Char('B')) => KeyAction::MoveWordBackward,
+            (_, KeyCode::Char('D')) => KeyAction::KillLine,
             _ => KeyAction::None,
         }
     }
@@ -234,16 +558,43 @@ impl MoraEditor {
             KeyAction::DeleteBackward => self.buffer.delete_backward(),
             KeyAction::DeleteForward => self.buffer.delete_forward(),
             KeyAction::DeleteLine => {
-                self.yank_current_line();
+                self.kill_line_to_ring();
                 self.buffer.delete_line();
             }
             KeyAction::DeleteToEol => self.buffer.delete_to_eol(),
-            KeyAction::DeleteWordForward => {
+            KeyAction::KillLine => {
+                let row = self.buffer.cursor.row;
+                let col = self.buffer.cursor.col;
+                let line = &self.buffer.lines[row];
+                let killed = if col < line.len() {
+                    let killed_part = line[col..].to_string();
+                    self.kill_ring.kill(&killed_part, false);
+                    self.buffer.delete_to_eol();
+                    killed_part
+                } else {
+                    if row + 1 < self.buffer.line_count() {
+                        let killed_part = "\n".to_string();
+                        self.kill_ring.kill(&killed_part, false);
+                        let next = self.buffer.lines.remove(row + 1);
+                        self.buffer.lines[row].push_str(&next);
+                        self.buffer.modified = true;
+                        killed_part
+                    } else {
+                        String::new()
+                    }
+                };
+                if !killed.is_empty() {
+                    self.last_yank_was_kill = true;
+                }
+            }
+            KeyAction::KillWordForward => {
                 let start = self.buffer.cursor.col;
                 self.buffer.move_word_forward();
                 let end = self.buffer.cursor.col;
                 if end > start {
                     let row = self.buffer.cursor.row;
+                    let killed: String = self.buffer.lines[row][start..end].to_string();
+                    self.kill_ring.kill(&killed, false);
                     for _ in 0..(end - start) {
                         if start < self.buffer.lines[row].len() {
                             self.buffer.lines[row].remove(start);
@@ -251,6 +602,184 @@ impl MoraEditor {
                     }
                     self.buffer.cursor.col = start;
                     self.buffer.modified = true;
+                    self.last_yank_was_kill = true;
+                }
+            }
+            KeyAction::DeleteWordBackward => {
+                let line = self.buffer.lines[self.buffer.cursor.row].clone();
+                let col = self.buffer.cursor.col;
+                if col > 0 {
+                    let end = line[..col].chars().count();
+                    let mut i = end;
+                    while i > 0 && line[..col].chars().nth(i - 1).map_or(false, |c| c.is_whitespace()) {
+                        i -= 1;
+                    }
+                    while i > 0 {
+                        let c = line[..col].chars().nth(i - 1).unwrap();
+                        if c.is_whitespace() || !c.is_alphanumeric() {
+                            break;
+                        }
+                        i -= 1;
+                    }
+                    let del_start = line.char_indices().nth(i).map(|(p, _)| p).unwrap_or(0);
+                    let killed = line[del_start..col].to_string();
+                    self.kill_ring.kill(&killed, false);
+                    self.buffer.push_undo_snapshot();
+                    self.buffer.lines[self.buffer.cursor.row] =
+                        line[..del_start].to_string() + &line[col..];
+                    self.buffer.cursor.col = del_start;
+                    self.buffer.modified = true;
+                }
+            }
+            KeyAction::DeleteWordForward => {
+                self.buffer.delete_forward();
+            }
+
+            KeyAction::KillRegion => {
+                if self.mark_ring.is_active() {
+                    let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                    let b = self.buffer.cursor;
+                    if a != b {
+                        let (start, end) = if a.row < b.row || (a.row == b.row && a.col <= b.col) {
+                            (a, b)
+                        } else {
+                            (b, a)
+                        };
+                        let killed = self.extract_text_between(start, end);
+                        self.kill_ring.kill(&killed, false);
+
+                        self.buffer.push_undo_snapshot();
+                        if start.row == end.row {
+                            let line = &mut self.buffer.lines[start.row];
+                            *line = line[..start.col].to_string() + &line[end.col..];
+                        } else {
+                            let first = &self.buffer.lines[start.row];
+                            let last = &self.buffer.lines[end.row];
+                            self.buffer.lines[start.row] = first[..start.col].to_string() + &last[end.col..];
+                            for _ in (start.row + 1..=end.row).rev() {
+                                self.buffer.lines.remove(start.row + 1);
+                            }
+                        }
+                        self.buffer.cursor = start;
+                        self.buffer.modified = true;
+                    }
+                    self.mark_ring.set_active(false);
+                    self.mode = EditorMode::Normal;
+                    self.last_yank_was_kill = true;
+                }
+            }
+            KeyAction::CopyRegion => {
+                if self.mark_ring.is_active() {
+                    let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                    let b = self.buffer.cursor;
+                    if a != b {
+                        let (start, end) = if a.row < b.row || (a.row == b.row && a.col <= b.col) {
+                            (a, b)
+                        } else {
+                            (b, a)
+                        };
+                        let text = self.extract_text_between(start, end);
+                        self.kill_ring.kill(&text, false);
+                        self.status_message = format!("Copied {} chars", text.len());
+                    }
+                    self.mark_ring.set_active(false);
+                    self.mode = EditorMode::Normal;
+                }
+            }
+
+            KeyAction::KillRect => {
+                if self.mark_ring.is_active() {
+                    let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                    let b = self.buffer.cursor;
+                    let rect = RectRegion::from_corners(a, b);
+                    let killed = rectangle::kill_rectangle(&mut self.buffer, &rect);
+                    let text = killed.join("\n");
+                    self.kill_ring.kill(&text, true);
+                    self.registers.set('"', RegisterValue::Rectangle(killed));
+                    self.status_message = format!("Killed rectangle");
+                    self.mark_ring.set_active(false);
+                    self.mode = EditorMode::Normal;
+                    self.last_yank_was_kill = true;
+                }
+            }
+            KeyAction::YankRect => {
+                if let Some(RegisterValue::Rectangle(killed)) = self.registers.get('"') {
+                    let a = self.buffer.cursor;
+                    let b = self.buffer.cursor;
+                    let rect = RectRegion::from_corners(a, b);
+                    rectangle::yank_rectangle(&mut self.buffer, &rect, killed);
+                    self.status_message = format!("Yanked rectangle");
+                }
+            }
+            KeyAction::ClearRect => {
+                if self.mark_ring.is_active() {
+                    let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                    let b = self.buffer.cursor;
+                    let rect = RectRegion::from_corners(a, b);
+                    rectangle::clear_rectangle(&mut self.buffer, &rect);
+                    self.status_message = format!("Cleared rectangle");
+                    self.mark_ring.set_active(false);
+                    self.mode = EditorMode::Normal;
+                }
+            }
+            KeyAction::InsertRect => {
+                if self.mark_ring.is_active() {
+                    let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
+                    let b = self.buffer.cursor;
+                    let rect = RectRegion::from_corners(a, b);
+                    let input = self.command_input.clone();
+                    if !input.is_empty() {
+                        rectangle::insert_rectangle(&mut self.buffer, &rect, &input);
+                        self.status_message = "Inserted rectangle".to_string();
+                    }
+                    self.mark_ring.set_active(false);
+                    self.mode = EditorMode::Normal;
+                    self.command_input.clear();
+                }
+            }
+            KeyAction::IndentRegion(rect) => {
+                for row in rect.start_row..=rect.end_row.min(self.buffer.lines.len() - 1) {
+                    self.buffer.lines[row].insert_str(0, "    ");
+                }
+                self.buffer.modified = true;
+            }
+
+            KeyAction::KillAppend => {
+                self.kill_ring.append_kill("\n", false);
+                self.last_yank_was_kill = true;
+            }
+
+            KeyAction::Yank => {
+                if let Some(entry) = self.kill_ring.yank() {
+                    let text = &entry.text;
+                    let row = self.buffer.cursor.row + 1;
+                    let contains_nl = text.contains('\n');
+                    if contains_nl || entry.rect {
+                        let lines: Vec<&str> = text.split('\n').collect();
+                        for (i, line) in lines.iter().enumerate() {
+                            self.buffer.lines.insert(row + i, line.to_string());
+                        }
+                        self.buffer.cursor.row = row;
+                        self.buffer.cursor.col = 0;
+                    } else {
+                        let line = &mut self.buffer.lines[self.buffer.cursor.row];
+                        let col = self.buffer.cursor.col;
+                        line.insert_str(col, text);
+                        self.buffer.cursor.col += text.len();
+                    }
+                    self.buffer.modified = true;
+                    self.status_message =
+                        format!("Yanked from kill-ring ({} entries)", self.kill_ring.len());
+                }
+            }
+            KeyAction::YankPop => {
+                let text = self.kill_ring.yank_pop_forward().map(|e| e.text.clone());
+                if let Some(ref t) = text {
+                    self.replace_last_yank(t);
+                    self.status_message = format!(
+                        "Yank-pop ({})",
+                        self.kill_ring.len()
+                    );
                 }
             }
 
@@ -258,27 +787,27 @@ impl MoraEditor {
             KeyAction::Redo => self.buffer.redo(),
 
             KeyAction::SetMode(mode) => {
+                if mode == EditorMode::Visual && self.mode != EditorMode::Visual {
+                    self.mark_ring.push(self.buffer.cursor);
+                    self.mark_ring.set_active(true);
+                }
                 self.mode = mode;
                 if mode == EditorMode::Normal {
                     self.command_input.clear();
                     self.waiting_g = false;
                     self.waiting_op = None;
+                    if !self.mark_ring.is_active() {
+                        self.mark_ring.clear();
+                    }
                 }
             }
 
-            KeyAction::Save => {
-                if self.buffer.path.is_some() {
-                    match self.buffer.save() {
-                        Ok(()) => self.status_message = format!("Saved: {}", self.buffer.filename()),
-                        Err(e) => self.status_message = format!("Save error: {}", e),
-                    }
-                } else {
-                    self.mode = EditorMode::Command;
-                    self.command_input = "w ".to_string();
-                }
-            }
+            KeyAction::Save => self.save_current_buffer(),
             KeyAction::SaveAs => {
-                let path_str = self.command_input.strip_prefix("w ").unwrap_or(&self.command_input);
+                let path_str = self
+                    .command_input
+                    .strip_prefix("w ")
+                    .unwrap_or(&self.command_input);
                 let path = PathBuf::from(path_str.trim());
                 match self.buffer.save_as(&path) {
                     Ok(()) => self.status_message = format!("Saved: {}", path.display()),
@@ -289,7 +818,7 @@ impl MoraEditor {
             }
             KeyAction::Quit => {
                 if self.buffer.modified {
-                    self.status_message = "Unsaved changes! Use :q! to force quit".to_string();
+                    self.status_message = "Unsaved changes! Use C-x C-c to force quit".to_string();
                 } else {
                     self.quit_requested = true;
                 }
@@ -312,8 +841,9 @@ impl MoraEditor {
                 self.mode = EditorMode::Normal;
                 self.command_input.clear();
             }
+
             KeyAction::FindForward(query) => {
-                self.last_find_forward = Some(query.clone());
+                self.last_search_forward = Some(query.clone());
                 if !self.buffer.find_forward(&query) {
                     self.status_message = format!("Pattern not found: {}", query);
                 }
@@ -321,7 +851,7 @@ impl MoraEditor {
                 self.command_input.clear();
             }
             KeyAction::FindBackward(query) => {
-                self.last_find_backward = Some(query.clone());
+                self.last_search_backward = Some(query.clone());
                 if !self.buffer.find_backward(&query) {
                     self.status_message = format!("Pattern not found: {}", query);
                 }
@@ -330,16 +860,14 @@ impl MoraEditor {
             }
             KeyAction::RepeatFind(forward) => {
                 if forward {
-                    if let Some(ref q) = self.last_find_forward.clone() {
+                    if let Some(ref q) = self.last_search_forward.clone() {
                         if !self.buffer.find_forward(q) {
                             self.status_message = format!("Pattern not found: {}", q);
                         }
                     }
-                } else {
-                    if let Some(ref q) = self.last_find_backward.clone() {
-                        if !self.buffer.find_backward(q) {
-                            self.status_message = format!("Pattern not found: {}", q);
-                        }
+                } else if let Some(ref q) = self.last_search_backward.clone() {
+                    if !self.buffer.find_backward(q) {
+                        self.status_message = format!("Pattern not found: {}", q);
                     }
                 }
             }
@@ -358,14 +886,20 @@ impl MoraEditor {
             }
 
             KeyAction::YankLine => {
-                self.yank_current_line();
+                let text = self.buffer.lines[self.buffer.cursor.row].clone();
+                self.kill_ring.kill(&text, false);
                 self.status_message = "Yanked line".to_string();
             }
             KeyAction::PasteAfter => {
-                if !self.clipboard.lines.is_empty() {
+                if let Some(entry) = self.kill_ring.yank() {
+                    let text = &entry.text;
                     let paste_row = self.buffer.cursor.row + 1;
-                    for (i, line) in self.clipboard.lines.iter().enumerate() {
-                        self.buffer.lines.insert(paste_row + i, line.clone());
+                    if text.contains('\n') {
+                        for (i, line) in text.split('\n').enumerate() {
+                            self.buffer.lines.insert(paste_row + i, line.to_string());
+                        }
+                    } else {
+                        self.buffer.lines.insert(paste_row, text.to_string());
                     }
                     self.buffer.modified = true;
                     self.buffer.cursor.row = paste_row;
@@ -423,30 +957,64 @@ impl MoraEditor {
                     let char_idx = line[..col].chars().count();
                     let chars: Vec<char> = line.chars().collect();
                     if char_idx < chars.len() {
-                        let mut new_line = String::new();
-                        for (i, ch) in chars.iter().enumerate() {
-                            if i == char_idx {
-                                new_line.push(c);
-                            } else {
-                                new_line.push(*ch);
-                            }
-                        }
-                        *line = new_line;
+                        line.replace_range(
+                            line.char_indices().nth(char_idx).map(|(i, _)| i).unwrap_or(col)..
+                            line.char_indices().nth(char_idx + 1).map(|(i, _)| i).unwrap_or(line.len()),
+                            &c.to_string(),
+                        );
                         self.buffer.modified = true;
                     }
                 }
             }
 
             KeyAction::ToggleVisual => {
-                self.mode = if self.mode == EditorMode::Visual {
-                    EditorMode::Normal
+                if self.mode == EditorMode::Visual {
+                    self.mark_ring.set_active(false);
+                    self.mode = EditorMode::Normal;
                 } else {
-                    EditorMode::Visual
-                };
+                    self.mark_ring.push(self.buffer.cursor);
+                    self.mark_ring.set_active(true);
+                    self.mode = EditorMode::Visual;
+                }
             }
-
             KeyAction::SwitchToEmacs => {
                 self.mode = EditorMode::Emacs;
+            }
+
+            KeyAction::StartMacro => {
+                if self.macro_state.is_recording() {
+                    self.macro_state.stop_recording();
+                    self.status_message = format!(
+                        "Macro recording stopped ({} keys)",
+                        self.macro_state
+                            .store_in_register('e')
+                            .map(|v| v.len())
+                            .unwrap_or(0)
+                    );
+                } else {
+                    self.macro_state.start_recording('e');
+                    self.status_message = "Recording macro (C-x ) to stop)".to_string();
+                }
+            }
+            KeyAction::EndMacro => {
+                if self.macro_state.is_recording() {
+                    self.macro_state.stop_recording();
+                    let events = self.macro_state.store_in_register('e').unwrap_or_default();
+                    self.registers.set('e', RegisterValue::Macro(events));
+                    let len = self.registers.get('e').map(|v| match v {
+                        RegisterValue::Macro(e) => e.len(),
+                        _ => 0,
+                    }).unwrap_or(0);
+                    self.status_message = format!("Macro recording stopped ({} keys)", len);
+                }
+            }
+            KeyAction::CallMacro => {
+                let saved_cmd = self.command_input.clone();
+                if let Some(events) = self.macro_state.store_in_register('e') {
+                    self.macro_state.load_from_register('e', &events);
+                    self.macro_state.start_playback('e');
+                }
+                self.command_input = saved_cmd;
             }
         }
     }
@@ -456,7 +1024,7 @@ impl MoraEditor {
         let action = match self.mode {
             EditorMode::Command => {
                 let trimmed = input.trim();
-                if trimmed == "wq" || trimmed == "x" || trimmed == "wq!" {
+                if trimmed == "wq" || trimmed == "x" {
                     if self.buffer.path.is_some() {
                         let _ = self.buffer.save();
                     }
@@ -480,8 +1048,94 @@ impl MoraEditor {
         }
     }
 
-    fn yank_current_line(&mut self) {
-        self.clipboard.lines = vec![self.buffer.lines[self.buffer.cursor.row].clone()];
+    fn extract_text_between(&self, start: crate::app::mora::buffer::Cursor, end: crate::app::mora::buffer::Cursor) -> String {
+        if start.row == end.row {
+            self.buffer.lines[start.row][start.col..end.col].to_string()
+        } else {
+            let mut result = self.buffer.lines[start.row][start.col..].to_string();
+            result.push('\n');
+            for row in (start.row + 1)..end.row {
+                result.push_str(&self.buffer.lines[row]);
+                result.push('\n');
+            }
+            result.push_str(&self.buffer.lines[end.row][..end.col]);
+            result
+        }
+    }
+
+    fn toggle_record_macro(&mut self) {
+        if self.macro_state.is_recording() {
+            self.macro_state.stop_recording();
+            let events = self.macro_state.store_in_register('e').unwrap_or_default();
+            self.registers.set('e', RegisterValue::Macro(events));
+            self.status_message = "Macro recording stopped".to_string();
+        } else {
+            self.macro_state.start_recording('e');
+            self.status_message = "Recording macro...".to_string();
+        }
+    }
+
+    fn repeated_action(&mut self, action: KeyAction, n: usize) -> KeyAction {
+        for _ in 0..n - 1 {
+            self.execute_action(action.clone());
+        }
+        action
+    }
+
+    fn save_current_buffer(&mut self) {
+        if self.buffer.path.is_some() {
+            match self.buffer.save() {
+                Ok(()) => self.status_message = format!("Saved: {}", self.buffer.filename()),
+                Err(e) => self.status_message = format!("Save error: {}", e),
+            }
+        } else {
+            self.mode = EditorMode::Command;
+            self.command_input = "w ".to_string();
+        }
+    }
+
+    fn kill_line_to_ring(&mut self) {
+        let row = self.buffer.cursor.row;
+        if row < self.buffer.lines.len() {
+            let text = self.buffer.lines[row].clone();
+            self.kill_ring.kill(&text, false);
+            self.last_yank_was_kill = true;
+        }
+    }
+
+    fn replace_last_yank(&mut self, new_text: &str) {
+        let row = self.buffer.cursor.row;
+        if row > 0 && row <= self.buffer.lines.len() {
+            self.buffer.lines.remove(row - 1);
+            if new_text.contains('\n') {
+                for (i, line) in new_text.split('\n').enumerate() {
+                    self.buffer.lines.insert(row - 1 + i, line.to_string());
+                }
+            } else {
+                self.buffer.lines.insert(row - 1, new_text.to_string());
+            }
+            self.buffer.cursor.row = row - 1;
+            self.buffer.cursor.col = 0;
+            self.buffer.modified = true;
+        } else if row < self.buffer.lines.len() {
+            let col = self.buffer.cursor.col;
+            let yank_len = self.kill_ring.yank().map(|e| e.text.len()).unwrap_or(0);
+            let start = col.saturating_sub(yank_len);
+            if start < col && col <= self.buffer.lines[row].len() {
+                self.buffer.lines[row].replace_range(start..col, new_text);
+                self.buffer.modified = true;
+            }
+        }
+    }
+
+    pub fn process_macro_events(&mut self) -> Option<KeyEvent> {
+        while let Some(ev) = self.macro_state.next_event() {
+            if ev.code == KeyCode::Esc || ev.code == KeyCode::Enter {
+                return Some(ev);
+            }
+        }
+        self.macro_state.cancel_playback();
+        None
     }
 }
 
