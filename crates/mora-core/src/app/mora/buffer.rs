@@ -963,6 +963,80 @@ impl Buffer {
         (start, end)
     }
 
+    pub fn inner_bracket_range(&self, open: char, close: char) -> (usize, usize) {
+        let line = self.current_line();
+        let col = self.cursor.col;
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            return (col, col);
+        }
+        // Find the opening bracket at or before cursor
+        let mut open_pos = col;
+        while open_pos < chars.len() && chars[open_pos] != open {
+            if open_pos == 0 { return (col, col); }
+            open_pos -= 1;
+        }
+        if open_pos >= chars.len() || chars[open_pos] != open {
+            // Search backward
+            open_pos = col;
+            loop {
+                if chars[open_pos] == open { break; }
+                if open_pos == 0 { return (col, col); }
+                open_pos -= 1;
+            }
+        }
+        // Find matching close bracket
+        let mut depth = 1;
+        let mut pos = open_pos + 1;
+        while pos < chars.len() && depth > 0 {
+            if chars[pos] == open { depth += 1; }
+            if chars[pos] == close { depth -= 1; }
+            if depth == 0 { break; }
+            pos += 1;
+        }
+        if depth != 0 { return (col, col); }
+        let close_pos = pos;
+        if open_pos + 1 >= close_pos {
+            return (open_pos + 1, open_pos + 1);
+        }
+        (open_pos + 1, close_pos)
+    }
+
+    pub fn around_bracket_range(&self, open: char, close: char) -> (usize, usize) {
+        let line = self.current_line();
+        let col = self.cursor.col;
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            return (col, col);
+        }
+        // Find the opening bracket at or before cursor
+        let mut open_pos = col;
+        while open_pos < chars.len() && chars[open_pos] != open {
+            if open_pos == 0 { return (col, col); }
+            open_pos -= 1;
+        }
+        if open_pos >= chars.len() || chars[open_pos] != open {
+            open_pos = col;
+            loop {
+                if chars[open_pos] == open { break; }
+                if open_pos == 0 { return (col, col); }
+                open_pos -= 1;
+            }
+        }
+        // Find matching close bracket
+        let mut depth = 1;
+        let mut pos = open_pos + 1;
+        while pos < chars.len() && depth > 0 {
+            if chars[pos] == open { depth += 1; }
+            if chars[pos] == close { depth -= 1; }
+            if depth == 0 { break; }
+            pos += 1;
+        }
+        if depth != 0 { return (col, col); }
+        let close_pos = pos;
+        (open_pos, close_pos + 1)
+    }
+
     pub fn around_word_range(&self) -> (usize, usize) {
         let line = self.current_line();
         let col = self.cursor.col;

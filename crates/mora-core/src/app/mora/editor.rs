@@ -389,18 +389,42 @@ impl MoraEditor {
             let op = self.waiting_op.take();
             let inner = self.text_object_inner;
             return if let KeyCode::Char(c) = key.code {
-                match (op, inner, c) {
-                    (Some(PendingOp::Delete), true, 'w') => KeyAction::DeleteInnerWord,
-                    (Some(PendingOp::Delete), false, 'w') => KeyAction::DeleteAroundWord,
-                    (Some(PendingOp::Change), true, 'w') => {
-                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
-                        KeyAction::DeleteInnerWord
+                let bracket_pair = match c {
+                    '(' | ')' => Some(('(', ')')),
+                    '{' | '}' => Some(('{', '}')),
+                    '[' | ']' => Some(('[', ']')),
+                    '"' => Some(('"', '"')),
+                    '\'' => Some(('\'', '\'')),
+                    '`' => Some(('`', '`')),
+                    _ => None,
+                };
+                if let Some((open, close)) = bracket_pair {
+                    match op {
+                        Some(PendingOp::Delete) => {
+                            if inner { KeyAction::DeleteInnerBrackets(open, close) }
+                            else { KeyAction::DeleteAroundBrackets(open, close) }
+                        }
+                        Some(PendingOp::Change) => {
+                            self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                            if inner { KeyAction::DeleteInnerBrackets(open, close) }
+                            else { KeyAction::DeleteAroundBrackets(open, close) }
+                        }
+                        _ => KeyAction::None,
                     }
-                    (Some(PendingOp::Change), false, 'w') => {
-                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
-                        KeyAction::DeleteAroundWord
+                } else {
+                    match (op, inner, c) {
+                        (Some(PendingOp::Delete), true, 'w') => KeyAction::DeleteInnerWord,
+                        (Some(PendingOp::Delete), false, 'w') => KeyAction::DeleteAroundWord,
+                        (Some(PendingOp::Change), true, 'w') => {
+                            self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                            KeyAction::DeleteInnerWord
+                        }
+                        (Some(PendingOp::Change), false, 'w') => {
+                            self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                            KeyAction::DeleteAroundWord
+                        }
+                        _ => KeyAction::None,
                     }
-                    _ => KeyAction::None,
                 }
             } else {
                 KeyAction::None
@@ -1010,23 +1034,31 @@ impl MoraEditor {
         if self.waiting_visual_text_object {
             self.waiting_visual_text_object = false;
             let inner = self.text_object_inner;
-            if let KeyCode::Char('w') | KeyCode::Char('W') = key.code {
-                let (start, end) = if inner {
-                    self.buffer.inner_word_range()
-                } else {
-                    self.buffer.around_word_range()
+            if let KeyCode::Char(c) = key.code {
+                let bracket_pair = match c {
+                    '(' | ')' => Some(('(', ')')),
+                    '{' | '}' => Some(('{', '}')),
+                    '[' | ']' => Some(('[', ']')),
+                    '"' => Some(('"', '"')),
+                    '\'' => Some(('\'', '\'')),
+                    '`' => Some(('`', '`')),
+                    _ => None,
                 };
-                let row = self.buffer.cursor.row;
+                let (start, end) = if let Some((open, close)) = bracket_pair {
+                    if inner { self.buffer.inner_bracket_range(open, close) }
+                    else { self.buffer.around_bracket_range(open, close) }
+                } else if c == 'w' || c == 'W' {
+                    if inner { self.buffer.inner_word_range() }
+                    else { self.buffer.around_word_range() }
+                } else {
+                    return KeyAction::None;
+                };
                 let mark = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
-                // Expand selection: move cursor to include the word range
-                // If mark is before word start, keep mark and move cursor to word end
-                // If mark is after word end, keep mark and move cursor to word start
                 if mark.col <= start {
                     self.buffer.cursor.col = end;
                 } else {
                     self.buffer.cursor.col = start;
                 }
-                return KeyAction::None;
             }
             return KeyAction::None;
         }
@@ -1316,6 +1348,20 @@ impl MoraEditor {
             KeyAction::ChangeAroundWord => {
                 self.record_change();
                 let (start, end) = self.buffer.around_word_range();
+                if end > start {
+                    self.buffer.delete_range(start, end);
+                }
+            }
+            KeyAction::DeleteInnerBrackets(open, close) => {
+                self.record_change();
+                let (start, end) = self.buffer.inner_bracket_range(open, close);
+                if end > start {
+                    self.buffer.delete_range(start, end);
+                }
+            }
+            KeyAction::DeleteAroundBrackets(open, close) => {
+                self.record_change();
+                let (start, end) = self.buffer.around_bracket_range(open, close);
                 if end > start {
                     self.buffer.delete_range(start, end);
                 }

@@ -148,6 +148,8 @@ pub enum KeyAction {
     ChangeInnerWord,
     ChangeAroundWord,
     DeleteToEndOfWord,
+    DeleteInnerBrackets(char, char),
+    DeleteAroundBrackets(char, char),
 }
 
 impl KeyAction {
