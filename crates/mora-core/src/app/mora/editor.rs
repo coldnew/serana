@@ -187,6 +187,8 @@ impl MoraEditor {
                 (KeyModifiers::CONTROL, KeyCode::Char('l')) => KeyAction::LowercaseRegion,
                 // C-x C-=: goto last change
                 (KeyModifiers::CONTROL, KeyCode::Char('=')) => KeyAction::GotoLastChange,
+                // C-x C-;: cleanup buffer (delete trailing whitespace)
+                (KeyModifiers::CONTROL, KeyCode::Char(';')) => KeyAction::CleanupBuffer,
                 _ => KeyAction::None,
             },
             'c' => match key.code {
@@ -1359,6 +1361,11 @@ impl MoraEditor {
                 } else {
                     self.status_message = "No more last changes".to_string();
                 }
+            }
+            KeyAction::CleanupBuffer => {
+                self.record_change();
+                self.buffer.cleanup_buffer();
+                self.status_message = "Cleaned up buffer".to_string();
             }
         }
     }

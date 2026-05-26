@@ -800,6 +800,17 @@ impl Buffer {
         self.cursor.col = 0;
         self.modified = true;
     }
+
+    pub fn cleanup_buffer(&mut self) {
+        self.push_undo();
+        for line in &mut self.lines {
+            let trimmed = line.trim_end();
+            if trimmed.len() != line.len() {
+                *line = trimmed.to_string();
+            }
+        }
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
