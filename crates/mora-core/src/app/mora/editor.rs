@@ -468,6 +468,8 @@ impl MoraEditor {
             (KeyModifiers::ALT, KeyCode::Char('t')) => KeyAction::TransposeWord,
             // Emacs: M-c capitalize word
             (KeyModifiers::ALT, KeyCode::Char('c')) => KeyAction::CapitalizeWord,
+            // Emacs: M-l lowercase word
+            (KeyModifiers::ALT, KeyCode::Char('l')) => KeyAction::LowercaseWord,
 
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
@@ -1091,6 +1093,7 @@ impl MoraEditor {
             KeyAction::TransposeLine => self.buffer.transpose_line(),
             KeyAction::CapitalizeWord => self.buffer.capitalize_word(),
             KeyAction::UppercaseWord => self.buffer.uppercase_word(),
+            KeyAction::LowercaseWord => self.buffer.lowercase_word(),
         }
     }
 
