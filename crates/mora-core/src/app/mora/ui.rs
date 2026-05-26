@@ -106,8 +106,14 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
         (None, None)
     };
 
-    for (view_row, line_idx) in (render_start..render_end).enumerate() {
-        let y = area.y + view_row as u16;
+    let mut display_row: u16 = 0;
+    for line_idx in render_start..render_end {
+        // Skip folded lines
+        if text_buf.is_line_folded(line_idx) {
+            continue;
+        }
+
+        let y = area.y + display_row;
         if y >= area.y + area.height {
             break;
         }
@@ -222,9 +228,11 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
                 });
             display_col += 1;
         }
+
+        display_row += 1;
     }
 
-    for view_row in (vis_end - vis_start) as u16..area.height {
+    for view_row in display_row..area.height {
         let y = area.y + view_row;
         if y >= area.y + area.height {
             break;

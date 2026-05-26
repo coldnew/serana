@@ -206,6 +206,8 @@ impl MoraEditor {
                 (KeyModifiers::CONTROL, KeyCode::Char(';')) => KeyAction::CleanupBuffer,
                 // C-x C-m: dos2unix
                 (KeyModifiers::CONTROL, KeyCode::Char('m')) => KeyAction::Dos2Unix,
+                // C-x C-f: toggle fold
+                (KeyModifiers::CONTROL, KeyCode::Char('f')) => KeyAction::ToggleFold,
                 // C-x n: narrow prefix
                 (_, KeyCode::Char('n')) => {
                     self.waiting_prefix2 = Some('n');
@@ -1682,6 +1684,14 @@ impl MoraEditor {
                 self.record_change();
                 self.buffer.unix2dos();
                 self.status_message = "Converted to DOS line endings".to_string();
+            }
+            KeyAction::ToggleFold => {
+                self.buffer.toggle_fold();
+                if self.buffer.is_folded() {
+                    self.status_message = format!("Folded at indent level {}", self.buffer.fold_level.unwrap_or(0));
+                } else {
+                    self.status_message = "Unfolded".to_string();
+                }
             }
         }
     }

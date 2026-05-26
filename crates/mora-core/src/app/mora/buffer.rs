@@ -26,6 +26,8 @@ pub struct Buffer {
     redo_stack: Vec<Snapshot>,
     pub narrow_start: Option<usize>,
     pub narrow_end: Option<usize>,
+    pub fold_level: Option<usize>,
+    pub folded_lines: Vec<bool>,
 }
 
 impl Buffer {
@@ -40,6 +42,8 @@ impl Buffer {
             redo_stack: Vec::new(),
             narrow_start: None,
             narrow_end: None,
+            fold_level: None,
+            folded_lines: Vec::new(),
         }
     }
 
@@ -60,6 +64,8 @@ impl Buffer {
             redo_stack: Vec::new(),
             narrow_start: None,
             narrow_end: None,
+            fold_level: None,
+            folded_lines: Vec::new(),
         })
     }
 
@@ -278,16 +284,27 @@ impl Buffer {
 
     pub fn move_up(&mut self) {
         let min_row = self.narrow_start.unwrap_or(0);
-        if self.cursor.row > min_row {
-            self.cursor.row -= 1;
-            self.cursor.col = self.cursor.col.min(self.lines[self.cursor.row].len());
+        let mut prev = self.cursor.row;
+        if prev > min_row {
+            prev -= 1;
+            while prev > min_row && self.is_line_folded(prev) {
+                prev -= 1;
+            }
+            if !self.is_line_folded(prev) {
+                self.cursor.row = prev;
+                self.cursor.col = self.cursor.col.min(self.lines[self.cursor.row].len());
+            }
         }
     }
 
     pub fn move_down(&mut self) {
         let max_row = self.narrow_end.unwrap_or(self.lines.len().saturating_sub(1));
-        if self.cursor.row < max_row {
-            self.cursor.row += 1;
+        let mut next = self.cursor.row + 1;
+        while next <= max_row && self.is_line_folded(next) {
+            next += 1;
+        }
+        if next <= max_row {
+            self.cursor.row = next;
             self.cursor.col = self.cursor.col.min(self.lines[self.cursor.row].len());
         }
     }
@@ -877,6 +894,29 @@ impl Buffer {
             line.push('\r');
         }
         self.modified = true;
+    }
+
+    pub fn toggle_fold(&mut self) {
+        if self.fold_level.is_some() {
+            self.fold_level = None;
+            self.folded_lines.clear();
+        } else {
+            let row = self.cursor.row;
+            let indent = self.lines[row].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            self.fold_level = Some(indent);
+            self.folded_lines = self.lines.iter().map(|line| {
+                let line_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                line_indent > indent && !line.trim().is_empty()
+            }).collect();
+        }
+    }
+
+    pub fn is_line_folded(&self, row: usize) -> bool {
+        self.fold_level.is_some() && row < self.folded_lines.len() && self.folded_lines[row]
+    }
+
+    pub fn is_folded(&self) -> bool {
+        self.fold_level.is_some()
     }
 }
 

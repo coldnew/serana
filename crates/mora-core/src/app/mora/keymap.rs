@@ -133,6 +133,7 @@ pub enum KeyAction {
     Widen,
     Dos2Unix,
     Unix2Dos,
+    ToggleFold,
 }
 
 impl KeyAction {
