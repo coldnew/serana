@@ -141,6 +141,8 @@ pub enum KeyAction {
     SearchWordBackward,
     RepeatLastChange,
     GotoMatchingBracket,
+    DeleteToStartOfLine,
+    YankWord,
 }
 
 impl KeyAction {

@@ -390,7 +390,28 @@ impl MoraEditor {
                     }
                 }
             } else {
-                self.handle_normal(key)
+                let motion = self.handle_normal(key);
+                match (op, &motion) {
+                    (PendingOp::Delete, KeyAction::MoveWordForward) => KeyAction::DeleteWordForward,
+                    (PendingOp::Delete, KeyAction::MoveWordBackward) => KeyAction::DeleteWordBackward,
+                    (PendingOp::Delete, KeyAction::MoveLineEnd) => KeyAction::DeleteToEol,
+                    (PendingOp::Delete, KeyAction::MoveLineStart) => KeyAction::DeleteToStartOfLine,
+                    (PendingOp::Yank, KeyAction::MoveWordForward) => KeyAction::YankWord,
+                    (PendingOp::Yank, KeyAction::MoveWordBackward) => KeyAction::YankWord,
+                    (PendingOp::Change, KeyAction::MoveWordForward) => {
+                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                        KeyAction::DeleteWordForward
+                    }
+                    (PendingOp::Change, KeyAction::MoveWordBackward) => {
+                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                        KeyAction::DeleteWordBackward
+                    }
+                    (PendingOp::Change, KeyAction::MoveLineEnd) => {
+                        self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
+                        KeyAction::DeleteToEol
+                    }
+                    _ => motion,
+                }
             };
         }
 
@@ -1144,7 +1165,39 @@ impl MoraEditor {
                 }
             }
             KeyAction::DeleteWordForward => {
-                self.buffer.delete_forward();
+                self.record_change();
+                let line = self.buffer.current_line();
+                let col = self.buffer.cursor.col;
+                let chars: Vec<char> = line.chars().collect();
+                let mut end = col;
+                while end < chars.len() && chars[end].is_whitespace() { end += 1; }
+                while end < chars.len() && !chars[end].is_whitespace() { end += 1; }
+                if end > col {
+                    self.buffer.delete_range(col, end);
+                }
+            }
+
+            KeyAction::DeleteToStartOfLine => {
+                self.record_change();
+                let col = self.buffer.cursor.col;
+                if col > 0 {
+                    self.buffer.delete_range(0, col);
+                    self.buffer.cursor.col = 0;
+                }
+            }
+
+            KeyAction::YankWord => {
+                let line = self.buffer.current_line();
+                let col = self.buffer.cursor.col;
+                let chars: Vec<char> = line.chars().collect();
+                let mut end = col;
+                while end < chars.len() && chars[end].is_whitespace() { end += 1; }
+                while end < chars.len() && !chars[end].is_whitespace() { end += 1; }
+                if end > col {
+                    let word: String = chars[col..end].iter().collect();
+                    self.kill_ring.kill(&word, false);
+                    self.status_message = "Yanked word".to_string();
+                }
             }
 
             KeyAction::KillRegion => {
