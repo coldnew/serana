@@ -413,16 +413,13 @@ impl MoraEditor {
                 self.status_message = "Mark set".to_string();
                 KeyAction::None
             }
+            // Emacs: C-u universal arg / pop mark
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
                 if self.mark_ring.is_active() {
-                    self.mark_ring.set_active(false);
-                    self.status_message = "Mark deactivated".to_string();
+                    KeyAction::PopMark
                 } else {
-                    self.mark_ring.push(self.buffer.cursor);
-                    self.mark_ring.set_active(true);
-                    self.status_message = "Mark set".to_string();
+                    KeyAction::UniversalArg
                 }
-                KeyAction::None
             }
             (KeyModifiers::ALT, KeyCode::Char('u')) => KeyAction::UppercaseWord,
             (KeyModifiers::ALT, KeyCode::Char('x')) => {
@@ -1094,6 +1091,18 @@ impl MoraEditor {
             KeyAction::CapitalizeWord => self.buffer.capitalize_word(),
             KeyAction::UppercaseWord => self.buffer.uppercase_word(),
             KeyAction::LowercaseWord => self.buffer.lowercase_word(),
+            KeyAction::PopMark => {
+                if let Some(pos) = self.mark_ring.pop() {
+                    self.buffer.cursor = pos;
+                    self.mark_ring.set_active(false);
+                    self.status_message = "Pop mark".to_string();
+                }
+            }
+            KeyAction::UniversalArg => {
+                let count = self.repeat_count.unwrap_or(0);
+                self.repeat_count = Some(count * 4);
+                self.status_message = format!("C-u {}", self.repeat_count.unwrap_or(4));
+            }
         }
     }
 

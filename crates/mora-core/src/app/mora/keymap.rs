@@ -111,6 +111,8 @@ pub enum KeyAction {
     CapitalizeWord,
     UppercaseWord,
     LowercaseWord,
+    PopMark,
+    UniversalArg,
 }
 
 impl KeyAction {
