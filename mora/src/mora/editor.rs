@@ -75,6 +75,7 @@ pub struct MoraEditor {
     pub windows: Vec<WindowState>,
     pub current_window_idx: usize,
     pub current_window_buffer_idx: usize,
+    pub minor_modes: super::minor_mode::MinorModeRegistry,
 }
 
 impl MoraEditor {
@@ -135,6 +136,7 @@ impl MoraEditor {
             windows: Vec::new(),
             current_window_idx: 0,
             current_window_buffer_idx: 0,
+            minor_modes: super::minor_mode::MinorModeRegistry::new(),
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -207,6 +209,11 @@ impl MoraEditor {
         // Ace-jump: waiting for target char or hint key
         if self.waiting_ace_jump {
             return self.handle_ace_jump(key);
+        }
+
+        // Minor mode intercept: higher priority modes get first chance
+        if let Some(action) = self.minor_modes.intercept_key(key) {
+            return action;
         }
 
         match self.mode {
@@ -2251,6 +2258,23 @@ impl MoraEditor {
                     self.status_message = format!("Unknown mode: {}", name);
                 }
             }
+            KeyAction::ToggleMinorMode(ref name) => {
+                if name.starts_with('!') {
+                    let real_name = &name[1..];
+                    if self.minor_modes.disable_by_name(real_name) {
+                        self.status_message = format!("Disabled minor mode: {}", real_name);
+                    } else {
+                        self.status_message = format!("Minor mode not enabled: {}", real_name);
+                    }
+                } else {
+                    let enabled = self.minor_modes.toggle_by_name(name);
+                    if enabled {
+                        self.status_message = format!("Enabled minor mode: {}", name);
+                    } else {
+                        self.status_message = format!("Disabled minor mode: {}", name);
+                    }
+                }
+            }
             KeyAction::MxComplete => {
                 self.mx_complete();
             }
@@ -2482,12 +2506,14 @@ impl MoraEditor {
     fn mx_complete(&mut self) {
         let commands = [
             "capitalize-word", "cleanup-buffer", "copy-and-comment",
-            "describe-mode", "dos2unix", "goto-last-change", "goto-line",
+            "describe-mode", "disable-minor-mode", "dos2unix", "enable-minor-mode",
+            "goto-last-change", "goto-line",
             "iedit", "kill-buffer", "kill-emacs", "lowercase-word",
             "lowercase-region", "multi-cursor-edit", "narrow-to-region",
             "recenter", "replace-string", "save-buffer", "save-some-buffers",
             "set-mode", "switch-mode",
-            "toggle-fold", "transpose-char", "transpose-line", "transpose-word",
+            "toggle-fold", "toggle-minor-mode",
+            "transpose-char", "transpose-line", "transpose-word",
             "unix2dos", "uppercase-region", "uppercase-word",
             "what-cursor-position", "widen",
         ];

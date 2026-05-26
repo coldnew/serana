@@ -167,6 +167,7 @@ pub enum KeyAction {
     BalanceWindows,
     OtherWindow,
     SwitchMajorMode(String),
+    ToggleMinorMode(String),
 }
 
 impl KeyAction {
@@ -327,6 +328,18 @@ pub fn parse_command(input: &str) -> KeyAction {
         s if s.starts_with("set-mode ") => {
             let mode_name = s["set-mode ".len()..].trim();
             KeyAction::SwitchMajorMode(mode_name.to_string())
+        }
+        s if s.starts_with("toggle-minor-mode ") => {
+            let mode_name = s["toggle-minor-mode ".len()..].trim();
+            KeyAction::ToggleMinorMode(mode_name.to_string())
+        }
+        s if s.starts_with("enable-minor-mode ") => {
+            let mode_name = s["enable-minor-mode ".len()..].trim();
+            KeyAction::ToggleMinorMode(mode_name.to_string())
+        }
+        s if s.starts_with("disable-minor-mode ") => {
+            let mode_name = s["disable-minor-mode ".len()..].trim();
+            KeyAction::ToggleMinorMode(format!("!{}", mode_name))
         }
         _ => KeyAction::None,
     }

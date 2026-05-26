@@ -5,6 +5,7 @@ mod kill_ring;
 mod macro_state;
 pub mod major_mode;
 mod mark;
+pub mod minor_mode;
 mod rectangle;
 mod register;
 mod status_line;
@@ -23,3 +24,4 @@ pub use rectangle::{RectRegion, kill_rectangle, yank_rectangle, insert_rectangle
 pub use wasm_ext::WasmExtensionHost;
 pub use window::{Window, WindowManager, SplitDirection};
 pub use major_mode::{MajorMode, MajorModeKind, CommentStyle, BracketPair};
+pub use minor_mode::{MinorMode, MinorModeRegistry, all_minor_mode_names, create_minor_mode};

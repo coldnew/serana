@@ -112,6 +112,16 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
         ));
     }
 
+    let minor_indicator = editor.minor_modes.modeline_string();
+    if !minor_indicator.is_empty() {
+        spans.push(Span::styled(
+            minor_indicator,
+            Style::new()
+                .fg(Color::Rgb(180, 130, 255))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
     let used: usize = spans.iter().map(|s| s.width()).sum();
     let right = format!("{}{}", pos, total);
     let fill = width.saturating_sub(used + right.len());
