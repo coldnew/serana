@@ -117,6 +117,8 @@ pub enum KeyAction {
     LowercaseRegion,
     MwimBeginning,
     MwimEnd,
+    ExpandRegion,
+    ContractRegion,
 }
 
 impl KeyAction {

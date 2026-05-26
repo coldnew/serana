@@ -35,6 +35,7 @@ pub struct MoraEditor {
     pub macro_playing_keys: Vec<KeyEvent>,
     pub last_yank_was_kill: bool,
     pub repeat_count: Option<usize>,
+    pub expand_region_level: usize,
 }
 
 impl MoraEditor {
@@ -62,6 +63,7 @@ impl MoraEditor {
             macro_playing_keys: Vec::new(),
             last_yank_was_kill: false,
             repeat_count: None,
+            expand_region_level: 0,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -375,7 +377,7 @@ impl MoraEditor {
             (KeyModifiers::CONTROL, KeyCode::Char('a')) => KeyAction::MwimBeginning,
             (KeyModifiers::CONTROL, KeyCode::Char('e')) => KeyAction::MwimEnd,
             (KeyModifiers::CONTROL, KeyCode::Char('v')) => KeyAction::PageDown,
-            (KeyModifiers::ALT, KeyCode::Char('v')) => KeyAction::PageUp,
+            (KeyModifiers::ALT, KeyCode::Char('v')) => KeyAction::ExpandRegion,
 
             (KeyModifiers::ALT, KeyCode::Char('f')) => KeyAction::MoveWordForward,
             (KeyModifiers::ALT, KeyCode::Char('b')) => KeyAction::MoveWordBackward,
@@ -1161,6 +1163,77 @@ impl MoraEditor {
                     } else {
                         self.buffer.cursor.col = last_non_ws;
                     }
+                }
+            }
+            KeyAction::ExpandRegion => {
+                let row = self.buffer.cursor.row;
+                let col = self.buffer.cursor.col;
+                if !self.mark_ring.is_active() {
+                    self.mark_ring.push(super::buffer::Cursor { row, col });
+                    self.mark_ring.set_active(true);
+                    self.expand_region_level = 0;
+                }
+                match self.expand_region_level {
+                    0 => {
+                        let line = self.buffer.current_line();
+                        let chars: Vec<char> = line.chars().collect();
+                        let mut start = col;
+                        let mut end = col;
+                        while start > 0 && start - 1 < chars.len() && !chars[start - 1].is_whitespace() {
+                            start -= 1;
+                        }
+                        while end < chars.len() && !chars[end].is_whitespace() {
+                            end += 1;
+                        }
+                        if let Some(mark) = self.mark_ring.peek() {
+                            if mark.row == row && mark.col == start {
+                                self.expand_region_level = 1;
+                            }
+                        }
+                        self.mark_ring.push(super::buffer::Cursor { row, col: start });
+                        self.buffer.cursor.col = end;
+                    }
+                    1 => {
+                        self.mark_ring.push(super::buffer::Cursor { row, col: 0 });
+                        let line_len = self.buffer.current_line().chars().count();
+                        self.buffer.cursor.col = line_len;
+                        self.expand_region_level = 2;
+                    }
+                    2 => {
+                        let lines = &self.buffer.lines;
+                        let mut start_row = row;
+                        while start_row > 0 && !lines[start_row - 1].is_empty() {
+                            start_row -= 1;
+                        }
+                        let mut end_row = row;
+                        while end_row + 1 < lines.len() && !lines[end_row + 1].is_empty() {
+                            end_row += 1;
+                        }
+                        self.mark_ring.push(super::buffer::Cursor { row: start_row, col: 0 });
+                        let end_len = lines[end_row].chars().count();
+                        self.buffer.cursor.row = end_row;
+                        self.buffer.cursor.col = end_len;
+                        self.expand_region_level = 3;
+                    }
+                    _ => {
+                        self.mark_ring.push(super::buffer::Cursor { row: 0, col: 0 });
+                        let last_row = self.buffer.lines.len().saturating_sub(1);
+                        let last_len = self.buffer.lines[last_row].chars().count();
+                        self.buffer.cursor.row = last_row;
+                        self.buffer.cursor.col = last_len;
+                    }
+                }
+                self.expand_region_level += 1;
+            }
+            KeyAction::ContractRegion => {
+                if self.expand_region_level > 1 {
+                    self.expand_region_level -= 2;
+                    // Re-trigger expand at the lower level
+                    self.execute_action(KeyAction::ExpandRegion);
+                } else {
+                    self.expand_region_level = 0;
+                    self.mark_ring.clear();
+                    self.status_message = "Contract region".to_string();
                 }
             }
         }
