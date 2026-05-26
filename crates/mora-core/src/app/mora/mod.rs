@@ -10,6 +10,7 @@ mod status_line;
 pub mod ui;
 mod view;
 pub mod wasm_ext;
+mod window;
 
 pub use editor::MoraEditor;
 pub use keymap::EditorMode;
@@ -19,3 +20,4 @@ pub use mark::MarkRing;
 pub use macro_state::MacroState;
 pub use rectangle::{RectRegion, kill_rectangle, yank_rectangle, insert_rectangle, clear_rectangle};
 pub use wasm_ext::WasmExtensionHost;
+pub use window::{Window, WindowManager, SplitDirection};

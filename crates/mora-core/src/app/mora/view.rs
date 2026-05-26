@@ -1,6 +1,6 @@
 use crate::app::mora::buffer::Buffer;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct View {
     pub scroll_top: usize,
     pub height: usize,

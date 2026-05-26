@@ -160,6 +160,12 @@ pub enum KeyAction {
     ToggleFoldEvil,
     ReduceFolds,
     MaximizeFolds,
+    SplitHorizontal,
+    SplitVertical,
+    DeleteWindow,
+    DeleteOtherWindows,
+    BalanceWindows,
+    OtherWindow,
 }
 
 impl KeyAction {

@@ -53,7 +53,11 @@ impl<'a> Widget for EditorWidget<'a> {
         let help = status_line::render_help_bar(editor.mode(), area.width as usize);
         buf.set_line(help_area.x, help_area.y, &help, help_area.width);
 
-        render_editor_area(editor, editor_area, buf);
+        if editor.windows.len() > 1 {
+            render_multi_windows(editor, editor_area, buf);
+        } else {
+            render_editor_area(editor, editor_area, buf);
+        }
 
         let status = status_line::render_status_line(editor, area.width as usize);
         buf.set_line(status_area.x, status_area.y, &status, status_area.width);
@@ -241,6 +245,202 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
         buf[(area.x, y)].set_char('~').set_style(tilde_style);
         for col in 1..area.width {
             buf[(area.x + col, y)].set_char(' ');
+        }
+    }
+}
+
+fn render_multi_windows(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer::Buffer) {
+    let window_count = editor.windows.len() as u16;
+    if window_count == 0 {
+        return;
+    }
+
+    let window_height = area.height / window_count;
+    let remainder = area.height % window_count;
+
+    let border_style = Style::new().fg(Color::Rgb(60, 65, 75));
+    let active_border_style = Style::new().fg(Color::Rgb(0, 180, 255));
+    let text_buf = editor.buffer();
+
+    for (i, win) in editor.windows.iter().enumerate() {
+        let extra = if (i as u16) < remainder { 1 } else { 0 };
+        let win_height = window_height + extra;
+        let y_offset = area.y + (i as u16) * window_height + (i as u16).min(remainder);
+
+        let win_area = Rect::new(area.x, y_offset, area.width, win_height);
+
+        let is_active = i == editor.current_window_idx;
+        let border = if is_active { active_border_style } else { border_style };
+
+        for x in area.x..area.x + area.width {
+            if y_offset > area.y {
+                buf[(x, y_offset - 1)]
+                    .set_char('─')
+                    .set_style(border);
+            }
+        }
+
+        let cursor = if is_active {
+            text_buf.cursor
+        } else {
+            win.cursor
+        };
+
+        render_window_content(text_buf, win, cursor, is_active, win_area, buf);
+    }
+}
+
+fn render_window_content(
+    text_buf: &super::buffer::Buffer,
+    win: &super::editor::WindowState,
+    cursor: super::buffer::Cursor,
+    is_active: bool,
+    area: Rect,
+    buf: &mut ratatui::buffer::Buffer,
+) {
+    let view = &win.view;
+    let gutter_w = view.gutter_width;
+    let text_width = area.width.saturating_sub(gutter_w);
+
+    let gutter_style = Style::new().fg(Color::Rgb(107, 114, 128));
+    let text_style = Style::new().fg(Color::Rgb(232, 236, 244));
+    let current_line_style = Style::new()
+        .fg(Color::Rgb(0, 180, 255))
+        .add_modifier(Modifier::BOLD);
+    let cursor_style = Style::new()
+        .fg(Color::Rgb(15, 18, 22))
+        .bg(Color::Rgb(0, 180, 255));
+
+    let total = text_buf.line_count();
+    let (vis_start, vis_end) = view.visible_range(total);
+    let render_start = vis_start;
+    let render_end = vis_end;
+
+    let mut display_row: u16 = 0;
+    for line_idx in render_start..render_end {
+        let y = area.y + display_row;
+        if y >= area.y + area.height {
+            break;
+        }
+
+        let is_current = line_idx == cursor.row;
+
+        let line_num = if is_current {
+            format!("{:>width$}", line_idx + 1, width = gutter_w as usize - 1)
+        } else {
+            format!(
+                "{:>width$} ",
+                line_idx + 1,
+                width = gutter_w as usize - 1
+            )
+        };
+        let gutter_style_actual = if is_current {
+            current_line_style
+        } else {
+            gutter_style
+        };
+
+        for (col, ch) in line_num.chars().enumerate() {
+            if col as u16 >= gutter_w {
+                break;
+            }
+            buf[(area.x + col as u16, y)]
+                .set_char(ch)
+                .set_style(gutter_style_actual);
+        }
+
+        let line_text = text_buf.line(line_idx);
+        let text_x = area.x + gutter_w;
+
+        let mut byte_col = 0;
+        let mut display_col: u16 = 0;
+        for ch in line_text.chars() {
+            if display_col >= text_width {
+                break;
+            }
+            let x = text_x + display_col;
+
+            let is_cursor =
+                is_current && byte_col == cursor.col && !is_active;
+
+            let style = if is_cursor {
+                cursor_style
+            } else if is_current {
+                current_line_style
+            } else {
+                text_style
+            };
+
+            if ch == '\t' {
+                let tab_stop = 4 - (display_col % 4);
+                for _ in 0..tab_stop {
+                    if display_col >= text_width {
+                        break;
+                    }
+                    buf[(text_x + display_col, y)]
+                        .set_char(' ')
+                        .set_style(style);
+                    display_col += 1;
+                }
+            } else {
+                buf[(x, y)].set_char(ch).set_style(style);
+                display_col += 1;
+            }
+            byte_col += ch.len_utf8();
+        }
+
+        if is_current && is_active {
+            let cursor_display_col = line_text[..cursor.col.min(line_text.len())]
+                .chars()
+                .count() as u16;
+            if cursor_display_col < text_width {
+                let x = text_x + cursor_display_col;
+                let ch = line_text
+                    .chars()
+                    .nth(cursor.col.min(line_text.len().saturating_sub(1)))
+                    .unwrap_or(' ');
+                buf[(x, y)].set_char(ch).set_style(cursor_style);
+            }
+        }
+
+        while display_col < text_width {
+            let x = text_x + display_col;
+            buf[(x, y)]
+                .set_char(' ')
+                .set_style(if is_current {
+                    Style::new().bg(Color::Rgb(25, 28, 35))
+                } else {
+                    Style::default()
+                });
+            display_col += 1;
+        }
+
+        display_row += 1;
+    }
+
+    for view_row in display_row..area.height {
+        let y = area.y + view_row;
+        if y >= area.y + area.height {
+            break;
+        }
+        let tilde_style = Style::new().fg(Color::Rgb(55, 60, 72));
+        buf[(area.x, y)].set_char('~').set_style(tilde_style);
+        for col in 1..area.width {
+            buf[(area.x + col, y)].set_char(' ');
+        }
+    }
+
+    if is_active {
+        let status_y = area.y + area.height.saturating_sub(1);
+        let status_style = Style::new().fg(Color::Rgb(232, 236, 244)).bg(Color::Rgb(40, 44, 52));
+        let status_text = format!(" Win {} ", super::editor::MoraEditor::window_index_display(win));
+        for (col, ch) in status_text.chars().enumerate() {
+            if col as u16 >= area.width {
+                break;
+            }
+            buf[(area.x + col as u16, status_y)]
+                .set_char(ch)
+                .set_style(status_style);
         }
     }
 }
