@@ -108,6 +108,7 @@ pub enum KeyAction {
     TransposeChar,
     TransposeWord,
     TransposeLine,
+    CapitalizeWord,
 }
 
 impl KeyAction {

@@ -566,6 +566,50 @@ impl Buffer {
         self.cursor.col = 0;
         self.modified = true;
     }
+
+    pub fn capitalize_word(&mut self) {
+        let row = self.cursor.row;
+        let col = self.cursor.col;
+        let line = &self.lines[row];
+        let chars: Vec<char> = line.chars().collect();
+        let len = chars.len();
+        let mut i = Self::char_index_at_col(line, col);
+
+        let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
+
+        if i < len && is_word_char(chars[i]) {
+            if i > 0 && is_word_char(chars[i - 1]) {
+                while i < len && is_word_char(chars[i]) {
+                    i += 1;
+                }
+            }
+        }
+        while i < len && !is_word_char(chars[i]) {
+            i += 1;
+        }
+        if i >= len {
+            return;
+        }
+
+        self.push_undo();
+        let start = i;
+        while i < len && is_word_char(chars[i]) {
+            i += 1;
+        }
+
+        let mut new_chars = chars.clone();
+        if start < new_chars.len() {
+            new_chars[start] = new_chars[start].to_uppercase().next().unwrap_or(new_chars[start]);
+        }
+        for j in (start + 1)..i {
+            if j < new_chars.len() {
+                new_chars[j] = new_chars[j].to_lowercase().next().unwrap_or(new_chars[j]);
+            }
+        }
+        self.lines[row] = new_chars.into_iter().collect();
+        self.cursor.col = Self::col_byte_index(&self.lines[row], i);
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
