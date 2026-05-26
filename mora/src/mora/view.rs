@@ -1,4 +1,4 @@
-use crate::app::mora::buffer::Buffer;
+use crate::mora::buffer::Buffer;
 
 #[derive(Debug, Clone)]
 pub struct View {

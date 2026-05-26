@@ -122,7 +122,7 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     };
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
-    use mora_core::app::mora::MoraEditor;
+    use mora_bin::mora::MoraEditor;
     use std::io;
     use std::path::Path;
     use std::time::Duration;
@@ -146,7 +146,7 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     let result = (|| -> anyhow::Result<()> {
         loop {
             terminal.draw(|frame| {
-                let widget = mora_core::app::mora::ui::EditorWidget::new(&editor);
+                let widget = mora_bin::mora::ui::EditorWidget::new(&editor);
                 frame.render_widget(widget, frame.area());
             })?;
 

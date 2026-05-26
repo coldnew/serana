@@ -2476,7 +2476,7 @@ impl MoraEditor {
         }
     }
 
-    fn extract_text_between(&self, start: crate::app::mora::buffer::Cursor, end: crate::app::mora::buffer::Cursor) -> String {
+    fn extract_text_between(&self, start: crate::mora::buffer::Cursor, end: crate::mora::buffer::Cursor) -> String {
         if start.row == end.row {
             self.buffer.lines[start.row][start.col..end.col].to_string()
         } else {

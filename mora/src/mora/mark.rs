@@ -1,4 +1,4 @@
-use crate::app::mora::buffer::Cursor;
+use crate::mora::buffer::Cursor;
 
 const MARK_RING_MAX: usize = 16;
 

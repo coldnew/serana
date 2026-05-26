@@ -1,5 +1,5 @@
-use crate::app::mora::buffer::Buffer;
-use crate::app::mora::buffer::Cursor;
+use crate::mora::buffer::Buffer;
+use crate::mora::buffer::Cursor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RectRegion {
@@ -138,7 +138,7 @@ pub fn clear_rectangle(buf: &mut Buffer, rect: &RectRegion) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::mora::buffer::Buffer;
+    use crate::mora::buffer::Buffer;
 
     fn buf_from(s: &str) -> Buffer {
         let lines: Vec<String> = s.lines().map(String::from).collect();

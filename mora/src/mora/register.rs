@@ -1,4 +1,4 @@
-use crate::app::mora::buffer::Cursor;
+use crate::mora::buffer::Cursor;
 
 #[derive(Debug, Clone)]
 pub enum RegisterValue {

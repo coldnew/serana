@@ -10,7 +10,7 @@ description = "Personal Hermes agent"
 workspace = true
 
 [dependencies]
-mora-core = { path = "../crates/mora-core" }
+mora-bin = { path = "../mora" }
 serana-core = { path = "../crates/serana-core" }
 serana-llm = { path = "../crates/serana-llm" }
 serana-agent = { path = "../crates/serana-agent" }
