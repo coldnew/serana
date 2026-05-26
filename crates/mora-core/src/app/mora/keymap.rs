@@ -12,6 +12,7 @@ pub enum EditorMode {
     Emacs,
     ReplaceChar,
     Visual,
+    Iedit,
 }
 
 impl EditorMode {
@@ -25,6 +26,7 @@ impl EditorMode {
             Self::Emacs => "EMACS",
             Self::ReplaceChar => "REPLACE",
             Self::Visual => "VISUAL",
+            Self::Iedit => "IEDIT",
         }
     }
 }

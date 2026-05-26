@@ -41,6 +41,9 @@ pub struct MoraEditor {
     pub dabbrev_index: usize,
     pub waiting_zap: bool,
     pub last_changes: std::collections::VecDeque<(usize, usize)>,
+    pub iedit_word: Option<String>,
+    pub iedit_regions: Vec<(usize, usize, usize)>,
+    pub iedit_cursor_idx: usize,
 }
 
 impl MoraEditor {
@@ -74,6 +77,9 @@ impl MoraEditor {
             dabbrev_index: 0,
             waiting_zap: false,
             last_changes: std::collections::VecDeque::new(),
+            iedit_word: None,
+            iedit_regions: Vec::new(),
+            iedit_cursor_idx: 0,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -146,6 +152,7 @@ impl MoraEditor {
             EditorMode::Emacs => self.handle_emacs(key),
             EditorMode::ReplaceChar => self.handle_replace_char(key),
             EditorMode::Visual => self.handle_visual(key),
+            EditorMode::Iedit => self.handle_iedit(key),
         }
     }
 
@@ -527,6 +534,11 @@ impl MoraEditor {
                 self.status_message = "Zap to char: ".to_string();
                 KeyAction::None
             }
+            // Emacs: C-; iedit (multi-cursor edit all occurrences)
+            (KeyModifiers::CONTROL, KeyCode::Char(';')) => {
+                self.start_iedit();
+                KeyAction::None
+            }
 
             (_, KeyCode::Esc) => KeyAction::SetMode(EditorMode::Normal),
 
@@ -544,6 +556,245 @@ impl MoraEditor {
             (_, KeyCode::PageUp) => KeyAction::PageUp,
             (_, KeyCode::PageDown) => KeyAction::PageDown,
             _ => KeyAction::None,
+        }
+    }
+
+    fn start_iedit(&mut self) {
+        let row = self.buffer.cursor.row;
+        let col = self.buffer.cursor.col;
+        let line = self.buffer.current_line();
+        let chars: Vec<char> = line.chars().collect();
+
+        // Find word under cursor
+        let (word_start, word_end) = if col < chars.len() && chars[col].is_alphanumeric() || col < chars.len() && chars[col] == '_' {
+            let mut start = col;
+            while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+                start -= 1;
+            }
+            let mut end = col;
+            while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
+                end += 1;
+            }
+            (start, end)
+        } else {
+            return;
+        };
+
+        if word_start == word_end {
+            return;
+        }
+
+        let word: String = chars[word_start..word_end].iter().collect();
+        self.iedit_word = Some(word.clone());
+        self.iedit_regions.clear();
+        self.iedit_cursor_idx = 0;
+
+        // Find all occurrences in the buffer
+        let mut idx = 0;
+        for (r, line) in self.buffer.lines.iter().enumerate() {
+            let line_chars: Vec<char> = line.chars().collect();
+            let mut c = 0;
+            while c + word.chars().count() <= line_chars.len() {
+                let candidate: String = line_chars[c..c + word.chars().count()].iter().collect();
+                if candidate == word {
+                    // Check word boundary
+                    let left_ok = c == 0 || !(line_chars[c - 1].is_alphanumeric() || line_chars[c - 1] == '_');
+                    let right_ok = c + word.chars().count() >= line_chars.len()
+                        || !(line_chars[c + word.chars().count()].is_alphanumeric()
+                            || line_chars[c + word.chars().count()] == '_');
+                    if left_ok && right_ok {
+                        if r == row && c == word_start {
+                            self.iedit_cursor_idx = idx;
+                        }
+                        self.iedit_regions.push((r, c, c + word.chars().count()));
+                        idx += 1;
+                    }
+                }
+                c += 1;
+            }
+        }
+
+        if self.iedit_regions.len() < 2 {
+            self.iedit_word = None;
+            self.iedit_regions.clear();
+            self.status_message = "No other occurrences".to_string();
+            return;
+        }
+
+        self.mode = EditorMode::Iedit;
+        self.status_message = format!("Iedit: {} ({} regions, Esc to exit)", word, self.iedit_regions.len());
+    }
+
+    fn handle_iedit(&mut self, key: KeyEvent) -> KeyAction {
+        match (key.modifiers, key.code) {
+            // Exit iedit
+            (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('g')) => {
+                let word = self.iedit_word.take().unwrap_or_default();
+                self.iedit_regions.clear();
+                self.iedit_cursor_idx = 0;
+                self.mode = EditorMode::Emacs;
+                self.status_message = format!("Iedit exited (edited: {})", word);
+                KeyAction::None
+            }
+            // Tab cycles between iedit regions
+            (_, KeyCode::Tab) => {
+                if !self.iedit_regions.is_empty() {
+                    self.iedit_cursor_idx = (self.iedit_cursor_idx + 1) % self.iedit_regions.len();
+                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+                    self.buffer.cursor.row = r;
+                    self.buffer.cursor.col = c;
+                    self.view.ensure_cursor_visible(&self.buffer);
+                }
+                KeyAction::None
+            }
+            // Back-tab cycles backwards
+            (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                if !self.iedit_regions.is_empty() {
+                    self.iedit_cursor_idx = if self.iedit_cursor_idx == 0 {
+                        self.iedit_regions.len() - 1
+                    } else {
+                        self.iedit_cursor_idx - 1
+                    };
+                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+                    self.buffer.cursor.row = r;
+                    self.buffer.cursor.col = c;
+                    self.view.ensure_cursor_visible(&self.buffer);
+                }
+                KeyAction::None
+            }
+            // C-n/C-p navigate between regions
+            (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
+                if !self.iedit_regions.is_empty() {
+                    self.iedit_cursor_idx = (self.iedit_cursor_idx + 1) % self.iedit_regions.len();
+                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+                    self.buffer.cursor.row = r;
+                    self.buffer.cursor.col = c;
+                    self.view.ensure_cursor_visible(&self.buffer);
+                }
+                KeyAction::None
+            }
+            (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
+                if !self.iedit_regions.is_empty() {
+                    self.iedit_cursor_idx = if self.iedit_cursor_idx == 0 {
+                        self.iedit_regions.len() - 1
+                    } else {
+                        self.iedit_cursor_idx - 1
+                    };
+                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+                    self.buffer.cursor.row = r;
+                    self.buffer.cursor.col = c;
+                    self.view.ensure_cursor_visible(&self.buffer);
+                }
+                KeyAction::None
+            }
+            // Insert char in all regions
+            (_, KeyCode::Char(c)) => {
+                self.iedit_insert_char(c);
+                KeyAction::None
+            }
+            // Backspace in all regions
+            (_, KeyCode::Backspace) => {
+                self.iedit_delete_backward();
+                KeyAction::None
+            }
+            // Delete forward in all regions
+            (_, KeyCode::Delete) => {
+                self.iedit_delete_forward();
+                KeyAction::None
+            }
+            _ => KeyAction::None,
+        }
+    }
+
+    fn iedit_insert_char(&mut self, c: char) {
+        // Apply in reverse order to preserve indices
+        for i in (0..self.iedit_regions.len()).rev() {
+            let (row, _start, end) = self.iedit_regions[i];
+            if row < self.buffer.lines.len() {
+                let line_len = self.buffer.lines[row].chars().count();
+                let insert_at = end.min(line_len);
+                // Convert char index to byte index
+                let byte_pos: usize = self.buffer.lines[row].chars().take(insert_at).map(|ch| ch.len_utf8()).sum();
+                self.buffer.lines[row].insert(byte_pos, c);
+                self.buffer.modified = true;
+                // Update all regions on this row and after
+                for j in 0..self.iedit_regions.len() {
+                    if self.iedit_regions[j].0 == row {
+                        if self.iedit_regions[j].2 >= insert_at {
+                            self.iedit_regions[j].2 += 1;
+                        }
+                        if self.iedit_regions[j].1 > insert_at {
+                            self.iedit_regions[j].1 += 1;
+                        }
+                    }
+                }
+            }
+        }
+        // Update cursor to end of current region
+        if self.iedit_cursor_idx < self.iedit_regions.len() {
+            let (r, _s, e) = self.iedit_regions[self.iedit_cursor_idx];
+            self.buffer.cursor.row = r;
+            self.buffer.cursor.col = e;
+        }
+    }
+
+    fn iedit_delete_backward(&mut self) {
+        for i in (0..self.iedit_regions.len()).rev() {
+            let (row, start, end) = self.iedit_regions[i];
+            if start < end && row < self.buffer.lines.len() {
+                let byte_pos: usize = self.buffer.lines[row].chars().take(end - 1).map(|ch| ch.len_utf8()).sum();
+                let char_byte_len = self.buffer.lines[row].chars().nth(end - 1).map(|ch| ch.len_utf8()).unwrap_or(0);
+                self.buffer.lines[row].drain(byte_pos..byte_pos + char_byte_len);
+                self.buffer.modified = true;
+                let removed = 1;
+                for j in 0..self.iedit_regions.len() {
+                    if self.iedit_regions[j].0 == row {
+                        if self.iedit_regions[j].2 >= end {
+                            self.iedit_regions[j].2 -= removed;
+                        }
+                        if self.iedit_regions[j].1 >= end {
+                            self.iedit_regions[j].1 -= removed;
+                        }
+                    }
+                }
+            }
+        }
+        // Update cursor
+        if self.iedit_cursor_idx < self.iedit_regions.len() {
+            let (r, _s, e) = self.iedit_regions[self.iedit_cursor_idx];
+            self.buffer.cursor.row = r;
+            self.buffer.cursor.col = e;
+        }
+    }
+
+    fn iedit_delete_forward(&mut self) {
+        for i in (0..self.iedit_regions.len()).rev() {
+            let (row, _start, end) = self.iedit_regions[i];
+            if row < self.buffer.lines.len() {
+                let line_chars: Vec<char> = self.buffer.lines[row].chars().collect();
+                if end < line_chars.len() {
+                    let byte_pos: usize = line_chars.iter().take(end).map(|ch| ch.len_utf8()).sum();
+                    let char_byte_len = line_chars[end].len_utf8();
+                    drop(line_chars);
+                    self.buffer.lines[row].drain(byte_pos..byte_pos + char_byte_len);
+                    self.buffer.modified = true;
+                    for j in 0..self.iedit_regions.len() {
+                        if self.iedit_regions[j].0 == row {
+                            if self.iedit_regions[j].2 > end {
+                                self.iedit_regions[j].2 -= 1;
+                            }
+                            if self.iedit_regions[j].1 > end {
+                                self.iedit_regions[j].1 -= 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if self.iedit_cursor_idx < self.iedit_regions.len() {
+            let (r, _s, e) = self.iedit_regions[self.iedit_cursor_idx];
+            self.buffer.cursor.row = r;
+            self.buffer.cursor.col = e;
         }
     }
 

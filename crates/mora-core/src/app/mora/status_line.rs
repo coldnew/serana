@@ -49,6 +49,13 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
                 .bg(Color::Rgb(180, 130, 20))
                 .add_modifier(Modifier::BOLD),
         ),
+        EditorMode::Iedit => (
+            " IEDIT ",
+            Style::new()
+                .fg(Color::Rgb(15, 18, 22))
+                .bg(Color::Rgb(200, 80, 200))
+                .add_modifier(Modifier::BOLD),
+        ),
     };
 
     let buf = editor.buffer();
@@ -149,6 +156,7 @@ pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
         }
         EditorMode::ReplaceChar => "Press char to replace with  Esc:Cancel",
         EditorMode::Visual => "hjkl/arrows:Move  w/b/e:Word  d/x:Kill  y:Copy  o:Swap  I/A:Insert  Esc/C-g:Exit",
+        EditorMode::Iedit => "Type:Edit all  Tab/Shift-Tab:Cycle  C-n/C-p:Nav  Backspace/Del:Delete  Esc/C-g:Exit",
     };
 
     let style = Style::new().fg(Color::Rgb(107, 114, 128));
