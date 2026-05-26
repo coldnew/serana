@@ -5,10 +5,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::buffer::Buffer;
 use super::keymap::{self, EditorMode, KeyAction, PendingOp};
 use super::kill_ring::KillRing;
-use super::register::{RegisterValue, Registers};
+use super::lisp_ext::MoraLispBridge;
 use super::macro_state::MacroState;
 use super::mark::MarkRing;
 use super::rectangle::{self, RectRegion};
+use super::register::{RegisterValue, Registers};
 use super::view::View;
 use super::wasm_ext::WasmExtensionHost;
 
@@ -29,6 +30,7 @@ pub struct MoraEditor {
     pub mark_ring: MarkRing,
     pub macro_state: MacroState,
     pub wasm_host: WasmExtensionHost,
+    pub lisp_bridge: MoraLispBridge,
     pub last_search_forward: Option<String>,
     pub last_search_backward: Option<String>,
     pub status_message: String,
@@ -90,6 +92,7 @@ impl MoraEditor {
             mark_ring: MarkRing::new(),
             macro_state: MacroState::new(),
             wasm_host: WasmExtensionHost::new(),
+            lisp_bridge: MoraLispBridge::new(),
             last_search_forward: None,
             last_search_backward: None,
             status_message: String::new(),
@@ -153,12 +156,24 @@ impl MoraEditor {
         Ok(editor)
     }
 
-    pub fn mode(&self) -> EditorMode { self.mode }
-    pub fn buffer(&self) -> &Buffer { &self.buffer }
-    pub fn view(&self) -> &View { &self.view }
-    pub fn command_input(&self) -> &str { &self.command_input }
-    pub fn status_message(&self) -> &str { &self.status_message }
-    pub fn quit_requested(&self) -> bool { self.quit_requested }
+    pub fn mode(&self) -> EditorMode {
+        self.mode
+    }
+    pub fn buffer(&self) -> &Buffer {
+        &self.buffer
+    }
+    pub fn view(&self) -> &View {
+        &self.view
+    }
+    pub fn command_input(&self) -> &str {
+        &self.command_input
+    }
+    pub fn status_message(&self) -> &str {
+        &self.status_message
+    }
+    pub fn quit_requested(&self) -> bool {
+        self.quit_requested
+    }
 
     pub fn set_height(&mut self, height: usize) {
         self.view.height = height.max(1);
@@ -219,9 +234,9 @@ impl MoraEditor {
         match self.mode {
             EditorMode::Normal => self.handle_normal(key),
             EditorMode::Insert => keymap::insert_key(key),
-            EditorMode::Command
-            | EditorMode::SearchForward
-            | EditorMode::SearchBackward => keymap::command_key(key),
+            EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward => {
+                keymap::command_key(key)
+            }
             EditorMode::Emacs => self.handle_emacs(key),
             EditorMode::ReplaceChar => self.handle_replace_char(key),
             EditorMode::Visual => self.handle_visual(key),
@@ -266,13 +281,13 @@ impl MoraEditor {
                 // C-x 2: split horizontally
                 (_, KeyCode::Char('2')) => KeyAction::SplitHorizontal,
                 // C-x 3: split vertically
- (_, KeyCode::Char('3')) => KeyAction::SplitVertical,
+                (_, KeyCode::Char('3')) => KeyAction::SplitVertical,
                 // C-x 0: delete current window
                 (_, KeyCode::Char('0')) => KeyAction::DeleteWindow,
                 // C-x 1: delete other windows
- (_, KeyCode::Char('1')) => KeyAction::DeleteOtherWindows,
+                (_, KeyCode::Char('1')) => KeyAction::DeleteOtherWindows,
                 // C-x o: other window
- (_, KeyCode::Char('o')) => KeyAction::OtherWindow,
+                (_, KeyCode::Char('o')) => KeyAction::OtherWindow,
                 // C-x +: balance windows
                 (_, KeyCode::Char('+')) => KeyAction::BalanceWindows,
                 _ => KeyAction::None,
@@ -342,8 +357,7 @@ impl MoraEditor {
         match kind {
             'c' => {
                 let content = self.buffer.current_line().to_string();
-                self.registers
-                    .set(name, RegisterValue::Text(content));
+                self.registers.set(name, RegisterValue::Text(content));
                 self.status_message = format!("Copied to register {}", name);
             }
             'y' => {
@@ -360,7 +374,8 @@ impl MoraEditor {
                         self.buffer.lines.insert(row + i, line.clone());
                     }
                     self.buffer.modified = true;
-                    self.status_message = format!("Yanked {} lines from register {}", l.len(), name);
+                    self.status_message =
+                        format!("Yanked {} lines from register {}", l.len(), name);
                 }
             }
             'i' => {
@@ -449,13 +464,19 @@ impl MoraEditor {
                 if let Some((open, close)) = bracket_pair {
                     match op {
                         Some(PendingOp::Delete) => {
-                            if inner { KeyAction::DeleteInnerBrackets(open, close) }
-                            else { KeyAction::DeleteAroundBrackets(open, close) }
+                            if inner {
+                                KeyAction::DeleteInnerBrackets(open, close)
+                            } else {
+                                KeyAction::DeleteAroundBrackets(open, close)
+                            }
                         }
                         Some(PendingOp::Change) => {
                             self.pending_action = Some(KeyAction::SetMode(EditorMode::Insert));
-                            if inner { KeyAction::DeleteInnerBrackets(open, close) }
-                            else { KeyAction::DeleteAroundBrackets(open, close) }
+                            if inner {
+                                KeyAction::DeleteInnerBrackets(open, close)
+                            } else {
+                                KeyAction::DeleteAroundBrackets(open, close)
+                            }
                         }
                         _ => KeyAction::None,
                     }
@@ -599,7 +620,9 @@ impl MoraEditor {
                 let motion = self.handle_normal(key);
                 match (op, &motion) {
                     (PendingOp::Delete, KeyAction::MoveWordForward) => KeyAction::DeleteWordForward,
-                    (PendingOp::Delete, KeyAction::MoveWordBackward) => KeyAction::DeleteWordBackward,
+                    (PendingOp::Delete, KeyAction::MoveWordBackward) => {
+                        KeyAction::DeleteWordBackward
+                    }
                     (PendingOp::Delete, KeyAction::MoveWordEnd) => KeyAction::DeleteToEndOfWord,
                     (PendingOp::Delete, KeyAction::MoveLineEnd) => KeyAction::DeleteToEol,
                     (PendingOp::Delete, KeyAction::MoveLineStart) => KeyAction::DeleteToStartOfLine,
@@ -637,13 +660,15 @@ impl MoraEditor {
             let n = count.max(1);
             self.repeat_count = None;
             match &action {
-                KeyAction::MoveLeft | KeyAction::MoveRight
-                | KeyAction::MoveUp | KeyAction::MoveDown
+                KeyAction::MoveLeft
+                | KeyAction::MoveRight
+                | KeyAction::MoveUp
+                | KeyAction::MoveDown
                 | KeyAction::DeleteForward => {
                     return self.repeated_action(action, n);
                 }
-                _ => {}
-            }
+            _ => {}
+        }
             return action;
         }
 
@@ -660,7 +685,7 @@ impl MoraEditor {
             self.waiting_z = false;
             return match key.code {
                 KeyCode::Char('o') => KeyAction::OpenFold,
- KeyCode::Char('c') => KeyAction::CloseFold,
+                KeyCode::Char('c') => KeyAction::CloseFold,
                 KeyCode::Char('a') => KeyAction::ToggleFoldEvil,
                 KeyCode::Char('r') => KeyAction::ReduceFolds,
                 KeyCode::Char('m') => KeyAction::MaximizeFolds,
@@ -941,7 +966,9 @@ impl MoraEditor {
         let chars: Vec<char> = line.chars().collect();
 
         // Find word under cursor
-        let (word_start, word_end) = if col < chars.len() && chars[col].is_alphanumeric() || col < chars.len() && chars[col] == '_' {
+        let (word_start, word_end) = if col < chars.len() && chars[col].is_alphanumeric()
+            || col < chars.len() && chars[col] == '_'
+        {
             let mut start = col;
             while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
                 start -= 1;
@@ -973,7 +1000,8 @@ impl MoraEditor {
                 let candidate: String = line_chars[c..c + word.chars().count()].iter().collect();
                 if candidate == word {
                     // Check word boundary
-                    let left_ok = c == 0 || !(line_chars[c - 1].is_alphanumeric() || line_chars[c - 1] == '_');
+                    let left_ok = c == 0
+                        || !(line_chars[c - 1].is_alphanumeric() || line_chars[c - 1] == '_');
                     let right_ok = c + word.chars().count() >= line_chars.len()
                         || !(line_chars[c + word.chars().count()].is_alphanumeric()
                             || line_chars[c + word.chars().count()] == '_');
@@ -997,7 +1025,11 @@ impl MoraEditor {
         }
 
         self.mode = EditorMode::Iedit;
-        self.status_message = format!("Iedit: {} ({} regions, Esc to exit)", word, self.iedit_regions.len());
+        self.status_message = format!(
+            "Iedit: {} ({} regions, Esc to exit)",
+            word,
+            self.iedit_regions.len()
+        );
     }
 
     fn handle_iedit(&mut self, key: KeyEvent) -> KeyAction {
@@ -1089,7 +1121,11 @@ impl MoraEditor {
                 let line_len = self.buffer.lines[row].chars().count();
                 let insert_at = end.min(line_len);
                 // Convert char index to byte index
-                let byte_pos: usize = self.buffer.lines[row].chars().take(insert_at).map(|ch| ch.len_utf8()).sum();
+                let byte_pos: usize = self.buffer.lines[row]
+                    .chars()
+                    .take(insert_at)
+                    .map(|ch| ch.len_utf8())
+                    .sum();
                 self.buffer.lines[row].insert(byte_pos, c);
                 self.buffer.modified = true;
                 // Update all regions on this row and after
@@ -1117,8 +1153,16 @@ impl MoraEditor {
         for i in (0..self.iedit_regions.len()).rev() {
             let (row, start, end) = self.iedit_regions[i];
             if start < end && row < self.buffer.lines.len() {
-                let byte_pos: usize = self.buffer.lines[row].chars().take(end - 1).map(|ch| ch.len_utf8()).sum();
-                let char_byte_len = self.buffer.lines[row].chars().nth(end - 1).map(|ch| ch.len_utf8()).unwrap_or(0);
+                let byte_pos: usize = self.buffer.lines[row]
+                    .chars()
+                    .take(end - 1)
+                    .map(|ch| ch.len_utf8())
+                    .sum();
+                let char_byte_len = self.buffer.lines[row]
+                    .chars()
+                    .nth(end - 1)
+                    .map(|ch| ch.len_utf8())
+                    .unwrap_or(0);
                 self.buffer.lines[row].drain(byte_pos..byte_pos + char_byte_len);
                 self.buffer.modified = true;
                 let removed = 1;
@@ -1206,11 +1250,17 @@ impl MoraEditor {
                     _ => None,
                 };
                 let (start, end) = if let Some((open, close)) = bracket_pair {
-                    if inner { self.buffer.inner_bracket_range(open, close) }
-                    else { self.buffer.around_bracket_range(open, close) }
+                    if inner {
+                        self.buffer.inner_bracket_range(open, close)
+                    } else {
+                        self.buffer.around_bracket_range(open, close)
+                    }
                 } else if c == 'w' || c == 'W' {
-                    if inner { self.buffer.inner_word_range() }
-                    else { self.buffer.around_word_range() }
+                    if inner {
+                        self.buffer.inner_word_range()
+                    } else {
+                        self.buffer.around_word_range()
+                    }
                 } else {
                     return KeyAction::None;
                 };
@@ -1376,14 +1426,23 @@ impl MoraEditor {
                     self.execute_action(action);
                 }
             }
-            KeyAction::DeleteBackward => { self.record_change(); self.buffer.delete_backward(); }
-            KeyAction::DeleteForward => { self.record_change(); self.buffer.delete_forward(); }
+            KeyAction::DeleteBackward => {
+                self.record_change();
+                self.buffer.delete_backward();
+            }
+            KeyAction::DeleteForward => {
+                self.record_change();
+                self.buffer.delete_forward();
+            }
             KeyAction::DeleteLine => {
                 self.record_change();
                 self.kill_line_to_ring();
                 self.buffer.delete_line();
             }
-            KeyAction::DeleteToEol => { self.record_change(); self.buffer.delete_to_eol(); }
+            KeyAction::DeleteToEol => {
+                self.record_change();
+                self.buffer.delete_to_eol();
+            }
             KeyAction::KillLine => {
                 self.record_change();
                 let row = self.buffer.cursor.row;
@@ -1436,7 +1495,12 @@ impl MoraEditor {
                 if col > 0 {
                     let end = line[..col].chars().count();
                     let mut i = end;
-                    while i > 0 && line[..col].chars().nth(i - 1).map_or(false, |c| c.is_whitespace()) {
+                    while i > 0
+                        && line[..col]
+                            .chars()
+                            .nth(i - 1)
+                            .map_or(false, |c| c.is_whitespace())
+                    {
                         i -= 1;
                     }
                     while i > 0 {
@@ -1462,8 +1526,12 @@ impl MoraEditor {
                 let col = self.buffer.cursor.col;
                 let chars: Vec<char> = line.chars().collect();
                 let mut end = col;
-                while end < chars.len() && chars[end].is_whitespace() { end += 1; }
-                while end < chars.len() && !chars[end].is_whitespace() { end += 1; }
+                while end < chars.len() && chars[end].is_whitespace() {
+                    end += 1;
+                }
+                while end < chars.len() && !chars[end].is_whitespace() {
+                    end += 1;
+                }
                 if end > col {
                     self.buffer.delete_range(col, end);
                 }
@@ -1478,9 +1546,13 @@ impl MoraEditor {
                     let is_word = |c: char| c.is_alphanumeric() || c == '_';
                     let mut end = col;
                     if is_word(chars[col]) {
-                        while end < chars.len() && is_word(chars[end]) { end += 1; }
+                        while end < chars.len() && is_word(chars[end]) {
+                            end += 1;
+                        }
                     } else if chars[col].is_whitespace() {
-                        while end < chars.len() && chars[end].is_whitespace() { end += 1; }
+                        while end < chars.len() && chars[end].is_whitespace() {
+                            end += 1;
+                        }
                     } else {
                         end += 1;
                     }
@@ -1504,8 +1576,12 @@ impl MoraEditor {
                 let col = self.buffer.cursor.col;
                 let chars: Vec<char> = line.chars().collect();
                 let mut end = col;
-                while end < chars.len() && chars[end].is_whitespace() { end += 1; }
-                while end < chars.len() && !chars[end].is_whitespace() { end += 1; }
+                while end < chars.len() && chars[end].is_whitespace() {
+                    end += 1;
+                }
+                while end < chars.len() && !chars[end].is_whitespace() {
+                    end += 1;
+                }
                 if end > col {
                     let word: String = chars[col..end].iter().collect();
                     self.kill_ring.kill(&word, false);
@@ -1594,7 +1670,8 @@ impl MoraEditor {
                         } else {
                             let first = &self.buffer.lines[start.row];
                             let last = &self.buffer.lines[end.row];
-                            self.buffer.lines[start.row] = first[..start.col].to_string() + &last[end.col..];
+                            self.buffer.lines[start.row] =
+                                first[..start.col].to_string() + &last[end.col..];
                             for _ in (start.row + 1..=end.row).rev() {
                                 self.buffer.lines.remove(start.row + 1);
                             }
@@ -1721,10 +1798,7 @@ impl MoraEditor {
                 let text = self.kill_ring.yank_pop_forward().map(|e| e.text.clone());
                 if let Some(ref t) = text {
                     self.replace_last_yank(t);
-                    self.status_message = format!(
-                        "Yank-pop ({})",
-                        self.kill_ring.len()
-                    );
+                    self.status_message = format!("Yank-pop ({})", self.kill_ring.len());
                 }
             }
 
@@ -1922,8 +1996,15 @@ impl MoraEditor {
                     let chars: Vec<char> = line.chars().collect();
                     if char_idx < chars.len() {
                         line.replace_range(
-                            line.char_indices().nth(char_idx).map(|(i, _)| i).unwrap_or(col)..
-                            line.char_indices().nth(char_idx + 1).map(|(i, _)| i).unwrap_or(line.len()),
+                            line.char_indices()
+                                .nth(char_idx)
+                                .map(|(i, _)| i)
+                                .unwrap_or(col)
+                                ..line
+                                    .char_indices()
+                                    .nth(char_idx + 1)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(line.len()),
                             &c.to_string(),
                         );
                         self.buffer.modified = true;
@@ -1965,10 +2046,14 @@ impl MoraEditor {
                     self.macro_state.stop_recording();
                     let events = self.macro_state.store_in_register('e').unwrap_or_default();
                     self.registers.set('e', RegisterValue::Macro(events));
-                    let len = self.registers.get('e').map(|v| match v {
-                        RegisterValue::Macro(e) => e.len(),
-                        _ => 0,
-                    }).unwrap_or(0);
+                    let len = self
+                        .registers
+                        .get('e')
+                        .map(|v| match v {
+                            RegisterValue::Macro(e) => e.len(),
+                            _ => 0,
+                        })
+                        .unwrap_or(0);
                     self.status_message = format!("Macro recording stopped ({} keys)", len);
                 }
             }
@@ -1981,12 +2066,30 @@ impl MoraEditor {
                 self.command_input = saved_cmd;
             }
 
-            KeyAction::TransposeChar => { self.record_change(); self.buffer.transpose_char(); }
-            KeyAction::TransposeWord => { self.record_change(); self.buffer.transpose_word(); }
-            KeyAction::TransposeLine => { self.record_change(); self.buffer.transpose_line(); }
-            KeyAction::CapitalizeWord => { self.record_change(); self.buffer.capitalize_word(); }
-            KeyAction::UppercaseWord => { self.record_change(); self.buffer.uppercase_word(); }
-            KeyAction::LowercaseWord => { self.record_change(); self.buffer.lowercase_word(); }
+            KeyAction::TransposeChar => {
+                self.record_change();
+                self.buffer.transpose_char();
+            }
+            KeyAction::TransposeWord => {
+                self.record_change();
+                self.buffer.transpose_word();
+            }
+            KeyAction::TransposeLine => {
+                self.record_change();
+                self.buffer.transpose_line();
+            }
+            KeyAction::CapitalizeWord => {
+                self.record_change();
+                self.buffer.capitalize_word();
+            }
+            KeyAction::UppercaseWord => {
+                self.record_change();
+                self.buffer.uppercase_word();
+            }
+            KeyAction::LowercaseWord => {
+                self.record_change();
+                self.buffer.lowercase_word();
+            }
             KeyAction::UppercaseRegion => {
                 if let Some(mark) = self.mark_ring.peek().copied() {
                     self.record_change();
@@ -2016,7 +2119,11 @@ impl MoraEditor {
             KeyAction::MwimBeginning => {
                 let line = self.buffer.current_line();
                 let first_non_ws = line.chars().take_while(|c| c.is_whitespace()).count();
-                let first_non_ws = if first_non_ws >= line.chars().count() { 0 } else { first_non_ws };
+                let first_non_ws = if first_non_ws >= line.chars().count() {
+                    0
+                } else {
+                    first_non_ws
+                };
                 if self.buffer.cursor.col == first_non_ws && first_non_ws != 0 {
                     self.buffer.cursor.col = 0;
                 } else {
@@ -2030,7 +2137,10 @@ impl MoraEditor {
                 if len == 0 {
                     self.buffer.cursor.col = 0;
                 } else {
-                    let last_non_ws = chars.iter().enumerate().rev()
+                    let last_non_ws = chars
+                        .iter()
+                        .enumerate()
+                        .rev()
                         .find(|(_, c)| !c.is_whitespace())
                         .map(|(i, _)| i + 1)
                         .unwrap_or(0);
@@ -2055,7 +2165,10 @@ impl MoraEditor {
                         let chars: Vec<char> = line.chars().collect();
                         let mut start = col;
                         let mut end = col;
-                        while start > 0 && start - 1 < chars.len() && !chars[start - 1].is_whitespace() {
+                        while start > 0
+                            && start - 1 < chars.len()
+                            && !chars[start - 1].is_whitespace()
+                        {
                             start -= 1;
                         }
                         while end < chars.len() && !chars[end].is_whitespace() {
@@ -2066,7 +2179,8 @@ impl MoraEditor {
                                 self.expand_region_level = 1;
                             }
                         }
-                        self.mark_ring.push(super::buffer::Cursor { row, col: start });
+                        self.mark_ring
+                            .push(super::buffer::Cursor { row, col: start });
                         self.buffer.cursor.col = end;
                     }
                     1 => {
@@ -2085,14 +2199,18 @@ impl MoraEditor {
                         while end_row + 1 < lines.len() && !lines[end_row + 1].is_empty() {
                             end_row += 1;
                         }
-                        self.mark_ring.push(super::buffer::Cursor { row: start_row, col: 0 });
+                        self.mark_ring.push(super::buffer::Cursor {
+                            row: start_row,
+                            col: 0,
+                        });
                         let end_len = lines[end_row].chars().count();
                         self.buffer.cursor.row = end_row;
                         self.buffer.cursor.col = end_len;
                         self.expand_region_level = 3;
                     }
                     _ => {
-                        self.mark_ring.push(super::buffer::Cursor { row: 0, col: 0 });
+                        self.mark_ring
+                            .push(super::buffer::Cursor { row: 0, col: 0 });
                         let last_row = self.buffer.lines.len().saturating_sub(1);
                         let last_len = self.buffer.lines[last_row].chars().count();
                         self.buffer.cursor.row = last_row;
@@ -2171,7 +2289,8 @@ impl MoraEditor {
                 let replacement = self.dabbrev_matches[self.dabbrev_index].clone();
                 self.buffer.replace_range(start, col, &replacement);
                 self.dabbrev_index = (self.dabbrev_index + 1) % self.dabbrev_matches.len();
-                self.status_message = format!("({}/{})", self.dabbrev_index, self.dabbrev_matches.len());
+                self.status_message =
+                    format!("({}/{})", self.dabbrev_index, self.dabbrev_matches.len());
             }
             KeyAction::ZapToChar => {}
             KeyAction::InsertEmptyLineBelow => {
@@ -2212,7 +2331,8 @@ impl MoraEditor {
                         let end = mark.row.max(cur.row);
                         self.buffer.narrow_to_region(start, end);
                         self.mark_ring.set_active(false);
-                        self.status_message = format!("Narrowed to lines {}-{}", start + 1, end + 1);
+                        self.status_message =
+                            format!("Narrowed to lines {}-{}", start + 1, end + 1);
                     }
                 } else {
                     let row = self.buffer.cursor.row;
@@ -2237,7 +2357,10 @@ impl MoraEditor {
             KeyAction::ToggleFold => {
                 self.buffer.toggle_fold();
                 if self.buffer.is_folded() {
-                    self.status_message = format!("Folded at indent level {}", self.buffer.fold_level.unwrap_or(0));
+                    self.status_message = format!(
+                        "Folded at indent level {}",
+                        self.buffer.fold_level.unwrap_or(0)
+                    );
                 } else {
                     self.status_message = "Unfolded".to_string();
                 }
@@ -2245,7 +2368,8 @@ impl MoraEditor {
             KeyAction::SwitchMajorMode(ref name) => {
                 if let Some(kind) = super::major_mode::parse_mode_name(name) {
                     self.buffer.major_mode = super::major_mode::create_mode(kind);
-                    self.status_message = format!("Switched to {} mode", self.buffer.major_mode.name());
+                    self.status_message =
+                        format!("Switched to {} mode", self.buffer.major_mode.name());
                 } else {
                     self.status_message = format!("Unknown mode: {}", name);
                 }
@@ -2334,7 +2458,9 @@ impl MoraEditor {
                     } else {
                         let last_row = self.buffer.line_count().saturating_sub(1);
                         let last_col = self.buffer.lines[last_row].len().saturating_sub(1);
-                        if let Some((r, c)) = self.buffer.search_backward_from(&word, last_row, last_col) {
+                        if let Some((r, c)) =
+                            self.buffer.search_backward_from(&word, last_row, last_col)
+                        {
                             self.buffer.cursor.row = r;
                             self.buffer.cursor.col = c;
                             self.status_message = "Search wrapped".to_string();
@@ -2365,8 +2491,11 @@ impl MoraEditor {
                     if forward {
                         let chars: Vec<char> = line.chars().collect();
                         for i in col..chars.len() {
-                            if chars[i] == open { depth += 1; }
-                            else if chars[i] == close { depth -= 1; }
+                            if chars[i] == open {
+                                depth += 1;
+                            } else if chars[i] == close {
+                                depth -= 1;
+                            }
                             if depth == 0 {
                                 self.buffer.cursor.col = i;
                                 return;
@@ -2375,8 +2504,11 @@ impl MoraEditor {
                     } else {
                         let chars: Vec<char> = line.chars().collect();
                         for i in (0..=col).rev() {
-                            if chars[i] == close { depth += 1; }
-                            else if chars[i] == open { depth -= 1; }
+                            if chars[i] == close {
+                                depth += 1;
+                            } else if chars[i] == open {
+                                depth -= 1;
+                            }
                             if depth == 0 {
                                 self.buffer.cursor.col = i;
                                 return;
@@ -2445,23 +2577,80 @@ impl MoraEditor {
                 return;
             }
             "what-cursor-position" => {
-                self.status_message = format!("Line {} Col {} ({} lines total)",
+                self.status_message = format!(
+                    "Line {} Col {} ({} lines total)",
                     self.buffer.cursor.row + 1,
                     self.buffer.cursor.col + 1,
-                    self.buffer.line_count());
+                    self.buffer.line_count()
+                );
                 self.mode = EditorMode::Emacs;
                 self.command_input.clear();
                 return;
             }
             _ if trimmed.starts_with("switch-mode ") || trimmed.starts_with("set-mode ") => {
-                let prefix = if trimmed.starts_with("switch-mode ") { "switch-mode " } else { "set-mode " };
+                let prefix = if trimmed.starts_with("switch-mode ") {
+                    "switch-mode "
+                } else {
+                    "set-mode "
+                };
                 let mode_name = trimmed[prefix.len()..].trim();
                 if let Some(kind) = super::major_mode::parse_mode_name(mode_name) {
                     self.buffer.major_mode = super::major_mode::create_mode(kind);
-                    self.status_message = format!("Switched to {} mode", self.buffer.major_mode.name());
+                    self.status_message =
+                        format!("Switched to {} mode", self.buffer.major_mode.name());
                 } else {
                     self.status_message = format!("Unknown mode: {}", mode_name);
                 }
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                return;
+            }
+            _ if trimmed.starts_with("eval ") || trimmed.starts_with("eval-expression ") => {
+                let prefix = if trimmed.starts_with("eval ") {
+                    "eval "
+                } else {
+                    "eval-expression "
+                };
+                let code = trimmed[prefix.len()..].trim();
+                // Sync editor state to shared state
+                let mut state = super::lisp_ext::EditorState::new();
+                state.lines = self.buffer.lines.clone();
+                state.cursor_row = self.buffer.cursor.row;
+                state.cursor_col = self.buffer.cursor.col;
+                state.modified = self.buffer.modified;
+                state.file_path = self.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
+                state.mode = self.mode.label().to_lowercase();
+                state.window_count = self.windows.len();
+                super::lisp_ext::set_editor_state(state);
+
+                let result = self.lisp_bridge.eval(code);
+
+                // Sync state back
+                if let Some(state) = super::lisp_ext::take_editor_state() {
+                    self.buffer.lines = state.lines;
+                    self.buffer.cursor.row = state.cursor_row.min(self.buffer.lines.len().saturating_sub(1));
+                    self.buffer.cursor.col = state.cursor_col;
+                    self.buffer.modified = state.modified;
+                    self.status_message = state.status_message;
+                    if state.quit_requested {
+                        self.quit_requested = true;
+                    }
+                }
+
+                match result {
+                    Ok(val) => {
+                        self.status_message = format!("=> {}", val);
+                    }
+                    Err(e) => {
+                        self.status_message = format!("Error: {}", e);
+                    }
+                }
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                return;
+            }
+            "lisp-repl" | "repl" => {
+                self.status_message = "Mora REPL: type (help) for commands".to_string();
                 self.mode = EditorMode::Emacs;
                 self.command_input.clear();
                 return;
@@ -2497,23 +2686,45 @@ impl MoraEditor {
 
     fn mx_complete(&mut self) {
         let commands = [
-            "capitalize-word", "cleanup-buffer", "copy-and-comment",
-            "describe-mode", "disable-minor-mode", "dos2unix", "enable-minor-mode",
-            "goto-last-change", "goto-line",
-            "iedit", "kill-buffer", "kill-emacs", "lowercase-word",
-            "lowercase-region", "multi-cursor-edit", "narrow-to-region",
-            "recenter", "replace-string", "save-buffer", "save-some-buffers",
-            "set-mode", "switch-mode",
-            "toggle-fold", "toggle-minor-mode",
-            "transpose-char", "transpose-line", "transpose-word",
-            "unix2dos", "uppercase-region", "uppercase-word",
-            "what-cursor-position", "widen",
+            "capitalize-word",
+            "cleanup-buffer",
+            "copy-and-comment",
+            "describe-mode",
+            "disable-minor-mode",
+            "dos2unix",
+            "enable-minor-mode",
+            "goto-last-change",
+            "goto-line",
+            "iedit",
+            "kill-buffer",
+            "kill-emacs",
+            "lowercase-word",
+            "lowercase-region",
+            "multi-cursor-edit",
+            "narrow-to-region",
+            "recenter",
+            "replace-string",
+            "save-buffer",
+            "save-some-buffers",
+            "set-mode",
+            "switch-mode",
+            "toggle-fold",
+            "toggle-minor-mode",
+            "transpose-char",
+            "transpose-line",
+            "transpose-word",
+            "unix2dos",
+            "uppercase-region",
+            "uppercase-word",
+            "what-cursor-position",
+            "widen",
         ];
         let input = self.command_input.trim();
         if input.is_empty() {
             return;
         }
-        let matches: Vec<&str> = commands.iter()
+        let matches: Vec<&str> = commands
+            .iter()
             .filter(|c| c.starts_with(input))
             .copied()
             .collect();
@@ -2522,7 +2733,8 @@ impl MoraEditor {
         } else if matches.len() > 1 {
             // Find common prefix
             let common = matches.iter().fold(matches[0].to_string(), |acc, m| {
-                acc.chars().zip(m.chars())
+                acc.chars()
+                    .zip(m.chars())
                     .take_while(|(a, b)| a == b)
                     .map(|(a, _)| a)
                     .collect()
@@ -2535,7 +2747,11 @@ impl MoraEditor {
         }
     }
 
-    fn extract_text_between(&self, start: crate::mora::buffer::Cursor, end: crate::mora::buffer::Cursor) -> String {
+    fn extract_text_between(
+        &self,
+        start: crate::mora::buffer::Cursor,
+        end: crate::mora::buffer::Cursor,
+    ) -> String {
         if start.row == end.row {
             self.buffer.lines[start.row][start.col..end.col].to_string()
         } else {
@@ -2561,7 +2777,10 @@ impl MoraEditor {
     fn clamp_cursor_to_narrow(&mut self) {
         if self.buffer.is_narrowed() {
             let min_row = self.buffer.narrow_start.unwrap_or(0);
-            let max_row = self.buffer.narrow_end.unwrap_or(self.buffer.line_count().saturating_sub(1));
+            let max_row = self
+                .buffer
+                .narrow_end
+                .unwrap_or(self.buffer.line_count().saturating_sub(1));
             if self.buffer.cursor.row < min_row {
                 self.buffer.cursor.row = min_row;
             }
@@ -2652,7 +2871,11 @@ impl MoraEditor {
 
     fn repeat_last_find(&mut self, same_direction: bool) {
         if let Some(c) = self.last_find_char {
-            let forward = if same_direction { self.last_find_forward } else { !self.last_find_forward };
+            let forward = if same_direction {
+                self.last_find_forward
+            } else {
+                !self.last_find_forward
+            };
             let till = self.last_find_till;
             let line = self.buffer.current_line();
             let col = self.buffer.cursor.col;
@@ -2661,7 +2884,11 @@ impl MoraEditor {
                 let start = if till { col + 1 } else { col };
                 if let Some(pos) = chars[start..].iter().position(|&ch| ch == c) {
                     let target = start + pos;
-                    self.buffer.cursor.col = if till { target.saturating_sub(1) } else { target };
+                    self.buffer.cursor.col = if till {
+                        target.saturating_sub(1)
+                    } else {
+                        target
+                    };
                 }
             } else {
                 let end = if till { col } else { col + 1 };
@@ -2698,8 +2925,13 @@ impl MoraEditor {
                     self.status_message = format!("No '{}' found", c);
                     return KeyAction::None;
                 }
-                self.status_message = format!("Jump to: {}", 
-                    self.ace_jump_hints.iter().map(|(_, _, h)| *h).collect::<String>());
+                self.status_message = format!(
+                    "Jump to: {}",
+                    self.ace_jump_hints
+                        .iter()
+                        .map(|(_, _, h)| *h)
+                        .collect::<String>()
+                );
             } else {
                 self.waiting_ace_jump = false;
                 self.ace_jump_target = None;
@@ -2719,7 +2951,7 @@ impl MoraEditor {
         KeyAction::None
     }
 
-    fn split_window_horizontal(&mut self) {
+    pub fn split_window_horizontal(&mut self) {
         self.sync_buffer_to_window();
         let height = self.view.height;
         let half = height / 2;
@@ -2739,7 +2971,7 @@ impl MoraEditor {
         self.status_message = format!("Split horizontal ({} windows)", self.windows.len());
     }
 
-    fn split_window_vertical(&mut self) {
+    pub fn split_window_vertical(&mut self) {
         self.sync_buffer_to_window();
         let width = 80;
         let half = width / 2;
@@ -2785,14 +3017,18 @@ impl MoraEditor {
         self.status_message = "Deleted other windows".to_string();
     }
 
-    fn other_window(&mut self) {
+    pub fn other_window(&mut self) {
         if self.windows.len() <= 1 {
             return;
         }
         self.sync_buffer_to_window();
         self.current_window_idx = (self.current_window_idx + 1) % self.windows.len();
         self.sync_window_to_buffer();
-        self.status_message = format!("Window {}/{}", self.current_window_idx + 1, self.windows.len());
+        self.status_message = format!(
+            "Window {}/{}",
+            self.current_window_idx + 1,
+            self.windows.len()
+        );
     }
 
     fn balance_windows(&mut self) {

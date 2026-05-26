@@ -1224,6 +1224,7 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs",
+ "mora-lisp",
  "ratatui",
  "serana-tree-sitter",
  "serde",

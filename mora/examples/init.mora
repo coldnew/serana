@@ -1,0 +1,100 @@
+;;; init.mora --- Mora editor configuration -*- lisp -*-
+
+;;; This file is loaded on startup from ~/.mora/init.mora
+;;; It uses Clojure-like syntax (mora-lisp)
+
+;;; ---- Display Settings ----
+
+;; Show welcome message
+(editor-message "Welcome to Mora!")
+
+;;; ---- Helper Functions ----
+
+;; Toggle line numbers (if minor mode available)
+(defn toggle-line-numbers []
+  (set-minor-mode! "line-numbers"))
+
+;; Insert current date
+(defn insert-date []
+  (buffer-insert! "2026-01-01"))
+
+;; Go to specific line and show message
+(defn goto-line-msg [n]
+  (cursor-goto-line n)
+  (editor-message (str "Went to line " n)))
+
+;; Delete current line
+(defn delete-current-line []
+  (let [row (cursor-row)
+        count (buffer-line-count)]
+    (if (> count 1)
+      (do
+        (buffer-set-content
+          (str (subs (buffer-content) 0 (cursor-row))
+               (subs (buffer-content) (+ (cursor-row) 1))))
+        (editor-message "Line deleted"))
+      (editor-message "Cannot delete last line"))))
+
+;; Duplicate current line
+(defn duplicate-line []
+  (let [line (buffer-current-line)
+        row (cursor-row)]
+    (buffer-set-content
+      (str (subs (buffer-content) 0 row)
+           line "\n"
+           (subs (buffer-content) row)))
+    (cursor-goto-line (+ row 2))
+    (editor-message "Line duplicated")))
+
+;; Count words in buffer
+(defn count-words []
+  (let [content (buffer-content)
+        words (split content #"\s+")]
+    (editor-message (str "Word count: " (count words)))))
+
+;; Uppercase current word (simple version)
+(defn upcase-word-at-cursor []
+  (let [line (buffer-current-line)
+        col (cursor-col)
+        before (subs line 0 col)
+        after (subs line col)]
+    (buffer-replace-line! (cursor-row)
+      (str before (upper-case after)))))
+
+;;; ---- Key Bindings (conceptual) ----
+
+;; These would be implemented with actual key dispatch
+;; (define-key "C-x C-s" save-buffer)
+;; (define-key "C-x C-c" editor-quit)
+;; (define-key "M-g g" goto-line-msg)
+
+;;; ---- Hooks ----
+
+;; Run on buffer open
+(add-hook "after-open"
+  (fn []
+    (editor-message (str "Opened: " (buffer-name)))))
+
+;; Run before save
+(add-hook "before-save"
+  (fn []
+    (editor-message (str "Saving: " (buffer-name)))))
+
+;;; ---- Custom Commands ----
+
+;; These can be invoked via M-x eval (command-name)
+;; Example: M-x eval (show-status)
+
+(defn show-status []
+  (editor-message (editor-status)))
+
+(defn show-version []
+  (editor-message (str "Mora version: " *mora-version*)))
+
+;; Toggle between normal and insert mode
+(defn toggle-insert-mode []
+  (if (= (current-mode) :insert)
+    (set-mode! :normal)
+    (set-mode! :insert)))
+
+;;; ---- End of init.mora ----

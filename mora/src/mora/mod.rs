@@ -2,6 +2,7 @@ mod buffer;
 mod editor;
 mod keymap;
 mod kill_ring;
+pub mod lisp_ext;
 mod macro_state;
 pub mod major_mode;
 mod mark;
@@ -18,11 +19,13 @@ mod window;
 pub use editor::MoraEditor;
 pub use keymap::EditorMode;
 pub use kill_ring::KillRing;
-pub use register::Registers;
-pub use mark::MarkRing;
 pub use macro_state::MacroState;
-pub use rectangle::{RectRegion, kill_rectangle, yank_rectangle, insert_rectangle, clear_rectangle};
+pub use major_mode::{BracketPair, CommentStyle, MajorMode, MajorModeKind};
+pub use mark::MarkRing;
+pub use minor_mode::{all_minor_mode_names, create_minor_mode, MinorMode, MinorModeRegistry};
+pub use rectangle::{
+    clear_rectangle, insert_rectangle, kill_rectangle, yank_rectangle, RectRegion,
+};
+pub use register::Registers;
 pub use wasm_ext::WasmExtensionHost;
-pub use window::{Window, WindowManager, SplitDirection};
-pub use major_mode::{MajorMode, MajorModeKind, CommentStyle, BracketPair};
-pub use minor_mode::{MinorMode, MinorModeRegistry, all_minor_mode_names, create_minor_mode};
+pub use window::{SplitDirection, Window, WindowManager};

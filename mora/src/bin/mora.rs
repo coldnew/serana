@@ -4,9 +4,9 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use mora_bin::mora::MoraEditor;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use mora_bin::mora::MoraEditor;
 use std::io;
 use std::path::Path;
 use std::time::Duration;
@@ -36,6 +36,9 @@ fn main() -> anyhow::Result<()> {
     } else {
         MoraEditor::new(editor_height)
     };
+
+    // Load init.mora config file
+    editor.lisp_bridge.load_init_file();
 
     let result = (|| -> anyhow::Result<()> {
         loop {
