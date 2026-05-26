@@ -1678,8 +1678,13 @@ impl MoraEditor {
                 }
             }
             KeyAction::IndentRegion(rect) => {
+                let indent: String = if self.buffer.major_mode.use_tabs() {
+                    "\t".to_string()
+                } else {
+                    " ".repeat(self.buffer.major_mode.indent_width())
+                };
                 for row in rect.start_row..=rect.end_row.min(self.buffer.lines.len() - 1) {
-                    self.buffer.lines[row].insert_str(0, "    ");
+                    self.buffer.lines[row].insert_str(0, &indent);
                 }
                 self.buffer.modified = true;
             }
@@ -1851,19 +1856,33 @@ impl MoraEditor {
 
             KeyAction::IndentLine => {
                 self.record_change();
+                let indent: String = if self.buffer.major_mode.use_tabs() {
+                    "\t".to_string()
+                } else {
+                    " ".repeat(self.buffer.major_mode.indent_width())
+                };
                 let line = &mut self.buffer.lines[self.buffer.cursor.row];
-                line.insert_str(0, "    ");
+                line.insert_str(0, &indent);
                 self.buffer.modified = true;
             }
             KeyAction::UnindentLine => {
                 self.record_change();
+                let indent_width = self.buffer.major_mode.indent_width();
                 let line = &mut self.buffer.lines[self.buffer.cursor.row];
-                if line.starts_with("    ") {
-                    *line = line[4..].to_string();
-                    self.buffer.modified = true;
-                } else if line.starts_with('\t') {
-                    *line = line[1..].to_string();
-                    self.buffer.modified = true;
+                if self.buffer.major_mode.use_tabs() {
+                    if line.starts_with('\t') {
+                        *line = line[1..].to_string();
+                        self.buffer.modified = true;
+                    }
+                } else {
+                    let spaces = " ".repeat(indent_width);
+                    if line.starts_with(&spaces) {
+                        *line = line[indent_width..].to_string();
+                        self.buffer.modified = true;
+                    } else if line.starts_with('\t') {
+                        *line = line[1..].to_string();
+                        self.buffer.modified = true;
+                    }
                 }
             }
 
@@ -2224,6 +2243,14 @@ impl MoraEditor {
                     self.status_message = "Unfolded".to_string();
                 }
             }
+            KeyAction::SwitchMajorMode(ref name) => {
+                if let Some(kind) = super::major_mode::parse_mode_name(name) {
+                    self.buffer.major_mode = super::major_mode::create_mode(kind);
+                    self.status_message = format!("Switched to {} mode", self.buffer.major_mode.name());
+                } else {
+                    self.status_message = format!("Unknown mode: {}", name);
+                }
+            }
             KeyAction::MxComplete => {
                 self.mx_complete();
             }
@@ -2410,6 +2437,19 @@ impl MoraEditor {
                 self.command_input.clear();
                 return;
             }
+            _ if trimmed.starts_with("switch-mode ") || trimmed.starts_with("set-mode ") => {
+                let prefix = if trimmed.starts_with("switch-mode ") { "switch-mode " } else { "set-mode " };
+                let mode_name = trimmed[prefix.len()..].trim();
+                if let Some(kind) = super::major_mode::parse_mode_name(mode_name) {
+                    self.buffer.major_mode = super::major_mode::create_mode(kind);
+                    self.status_message = format!("Switched to {} mode", self.buffer.major_mode.name());
+                } else {
+                    self.status_message = format!("Unknown mode: {}", mode_name);
+                }
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                return;
+            }
             _ => {}
         }
 
@@ -2446,6 +2486,7 @@ impl MoraEditor {
             "iedit", "kill-buffer", "kill-emacs", "lowercase-word",
             "lowercase-region", "multi-cursor-edit", "narrow-to-region",
             "recenter", "replace-string", "save-buffer", "save-some-buffers",
+            "set-mode", "switch-mode",
             "toggle-fold", "transpose-char", "transpose-line", "transpose-word",
             "unix2dos", "uppercase-region", "uppercase-word",
             "what-cursor-position", "widen",

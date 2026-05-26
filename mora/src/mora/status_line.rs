@@ -61,6 +61,7 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
     let buf = editor.buffer();
     let filename = buf.filename();
     let modified = if buf.modified { " [+]" } else { "" };
+    let mode_name = format!(" {} ", buf.major_mode.name());
     let pos = format!(" {}:{} ", buf.cursor.row + 1, buf.cursor.col + 1);
     let total = format!(" /{} ", buf.line_count());
 
@@ -71,12 +72,14 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
     let modified_style = Style::new()
         .fg(Color::Rgb(255, 179, 71))
         .add_modifier(Modifier::BOLD);
+    let mode_name_style = Style::new().fg(Color::Rgb(140, 160, 200));
 
     let mut spans = vec![
         Span::styled(mode_label, mode_style),
         Span::styled(" ", dim),
         Span::styled(filename.to_string(), bright),
         Span::styled(modified.to_string(), modified_style),
+        Span::styled(mode_name, mode_name_style),
     ];
 
     let macro_indicator = if editor.macro_state.is_recording() {

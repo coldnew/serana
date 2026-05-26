@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
+use super::major_mode::{self, MajorMode, MajorModeKind};
+
 const MAX_UNDO: usize = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +30,7 @@ pub struct Buffer {
     pub narrow_end: Option<usize>,
     pub fold_level: Option<usize>,
     pub folded_lines: Vec<bool>,
+    pub major_mode: Box<dyn MajorMode>,
 }
 
 impl Buffer {
@@ -44,6 +47,7 @@ impl Buffer {
             narrow_end: None,
             fold_level: None,
             folded_lines: Vec::new(),
+            major_mode: major_mode::create_mode(MajorModeKind::Fundamental),
         }
     }
 
@@ -54,6 +58,7 @@ impl Buffer {
         } else {
             content.lines().map(String::from).collect()
         };
+        let kind = MajorModeKind::detect(path);
         Ok(Self {
             lines,
             cursor: Cursor { row: 0, col: 0 },
@@ -66,6 +71,7 @@ impl Buffer {
             narrow_end: None,
             fold_level: None,
             folded_lines: Vec::new(),
+            major_mode: major_mode::create_mode(kind),
         })
     }
 
@@ -864,7 +870,12 @@ impl Buffer {
         self.push_undo();
         let row = self.cursor.row;
         let line = self.lines[row].clone();
-        let commented = format!("// {}", line);
+        let comment_prefix = self.major_mode.comment_style().line_comment;
+        let commented = if comment_prefix.is_empty() {
+            line.clone()
+        } else {
+            format!("{} {}", comment_prefix, line)
+        };
         self.lines[row] = commented;
         self.lines.insert(row + 1, line);
         self.cursor.row = row + 1;
@@ -875,13 +886,7 @@ impl Buffer {
         self.push_undo();
         let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
         if start < chars.len() && end < chars.len() && start < end {
-            let close_char = match new_char {
-                '(' => ')',
-                '{' => '}',
-                '[' => ']',
-                '<' => '>',
-                c => c,
-            };
+            let close_char = self.bracket_close_for(new_char);
             let mut new_chars: Vec<char> = Vec::new();
             new_chars.extend_from_slice(&chars[..start]);
             new_chars.push(new_char);
@@ -914,13 +919,7 @@ impl Buffer {
     pub fn add_surround(&mut self, surround_char: char, start: usize, end: usize) {
         self.push_undo();
         let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
-        let close_char = match surround_char {
-            '(' => ')',
-            '{' => '}',
-            '[' => ']',
-            '<' => '>',
-            c => c,
-        };
+        let close_char = self.bracket_close_for(surround_char);
         if start <= chars.len() && end <= chars.len() && start <= end {
             let mut new_chars: Vec<char> = Vec::new();
             new_chars.extend_from_slice(&chars[..start]);
@@ -937,12 +936,7 @@ impl Buffer {
         let line = &self.lines[self.cursor.row];
         let chars: Vec<char> = line.chars().collect();
         let col = self.cursor.col;
-        let close_char = match target {
-            '(' => ')',
-            '{' => '}',
-            '[' => ']',
-            c => c, // quotes use same char
-        };
+        let close_char = self.bracket_close_for(target);
         // Search backward for opening char
         let mut open_pos = None;
         for i in (0..=col.min(chars.len().saturating_sub(1))).rev() {
@@ -966,6 +960,16 @@ impl Buffer {
         } else {
             None
         }
+    }
+
+    pub fn bracket_close_for(&self, open: char) -> char {
+        for pair in self.major_mode.bracket_pairs() {
+            if pair.open == open {
+                return pair.close;
+            }
+        }
+        // Default: same char for quotes, or identity
+        open
     }
 
     pub fn narrow_to_region(&mut self, start_row: usize, end_row: usize) {
@@ -1587,5 +1591,104 @@ mod tests {
         buf.insert_string("foo bar baz");
         buf.add_surround('(', 4, 7); // surround "bar" (exclusive end, no trailing space)
         assert_eq!(buf.lines[0], "foo (bar) baz");
+    }
+
+    #[test]
+    fn test_major_mode_fundamental() {
+        let buf = Buffer::new();
+        assert_eq!(buf.major_mode.name(), "Fundamental");
+        assert!(buf.major_mode.comment_style().line_comment.is_empty());
+    }
+
+    #[test]
+    fn test_major_mode_detect_rs() {
+        let kind = super::major_mode::MajorModeKind::detect(std::path::Path::new("test.rs"));
+        assert_eq!(kind, super::major_mode::MajorModeKind::Rust);
+        let mode = super::major_mode::create_mode(kind);
+        assert_eq!(mode.name(), "Rust");
+        assert_eq!(mode.comment_style().line_comment, "//");
+        assert_eq!(mode.indent_width(), 4);
+    }
+
+    #[test]
+    fn test_major_mode_detect_py() {
+        let kind = super::major_mode::MajorModeKind::detect(std::path::Path::new("test.py"));
+        assert_eq!(kind, super::major_mode::MajorModeKind::Python);
+        let mode = super::major_mode::create_mode(kind);
+        assert_eq!(mode.name(), "Python");
+        assert_eq!(mode.comment_style().line_comment, "#");
+    }
+
+    #[test]
+    fn test_major_mode_detect_go() {
+        let kind = super::major_mode::MajorModeKind::detect(std::path::Path::new("main.go"));
+        assert_eq!(kind, super::major_mode::MajorModeKind::Go);
+        let mode = super::major_mode::create_mode(kind);
+        assert_eq!(mode.name(), "Go");
+        assert!(mode.use_tabs());
+        assert_eq!(mode.indent_width(), 1);
+    }
+
+    #[test]
+    fn test_major_mode_detect_sh() {
+        let kind = super::major_mode::MajorModeKind::detect(std::path::Path::new("run.sh"));
+        assert_eq!(kind, super::major_mode::MajorModeKind::Shell);
+        let mode = super::major_mode::create_mode(kind);
+        assert_eq!(mode.name(), "Shell");
+        assert_eq!(mode.comment_style().line_comment, "#");
+    }
+
+    #[test]
+    fn test_major_mode_from_filename_makefile() {
+        let kind = super::major_mode::MajorModeKind::detect(std::path::Path::new("Makefile"));
+        assert_eq!(kind, super::major_mode::MajorModeKind::Shell);
+    }
+
+    #[test]
+    fn test_copy_and_comment_rust() {
+        let mut buf = Buffer::new();
+        buf.major_mode = super::major_mode::create_mode(super::major_mode::MajorModeKind::Rust);
+        buf.insert_string("fn main() {}");
+        buf.copy_and_comment();
+        assert_eq!(buf.lines[0], "// fn main() {}");
+        assert_eq!(buf.lines[1], "fn main() {}");
+    }
+
+    #[test]
+    fn test_copy_and_comment_python() {
+        let mut buf = Buffer::new();
+        buf.major_mode = super::major_mode::create_mode(super::major_mode::MajorModeKind::Python);
+        buf.insert_string("print('hello')");
+        buf.copy_and_comment();
+        assert_eq!(buf.lines[0], "# print('hello')");
+        assert_eq!(buf.lines[1], "print('hello')");
+    }
+
+    #[test]
+    fn test_bracket_close_for() {
+        let buf = Buffer::new();
+        assert_eq!(buf.bracket_close_for('('), ')');
+        assert_eq!(buf.bracket_close_for('{'), '}');
+        assert_eq!(buf.bracket_close_for('['), ']');
+        assert_eq!(buf.bracket_close_for('"'), '"');
+        assert_eq!(buf.bracket_close_for('x'), 'x');
+    }
+
+    #[test]
+    fn test_auto_indent_rust() {
+        let mode = super::major_mode::create_mode(super::major_mode::MajorModeKind::Rust);
+        let indent = mode.auto_indent("fn main() {");
+        assert_eq!(indent, "    ");
+        let indent2 = mode.auto_indent("    let x = 1;");
+        assert_eq!(indent2, "    ");
+    }
+
+    #[test]
+    fn test_auto_indent_python() {
+        let mode = super::major_mode::create_mode(super::major_mode::MajorModeKind::Python);
+        let indent = mode.auto_indent("def foo():");
+        assert_eq!(indent, "    ");
+        let indent2 = mode.auto_indent("    x = 1");
+        assert_eq!(indent2, "    ");
     }
 }

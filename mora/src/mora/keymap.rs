@@ -166,6 +166,7 @@ pub enum KeyAction {
     DeleteOtherWindows,
     BalanceWindows,
     OtherWindow,
+    SwitchMajorMode(String),
 }
 
 impl KeyAction {
@@ -319,6 +320,14 @@ pub fn parse_command(input: &str) -> KeyAction {
         "recenter" | "recenter-top-bottom" => KeyAction::None,
         "describe-mode" | "describe-key" => KeyAction::None,
         "what-cursor-position" => KeyAction::None,
+        s if s.starts_with("switch-mode ") => {
+            let mode_name = s["switch-mode ".len()..].trim();
+            KeyAction::SwitchMajorMode(mode_name.to_string())
+        }
+        s if s.starts_with("set-mode ") => {
+            let mode_name = s["set-mode ".len()..].trim();
+            KeyAction::SwitchMajorMode(mode_name.to_string())
+        }
         _ => KeyAction::None,
     }
 }
