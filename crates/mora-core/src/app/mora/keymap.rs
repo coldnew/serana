@@ -131,6 +131,8 @@ pub enum KeyAction {
     CopyAndComment,
     NarrowRegion,
     Widen,
+    Dos2Unix,
+    Unix2Dos,
 }
 
 impl KeyAction {

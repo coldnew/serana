@@ -204,6 +204,8 @@ impl MoraEditor {
                 (KeyModifiers::CONTROL, KeyCode::Char('=')) => KeyAction::GotoLastChange,
                 // C-x C-;: cleanup buffer (delete trailing whitespace)
                 (KeyModifiers::CONTROL, KeyCode::Char(';')) => KeyAction::CleanupBuffer,
+                // C-x C-m: dos2unix
+                (KeyModifiers::CONTROL, KeyCode::Char('m')) => KeyAction::Dos2Unix,
                 // C-x n: narrow prefix
                 (_, KeyCode::Char('n')) => {
                     self.waiting_prefix2 = Some('n');
@@ -1670,6 +1672,16 @@ impl MoraEditor {
             KeyAction::Widen => {
                 self.buffer.widen();
                 self.status_message = "Widened".to_string();
+            }
+            KeyAction::Dos2Unix => {
+                self.record_change();
+                self.buffer.dos2unix();
+                self.status_message = "Converted to Unix line endings".to_string();
+            }
+            KeyAction::Unix2Dos => {
+                self.record_change();
+                self.buffer.unix2dos();
+                self.status_message = "Converted to DOS line endings".to_string();
             }
         }
     }

@@ -862,6 +862,22 @@ impl Buffer {
     pub fn narrow_offset(&self) -> usize {
         self.narrow_start.unwrap_or(0)
     }
+
+    pub fn dos2unix(&mut self) {
+        for line in &mut self.lines {
+            if line.ends_with('\r') {
+                line.pop();
+            }
+        }
+        self.modified = true;
+    }
+
+    pub fn unix2dos(&mut self) {
+        for line in &mut self.lines {
+            line.push('\r');
+        }
+        self.modified = true;
+    }
 }
 
 #[cfg(test)]
