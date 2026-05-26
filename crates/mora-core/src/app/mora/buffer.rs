@@ -329,6 +329,46 @@ impl Buffer {
         }
     }
 
+    pub fn move_word_end(&mut self) {
+        let line = self.lines[self.cursor.row].clone();
+        let chars: Vec<char> = line.chars().collect();
+        let char_idx = Self::char_index_at_col(&line, self.cursor.col);
+        let len = chars.len();
+        if len == 0 || char_idx >= len {
+            if self.cursor.row + 1 < self.lines.len() {
+                self.cursor.row += 1;
+                self.cursor.col = 0;
+                self.move_word_end();
+            }
+            return;
+        }
+
+        let mut i = char_idx;
+        while i < len && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= len {
+            if self.cursor.row + 1 < self.lines.len() {
+                self.cursor.row += 1;
+                self.cursor.col = 0;
+                self.move_word_end();
+            }
+            return;
+        }
+
+        let is_word = chars[i].is_alphanumeric() || chars[i] == '_';
+        while i < len {
+            let c = chars[i];
+            if c.is_whitespace() || is_word != (c.is_alphanumeric() || c == '_') {
+                break;
+            }
+            i += 1;
+        }
+
+        let last = i.saturating_sub(1);
+        self.cursor.col = Self::col_byte_index(&line, last);
+    }
+
     pub fn move_word_backward(&mut self) {
         let line = &self.lines[self.cursor.row];
         let chars: Vec<char> = line.chars().collect();

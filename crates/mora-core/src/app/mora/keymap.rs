@@ -69,6 +69,7 @@ pub enum KeyAction {
     MoveFileEnd,
     MoveWordForward,
     MoveWordBackward,
+    MoveWordEnd,
     ScrollUp,
     ScrollDown,
     ScrollHalfPageUp,
