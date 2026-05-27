@@ -1,6 +1,21 @@
 use futures::StreamExt;
 use serana_core::{AgentCallbacks, LlmClient, Message, Result, ToolDefinition};
 
+use crate::stream_rules::{ContextMode, StreamRuleEngine, StreamRuleMatch};
+
+/// Outcome from a turn that may have been interrupted by TTSR.
+pub enum TurnOutcome {
+    /// Normal completion.
+    Complete(Message),
+    /// Stream was interrupted by a TTSR rule. Contains injection text and context mode.
+    Interrupted {
+        name: String,
+        injection: String,
+        context: ContextMode,
+        partial_content: String,
+    },
+}
+
 pub struct TurnRunner<'a> {
     llm: &'a dyn LlmClient,
     callbacks: &'a AgentCallbacks,
@@ -12,6 +27,22 @@ impl<'a> TurnRunner<'a> {
     }
 
     pub async fn run(&self, messages: &[Message], tools: &[ToolDefinition]) -> Result<Message> {
+        let outcome = self.run_with_ttsr(messages, tools, None).await?;
+        match outcome {
+            TurnOutcome::Complete(msg) => Ok(msg),
+            TurnOutcome::Interrupted { .. } => {
+                // Should not happen without TTSR engine
+                anyhow::bail!("Unexpected TTSR interrupt without engine")
+            }
+        }
+    }
+
+    pub async fn run_with_ttsr(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        stream_rules: Option<&mut StreamRuleEngine>,
+    ) -> Result<TurnOutcome> {
         let mut stream = self.llm.chat_with_tools_stream(messages, tools);
         let mut final_message: Option<Message> = None;
         let mut accumulated_content = String::new();
@@ -21,6 +52,28 @@ impl<'a> TurnRunner<'a> {
                 Ok(Message::Text { content, .. }) => {
                     self.callbacks.fire_stream_delta(&content);
                     accumulated_content.push_str(&content);
+
+                    // Check TTSR rules against accumulated text output
+                    if let Some(ref engine) = stream_rules {
+                        match engine.check(&accumulated_content) {
+                            StreamRuleMatch::Interrupt {
+                                name,
+                                injection,
+                                context,
+                            } => {
+                                return Ok(TurnOutcome::Interrupted {
+                                    name,
+                                    injection,
+                                    context,
+                                    partial_content: accumulated_content,
+                                });
+                            }
+                            StreamRuleMatch::Deferred { .. } => {
+                                // Continue streaming; deferred injection handled after turn
+                            }
+                            StreamRuleMatch::None => {}
+                        }
+                    }
                 }
                 Ok(msg) => {
                     final_message = Some(msg);
@@ -34,7 +87,9 @@ impl<'a> TurnRunner<'a> {
             final_message = Some(Message::assistant(accumulated_content));
         }
 
-        final_message.ok_or_else(|| anyhow::anyhow!("No message received from stream"))
+        final_message
+            .map(TurnOutcome::Complete)
+            .ok_or_else(|| anyhow::anyhow!("No message received from stream"))
     }
 }
 
