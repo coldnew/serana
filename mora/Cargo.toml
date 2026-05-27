@@ -19,6 +19,16 @@ dirs.workspace = true
 serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
 mora-lisp = { path = "../crates/mora-lisp" }
 mora-compile = { path = "../crates/mora-compile" }
+mishell-parser = { path = "../crates/mishell-parser" }
+tokio.workspace = true
+thiserror.workspace = true
+hostname = "0.4"
+wgpu.workspace = true
+winit = { workspace = true, features = ["rwh_06"] }
+cosmic-text.workspace = true
+glyphon.workspace = true
+pollster.workspace = true
+bytemuck.workspace = true
 
 [dev-dependencies]
 tempfile = "3.12"
@@ -26,3 +36,7 @@ tempfile = "3.12"
 [[bin]]
 name = "mora"
 path = "src/bin/mora.rs"
+
+[[bin]]
+name = "mishell"
+path = "src/bin/mishell.rs"

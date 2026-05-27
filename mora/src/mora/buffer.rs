@@ -55,6 +55,24 @@ impl Buffer {
     }
 
     pub fn from_file(path: &std::path::Path) -> std::io::Result<Self> {
+        if !path.exists() {
+            let kind = MajorModeKind::detect(path);
+            return Ok(Self {
+                lines: vec![String::new()],
+                cursor: Cursor { row: 0, col: 0 },
+                scroll_offset: 0,
+                modified: false,
+                path: Some(path.to_path_buf()),
+                undo_stack: VecDeque::new(),
+                redo_stack: Vec::new(),
+                narrow_start: None,
+                narrow_end: None,
+                fold_level: None,
+                folded_lines: Vec::new(),
+                major_mode: major_mode::create_mode(kind),
+                overlays: OverlayStore::new(),
+            });
+        }
         let content = std::fs::read_to_string(path)?;
         let lines: Vec<String> = if content.is_empty() {
             vec![String::new()]

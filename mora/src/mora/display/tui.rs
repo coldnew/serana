@@ -13,7 +13,7 @@ use ratatui::{
 use std::io;
 use std::time::Duration;
 
-use super::backend::{DisplayBackend, InputEvent, MouseKind, MoraRect};
+use super::backend::{DisplayBackend, InputEvent, MouseKind, MoraRect, CellBuffer};
 use super::event::{MoraKeyCode, MoraKeyEvent, MoraKeyModifiers};
 use super::style::{MoraColor, MoraStyle};
 
@@ -137,5 +137,22 @@ impl DisplayBackend for TuiBackend {
 
     fn set_cursor(&mut self, x: u16, y: u16) {
         let _ = self.terminal.set_cursor_position((x, y));
+    }
+
+    fn render_buffer(&mut self, buf: &CellBuffer) -> Result<(), String> {
+        self.terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let ratatui_buf = frame.buffer_mut();
+                for y in 0..buf.height.min(area.height) {
+                    for x in 0..buf.width.min(area.width) {
+                        let cell = buf.get(x, y);
+                        let ratatui_style: Style = cell.style.into();
+                        ratatui_buf[(x, y)].set_char(cell.ch).set_style(ratatui_style);
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }

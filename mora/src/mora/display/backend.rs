@@ -33,6 +33,61 @@ pub enum MouseKind {
     ScrollDown,
 }
 
+#[derive(Debug, Clone)]
+pub struct Cell {
+    pub ch: char,
+    pub style: MoraStyle,
+}
+
+impl Default for Cell {
+    fn default() -> Self {
+        Self {
+            ch: ' ',
+            style: MoraStyle::default(),
+        }
+    }
+}
+
+pub struct CellBuffer {
+    pub width: u16,
+    pub height: u16,
+    pub cells: Vec<Cell>,
+}
+
+impl CellBuffer {
+    pub fn new(width: u16, height: u16) -> Self {
+        Self {
+            width,
+            height,
+            cells: vec![Cell::default(); (width as usize) * (height as usize)],
+        }
+    }
+
+    pub fn clear(&mut self) {
+        for cell in &mut self.cells {
+            *cell = Cell::default();
+        }
+    }
+
+    pub fn set_cell(&mut self, x: u16, y: u16, ch: char, style: MoraStyle) {
+        if x < self.width && y < self.height {
+            let idx = (y as usize) * (self.width as usize) + (x as usize);
+            self.cells[idx] = Cell { ch, style };
+        }
+    }
+
+    pub fn set_line(&mut self, x: u16, y: u16, text: &str, style: MoraStyle) {
+        for (i, ch) in text.chars().enumerate() {
+            self.set_cell(x + i as u16, y, ch, style);
+        }
+    }
+
+    pub fn get(&self, x: u16, y: u16) -> &Cell {
+        let idx = (y as usize) * (self.width as usize) + (x as usize);
+        &self.cells[idx]
+    }
+}
+
 pub trait DisplayBackend {
     fn init(&mut self) -> Result<(), String>;
     fn cleanup(&mut self) -> Result<(), String>;
@@ -45,4 +100,5 @@ pub trait DisplayBackend {
     fn hide_cursor(&mut self);
     fn show_cursor(&mut self);
     fn set_cursor(&mut self, x: u16, y: u16);
+    fn render_buffer(&mut self, buf: &CellBuffer) -> Result<(), String>;
 }

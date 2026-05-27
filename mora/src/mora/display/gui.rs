@@ -1,4 +1,4 @@
-use super::backend::{DisplayBackend, InputEvent, MoraRect};
+use super::backend::{DisplayBackend, InputEvent, MoraRect, CellBuffer};
 use super::event::MoraKeyEvent;
 use super::style::MoraStyle;
 
@@ -71,4 +71,20 @@ impl DisplayBackend for GuiBackend {
     fn hide_cursor(&mut self) {}
     fn show_cursor(&mut self) {}
     fn set_cursor(&mut self, _x: u16, _y: u16) {}
+
+    fn render_buffer(&mut self, buf: &CellBuffer) -> Result<(), String> {
+        self.width = buf.width;
+        self.height = buf.height;
+        self.cells = (0..buf.height)
+            .map(|y| {
+                (0..buf.width)
+                    .map(|x| {
+                        let cell = buf.get(x, y);
+                        (cell.ch, cell.style)
+                    })
+                    .collect()
+            })
+            .collect();
+        Ok(())
+    }
 }

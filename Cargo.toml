@@ -4,6 +4,8 @@ members = [
     "crates/mora-core",
     "crates/mora-lisp",
     "crates/mora-compile",
+    "crates/mishell-parser",
+    "mishell",
     "mora",
     "serana",
     "crates/serana-core",
@@ -31,6 +33,7 @@ toml = "0.8"
 anyhow = "1.0"
 thiserror = "1.0"
 reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 crossterm = "0.28"
@@ -56,6 +59,12 @@ syntect = "5.2"
 regex = "1.10"
 glob = "0.3"
 ignore = "0.4"
+wgpu = "29"
+winit = "0.30"
+cosmic-text = "0.12"
+glyphon = "0.11"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
