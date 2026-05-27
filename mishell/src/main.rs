@@ -33,6 +33,10 @@ struct Cli {
     /// Disable fish features
     #[arg(long)]
     no_fish: bool,
+
+    /// Run as MCP server (JSON-RPC 2.0 over stdio)
+    #[arg(long)]
+    rpc: bool,
 }
 
 enum InputMode {
@@ -42,6 +46,11 @@ enum InputMode {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    if cli.rpc {
+        mishell::rpc::run_rpc_loop();
+        return Ok(());
+    }
 
     if let Some(cmd) = cli.command {
         let mut shell = Shell::new(!cli.no_fish)?;

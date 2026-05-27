@@ -412,6 +412,25 @@ impl Parser {
     fn parse_function_def(&mut self) -> Result<CommandBody> {
         self.advance(); // consume 'function'
         let name = self.expect_word()?;
+        
+        // Parse optional flags: --on-event EVENT, --on-variable VAR
+        let mut on_event = None;
+        let mut on_variable = None;
+        loop {
+            self.skip_newlines();
+            if self.check_word("--on-event") {
+                self.advance();
+                self.skip_newlines();
+                on_event = Some(self.expect_word()?);
+            } else if self.check_word("--on-variable") {
+                self.advance();
+                self.skip_newlines();
+                on_variable = Some(self.expect_word()?);
+            } else {
+                break;
+            }
+        }
+        
         self.skip_newlines();
         
         // Parse body until 'end'
@@ -429,7 +448,7 @@ impl Parser {
         }
         self.expect(&Token::End)?;
         
-        Ok(CommandBody::FunctionDef(FunctionDef { name, body }))
+        Ok(CommandBody::FunctionDef(FunctionDef { name, body, on_event, on_variable }))
     }
     
     fn parse_for_loop(&mut self) -> Result<CommandBody> {

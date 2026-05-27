@@ -149,6 +149,8 @@ pub struct Assignment {
 pub struct FunctionDef {
     pub name: String,
     pub body: Vec<Command>,
+    pub on_event: Option<String>,
+    pub on_variable: Option<String>,
 }
 
 /// For loop

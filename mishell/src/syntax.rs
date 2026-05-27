@@ -185,6 +185,9 @@ impl SyntaxHighlighter {
             | "command" | "builtin" | "shift" | "unset" | "trap"
             |             "and" | "or" | "not" | "count" | "string" | "math"
             | "jobs" | "fg" | "bg" | "status" | "contains" | "random" | "emit" | "begin"
+            | "edit" | "file" | "head" | "tail" | "try"
+            | "funced" | "funcsave" | "functions"
+            | "test" | "[" | "eval" | "realpath"
         )
     }
 
