@@ -73,7 +73,9 @@ mod channel {
             closed: Mutex::new(false),
         });
         (
-            Sender { shared: shared.clone() },
+            Sender {
+                shared: shared.clone(),
+            },
             Receiver { shared },
         )
     }
@@ -89,16 +91,14 @@ impl ThreadPool {
 
         for _id in 0..size {
             let receiver = receiver.clone();
-            let handle = thread::spawn(move || {
-                loop {
-                    let job = {
-                        let rx = receiver.lock();
-                        rx.recv()
-                    };
-                    match job {
-                        Some(job) => job(),
-                        None => break,
-                    }
+            let handle = thread::spawn(move || loop {
+                let job = {
+                    let rx = receiver.lock();
+                    rx.recv()
+                };
+                match job {
+                    Some(job) => job(),
+                    None => break,
                 }
             });
             workers.push(handle);

@@ -62,8 +62,14 @@ struct WasmImport {
 }
 
 enum WasmImportKind {
-    Function { params: Vec<WasmType>, results: Vec<WasmType> },
-    Memory { initial: u32, maximum: Option<u32> },
+    Function {
+        params: Vec<WasmType>,
+        results: Vec<WasmType>,
+    },
+    Memory {
+        initial: u32,
+        maximum: Option<u32>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -97,17 +103,33 @@ enum WasmInstruction {
     CallIndirect(u32),
     Block(Vec<WasmInstruction>),
     Loop(Vec<WasmInstruction>),
-    If { condition: Box<WasmInstruction>, then_branch: Vec<WasmInstruction>, else_branch: Option<Vec<WasmInstruction>> },
+    If {
+        condition: Box<WasmInstruction>,
+        then_branch: Vec<WasmInstruction>,
+        else_branch: Option<Vec<WasmInstruction>>,
+    },
     Return,
     Drop,
     Nop,
     Unreachable,
     MemorySize,
     MemoryGrow,
-    I32Load { offset: u32, align: u32 },
-    I32Store { offset: u32, align: u32 },
-    I64Load { offset: u32, align: u32 },
-    I64Store { offset: u32, align: u32 },
+    I32Load {
+        offset: u32,
+        align: u32,
+    },
+    I32Store {
+        offset: u32,
+        align: u32,
+    },
+    I64Load {
+        offset: u32,
+        align: u32,
+    },
+    I64Store {
+        offset: u32,
+        align: u32,
+    },
 }
 
 impl WasmCompiler {
@@ -155,11 +177,17 @@ impl WasmCompiler {
 
     fn compile_defn(&mut self, args: &[Value]) -> Result<(), WasmError> {
         if args.len() < 3 {
-            return Err(WasmError::CompilationError("defn requires at least 3 arguments".to_string()));
+            return Err(WasmError::CompilationError(
+                "defn requires at least 3 arguments".to_string(),
+            ));
         }
         let name = match &args[0] {
             Value::Symbol(s) => s.name.to_string(),
-            _ => return Err(WasmError::CompilationError("defn name must be a symbol".to_string())),
+            _ => {
+                return Err(WasmError::CompilationError(
+                    "defn name must be a symbol".to_string(),
+                ))
+            }
         };
         let params = self.parse_wasm_params(&args[1])?;
         let body = &args[2..];
@@ -204,7 +232,8 @@ impl WasmCompiler {
                 func.body.push(WasmInstruction::F64Const(*n));
             }
             Value::Bool(b) => {
-                func.body.push(WasmInstruction::I64Const(if *b { 1 } else { 0 }));
+                func.body
+                    .push(WasmInstruction::I64Const(if *b { 1 } else { 0 }));
             }
             Value::List(list) if !list.is_empty() => {
                 if let Value::Symbol(sym) = &list[0] {
@@ -245,7 +274,7 @@ impl WasmCompiler {
                                     body: then_body,
                                 };
                                 self.compile_expr(&list[2], &mut then_func)?;
-                                
+
                                 let else_body = if list.len() > 3 {
                                     let mut else_func = WasmFunction {
                                         name: String::new(),
@@ -285,7 +314,11 @@ impl WasmCompiler {
         let params = match form {
             Value::Vector(v) => v.as_ref(),
             Value::List(l) => l.as_ref(),
-            _ => return Err(WasmError::CompilationError("parameter list must be a vector".to_string())),
+            _ => {
+                return Err(WasmError::CompilationError(
+                    "parameter list must be a vector".to_string(),
+                ))
+            }
         };
         // Default all params to i64 for Lisp value representation
         Ok(params.iter().map(|_| WasmType::I64).collect())
@@ -293,7 +326,7 @@ impl WasmCompiler {
 
     fn emit_binary(&self) -> Result<Vec<u8>, WasmError> {
         let mut bytes = Vec::new();
-        
+
         // WASM magic number and version
         bytes.extend_from_slice(&[0x00, 0x61, 0x73, 0x6D]); // \0asm
         bytes.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // version 1
@@ -472,7 +505,11 @@ fn emit_instruction(instr: &WasmInstruction, bytes: &mut Vec<u8>) {
             }
             bytes.push(0x0B); // end
         }
-        WasmInstruction::If { condition, then_branch, else_branch } => {
+        WasmInstruction::If {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
             emit_instruction(condition, bytes);
             bytes.push(0x04);
             bytes.push(0x40); // void block type

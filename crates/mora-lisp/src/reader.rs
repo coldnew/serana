@@ -17,7 +17,11 @@ pub enum ReadError {
     #[error("invalid number: {0}")]
     InvalidNumber(String),
     #[error("read error at line {line}, col {col}: {msg}")]
-    Positional { line: usize, col: usize, msg: String },
+    Positional {
+        line: usize,
+        col: usize,
+        msg: String,
+    },
 }
 
 pub struct Reader {
@@ -241,13 +245,28 @@ impl Reader {
             false
         };
         while let Some(ch) = self.peek() {
-            if ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '*' || ch == '!' || ch == '?' || ch == '/' || ch == '.' {
+            if ch.is_alphanumeric()
+                || ch == '_'
+                || ch == '-'
+                || ch == '*'
+                || ch == '!'
+                || ch == '?'
+                || ch == '/'
+                || ch == '.'
+            {
                 if ch == '/' && !name.is_empty() && !name.ends_with(':') {
                     name.push(ch);
                     self.advance();
                     // Read the name part after /
                     while let Some(ch2) = self.peek() {
-                        if ch2.is_alphanumeric() || ch2 == '_' || ch2 == '-' || ch2 == '*' || ch2 == '!' || ch2 == '?' || ch2 == '.' {
+                        if ch2.is_alphanumeric()
+                            || ch2 == '_'
+                            || ch2 == '-'
+                            || ch2 == '*'
+                            || ch2 == '!'
+                            || ch2 == '?'
+                            || ch2 == '.'
+                        {
                             name.push(ch2);
                             self.advance();
                         } else {
@@ -360,7 +379,7 @@ impl Reader {
                     self.skip_whitespace();
                 }
                 self.advance().ok_or(ReadError::UnexpectedEof)?; // )
-                // Create a fn with auto-generated params %1, %2, etc.
+                                                                 // Create a fn with auto-generated params %1, %2, etc.
                 let mut params = Vec::new();
                 let mut max_arg = 0;
                 for form in &body {
@@ -449,20 +468,14 @@ impl Reader {
     fn read_quote(&mut self) -> Result<Value, ReadError> {
         self.advance(); // '
         let form = self.read_form()?;
-        Ok(Value::list(vec![
-            Value::symbol("quote"),
-            form,
-        ]))
+        Ok(Value::list(vec![Value::symbol("quote"), form]))
     }
 
     fn read_syntax_quote(&mut self) -> Result<Value, ReadError> {
         self.advance(); // `
         let form = self.read_form()?;
         // Expand syntax-quote (simplified - full implementation would handle ~@ etc.)
-        Ok(Value::list(vec![
-            Value::symbol("syntax-quote"),
-            form,
-        ]))
+        Ok(Value::list(vec![Value::symbol("syntax-quote"), form]))
     }
 
     fn read_unquote(&mut self) -> Result<Value, ReadError> {
@@ -470,37 +483,24 @@ impl Reader {
         if self.peek() == Some('@') {
             self.advance(); // @
             let form = self.read_form()?;
-            Ok(Value::list(vec![
-                Value::symbol("unquote-splicing"),
-                form,
-            ]))
+            Ok(Value::list(vec![Value::symbol("unquote-splicing"), form]))
         } else {
             let form = self.read_form()?;
-            Ok(Value::list(vec![
-                Value::symbol("unquote"),
-                form,
-            ]))
+            Ok(Value::list(vec![Value::symbol("unquote"), form]))
         }
     }
 
     fn read_deref(&mut self) -> Result<Value, ReadError> {
         self.advance(); // @
         let form = self.read_form()?;
-        Ok(Value::list(vec![
-            Value::symbol("deref"),
-            form,
-        ]))
+        Ok(Value::list(vec![Value::symbol("deref"), form]))
     }
 
     fn read_meta(&mut self) -> Result<Value, ReadError> {
         self.advance(); // ^
         let meta = self.read_form()?;
         let form = self.read_form()?;
-        Ok(Value::list(vec![
-            Value::symbol("with-meta"),
-            form,
-            meta,
-        ]))
+        Ok(Value::list(vec![Value::symbol("with-meta"), form, meta]))
     }
 }
 

@@ -83,7 +83,11 @@ impl Namespace {
     pub fn resolve(&self, sym: &Symbol) -> Option<Value> {
         if let Some(ns_name) = &sym.ns {
             // Qualified symbol: check aliases first
-            let resolved_ns = self.aliases.get(ns_name.as_str()).map(|s| s.as_str()).unwrap_or(ns_name.as_str());
+            let resolved_ns = self
+                .aliases
+                .get(ns_name.as_str())
+                .map(|s| s.as_str())
+                .unwrap_or(ns_name.as_str());
             if resolved_ns == self.name {
                 return self.vars.get(sym.name.as_str()).map(|v| v.deref());
             }

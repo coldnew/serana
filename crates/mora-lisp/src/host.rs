@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::eval::{EvalError, Evaluator};
-use crate::types::Value;
 use crate::reader;
+use crate::types::Value;
 
 pub struct MoraHost {
     evaluator: Evaluator,
@@ -22,8 +22,8 @@ impl MoraHost {
     }
 
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
-        let forms = reader::read_all(code)
-            .map_err(|e| EvalError::Custom(format!("read error: {}", e)))?;
+        let forms =
+            reader::read_all(code).map_err(|e| EvalError::Custom(format!("read error: {}", e)))?;
         let mut result = Value::Nil;
         for form in forms {
             result = self.evaluator.eval(&form)?;
@@ -55,11 +55,12 @@ impl MoraHost {
     }
 
     pub fn run_command(&mut self, name: &str, args: &[Value]) -> Result<Value, EvalError> {
-        let handler = self.commands
+        let handler = self
+            .commands
             .get(name)
             .cloned()
             .ok_or_else(|| EvalError::Custom(format!("command not found: {}", name)))?;
-        
+
         let mut all_args = vec![handler];
         all_args.extend(args.iter().cloned());
         self.evaluator.eval(&Value::list(all_args))
@@ -83,8 +84,7 @@ impl MoraHost {
     }
 
     pub fn load_extension_file(&mut self, path: &str) -> Result<(), EvalError> {
-        let code = std::fs::read_to_string(path)
-            .map_err(|e| EvalError::Io(e.to_string()))?;
+        let code = std::fs::read_to_string(path).map_err(|e| EvalError::Io(e.to_string()))?;
         self.load_extension(&code)
     }
 
@@ -172,7 +172,9 @@ impl ExtensionManifest {
                     keybindings: get_map_string("keybindings"),
                 })
             }
-            _ => Err(EvalError::Type("extension manifest must be a map".to_string())),
+            _ => Err(EvalError::Type(
+                "extension manifest must be a map".to_string(),
+            )),
         }
     }
 }
