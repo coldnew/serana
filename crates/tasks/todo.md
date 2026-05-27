@@ -146,6 +146,45 @@ Review:
 - Updated the parent package description and README summary to describe Serana as a personal Hermes agent.
 - Workspace verification now passes without Hermes migration deprecation warnings from `src/main.rs`; only pre-existing unrelated warnings remain.
 
+# Mishell - Powerful Shell with Fish Features
+
+Success criteria for this slice:
+- [x] Implement bash syntax parser (not a full bash clone, but supports core bash syntax)
+- [x] Add fish shell features: autosuggestions, syntax highlighting, abbreviations
+- [ ] Integrate with mora editor (like eshell in emacs)
+- [x] Implement autocomplete system
+- [x] Create mishell binary entry point
+
+## Phase 1: Shell Parser (Bash Syntax Support)
+- [x] Create shell parser crate structure
+- [x] Implement tokenizer for bash syntax
+- [x] Support: variables, pipes, redirects, command substitution, globs
+- [x] Support: &&, ||, ;, () grouping
+- [ ] Support: heredocs, process substitution
+
+## Phase 2: Fish Shell Features
+- [ ] Autosuggestions based on history
+- [x] Syntax highlighting (real-time)
+- [x] Abbreviations system
+- [ ] Right prompt support
+- [ ] Universal variables
+- [ ] Web-based configuration (optional)
+
+## Phase 3: Editor Integration
+- [ ] Create eshell-like mode in mora
+- [ ] Buffer integration (output goes to buffer)
+- [ ] Command history navigation
+- [ ] Inline editing of commands
+
+## Phase 4: Autocomplete
+- [x] Command completion
+- [x] File path completion
+- [x] Variable completion
+- [x] History-based completion
+- [ ] Context-aware completion
+
+---
+
 # TUI Rewrite Toward oh-my-pi
 
 Success criteria for this slice:
