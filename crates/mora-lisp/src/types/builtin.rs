@@ -738,18 +738,20 @@ fn native_conj(args: &[Value]) -> Result<Value, String> {
             for arg in &args[1..] {
                 match arg {
                     Value::Map(other) => {
-                        new_m.extend(other.iter().cloned());
+                        for (k, v) in other.iter() {
+                            new_m.insert(k.clone(), v.clone());
+                        }
                     }
                     Value::Vector(v) if v.len() == 2 => {
-                        new_m.push((v[0].clone(), v[1].clone()));
+                        new_m.insert(v[0].clone(), v[1].clone());
                     }
                     Value::List(v) if v.len() == 2 => {
-                        new_m.push((v[0].clone(), v[1].clone()));
+                        new_m.insert(v[0].clone(), v[1].clone());
                     }
                     _ => return Err("conj to map requires map or [k v] pair".to_string()),
                 }
             }
-            Ok(Value::map(new_m))
+            Ok(Value::Map(Arc::new(new_m)))
         }
         Value::Nil => {
             let mut new_v = Vec::new();
@@ -1197,10 +1199,12 @@ fn native_into(args: &[Value]) -> Result<Value, String> {
         (Value::Map(_), Value::Map(v)) => {
             let mut result = match from {
                 Value::Map(existing) => existing.as_ref().clone(),
-                _ => vec![],
+                _ => HashMap::new(),
             };
-            result.extend(v.iter().cloned());
-            Ok(Value::map(result))
+            for (k, val) in v.iter() {
+                result.insert(k.clone(), val.clone());
+            }
+            Ok(Value::Map(Arc::new(result)))
         }
         (Value::Set(_), Value::List(v)) | (Value::Set(_), Value::Vector(v)) => {
             let mut result = match from {
@@ -1308,8 +1312,29 @@ fn native_sort(args: &[Value]) -> Result<Value, String> {
 }
 
 fn native_sort_by(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call the keyfn
-    native_sort(&args[0..1])
+    if args.len() != 2 {
+        return Err("sort-by requires exactly 2 arguments".to_string());
+    }
+    let keyfn = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut items: Vec<Value> = v.as_ref().clone();
+            let mut keys: Vec<Value> = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                keys.push(invoke_fn(keyfn, &[item.clone()])?);
+            }
+            let mut indices: Vec<usize> = (0..items.len()).collect();
+            indices.sort_by(|&a, &b| {
+                let cmp = compare_values(&keys[a], &keys[b]);
+                if cmp < 0 { std::cmp::Ordering::Less }
+                else if cmp > 0 { std::cmp::Ordering::Greater }
+                else { std::cmp::Ordering::Equal }
+            });
+            let sorted: Vec<Value> = indices.into_iter().map(|i| items[i].clone()).collect();
+            Ok(Value::list(sorted))
+        }
+        _ => Err("sort-by second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_distinct(args: &[Value]) -> Result<Value, String> {
@@ -1318,11 +1343,10 @@ fn native_distinct(args: &[Value]) -> Result<Value, String> {
     }
     match &args[0] {
         Value::List(v) | Value::Vector(v) => {
-            let mut seen = Vec::new();
+            let mut seen = HashSet::new();
             let mut result = Vec::new();
             for item in v.iter() {
-                if !seen.contains(item) {
-                    seen.push(item.clone());
+                if seen.insert(item.clone()) {
                     result.push(item.clone());
                 }
             }
@@ -1367,28 +1391,106 @@ fn native_drop(args: &[Value]) -> Result<Value, String> {
 }
 
 fn native_take_while(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call pred
-    Ok(args.get(1).cloned().unwrap_or(Value::Nil))
+    if args.len() != 2 {
+        return Err("take-while requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::new();
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => break,
+                    _ => result.push(item.clone()),
+                }
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("take-while second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_drop_while(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call pred
-    Ok(args.get(1).cloned().unwrap_or(Value::Nil))
+    if args.len() != 2 {
+        return Err("drop-while requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut dropping = true;
+            let mut result = Vec::new();
+            for item in v.iter() {
+                if dropping {
+                    match invoke_fn(pred, &[item.clone()])? {
+                        Value::Bool(false) | Value::Nil => dropping = false,
+                        _ => continue,
+                    }
+                }
+                if !dropping {
+                    result.push(item.clone());
+                }
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("drop-while second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_filter(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call pred
-    Ok(args.get(1).cloned().unwrap_or(Value::Nil))
+    if args.len() != 2 {
+        return Err("filter requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::new();
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => {}
+                    _ => result.push(item.clone()),
+                }
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("filter second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_remove(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call pred
-    Ok(args.get(1).cloned().unwrap_or(Value::Nil))
+    if args.len() != 2 {
+        return Err("remove requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::new();
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => result.push(item.clone()),
+                    _ => {}
+                }
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("remove second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_map_fn(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call func
-    Ok(args.get(1).cloned().unwrap_or(Value::Nil))
+    if args.len() < 2 {
+        return Err("map requires at least 2 arguments".to_string());
+    }
+    let func = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::with_capacity(v.len());
+            for item in v.iter() {
+                result.push(invoke_fn(func, &[item.clone()])?);
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("map second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_mapcat(args: &[Value]) -> Result<Value, String> {
