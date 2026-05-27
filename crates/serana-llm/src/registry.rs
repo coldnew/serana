@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use serana_core::{Config, LlmClient, Message, Result, ToolDefinition};
 
-use crate::{FallbackChain, OpenAiClient};
+use crate::{FallbackChain, OpenAiClient, OpenRouterClient};
 
 /// Model roles route work by intent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -90,7 +90,10 @@ impl ProviderRegistry {
     pub fn from_config(config: &Config) -> Result<Self> {
         let mut registry = Self::new();
 
-        let primary = Arc::new(OpenAiClient::new(config.clone()));
+        let primary: Arc<dyn LlmClient> = match config.provider.name.as_str() {
+            "openrouter" => Arc::new(OpenRouterClient::new(config.clone())),
+            _ => Arc::new(OpenAiClient::new(config.clone())),
+        };
         registry.register_provider(&config.provider.name, primary.clone());
 
         let mut default_chain = FallbackChain::with_defaults();

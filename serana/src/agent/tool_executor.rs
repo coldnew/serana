@@ -1,18 +1,43 @@
 use serde_json::Value;
 
-use serana_core::{AgentCallbacks, Result, ToolCall, ToolCallData};
+use serana_core::{AgentCallbacks, Result, ToolCall, ToolCallData, ToolApproval, ApprovalDecision};
 use crate::tools::ToolRegistry;
 
 pub async fn execute_tools_concurrent(
     tool_calls: &[ToolCallData],
     registry: &ToolRegistry,
     callbacks: &AgentCallbacks,
+    approval: Option<&ToolApproval>,
 ) -> Vec<ToolExecutionResult> {
     let mut results = Vec::with_capacity(tool_calls.len());
 
     for tc in tool_calls {
         let tool_name = &tc.function.name;
         let tool_args = &tc.function.arguments;
+
+        // Check approval before executing
+        if let Some(approval) = approval {
+            if approval.requires_approval(tool_name) {
+                let risk = ToolApproval::classify_risk(tool_name);
+                // Request user approval via callback
+                let approved = if let Some(ref approve_cb) = callbacks.request_approval {
+                    approve_cb(tool_name, tool_args, risk)
+                } else {
+                    // No callback available, deny by default in smart mode
+                    false
+                };
+
+                if !approved {
+                    results.push(ToolExecutionResult {
+                        id: tc.id.clone(),
+                        name: tool_name.clone(),
+                        arguments: tool_args.clone(),
+                        result: Err(anyhow::anyhow!("Tool call denied by user: {}", tool_name)),
+                    });
+                    continue;
+                }
+            }
+        }
 
         if let Some(cb) = &callbacks.tool_progress {
             cb(tool_name, tool_args, false);

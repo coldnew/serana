@@ -3,6 +3,7 @@ pub mod auxiliary;
 pub mod credential;
 pub mod fallback;
 pub mod openai;
+pub mod openrouter;
 pub mod registry;
 pub mod streaming;
 
@@ -11,5 +12,6 @@ pub use auxiliary::{AuxiliaryBuilder, AuxiliaryClient, AuxiliaryConfig, Auxiliar
 pub use credential::{CredentialProvider, EnvCredential, RefreshableClient, StaticCredential};
 pub use fallback::{FallbackChain, FallbackConfig, ProviderEntry, ProviderStatus};
 pub use openai::OpenAiClient;
+pub use openrouter::OpenRouterClient;
 pub use registry::{ModelRole, ProviderRegistry, RoutingClient};
 pub use streaming::SseStream;

@@ -203,7 +203,11 @@ impl Config {
 
         // Also check provider-specific env vars as fallback
         if self.llm.api_key.is_none() {
-            self.llm.api_key = std::env::var("OPENAI_API_KEY").ok();
+            self.llm.api_key = match self.provider.name.as_str() {
+                "openrouter" => std::env::var("OPENROUTER_API_KEY").ok(),
+                "anthropic" => std::env::var("ANTHROPIC_API_KEY").ok(),
+                _ => std::env::var("OPENAI_API_KEY").ok(),
+            };
         }
 
         // Model override
