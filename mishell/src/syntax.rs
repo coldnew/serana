@@ -16,19 +16,20 @@ impl Default for SyntaxHighlighter {
 impl SyntaxHighlighter {
     pub fn new() -> Self {
         let keywords = vec![
-            "if", "then", "else", "elif", "fi",
-            "case", "esac",
-            "for", "while", "until", "do", "done",
-            "in", "function", "switch", "end",
-            "select", "time",
-            "coproc",
-            "return", "break", "continue",
-            "local", "declare", "typeset", "readonly",
-        ].iter().map(|s| s.to_string()).collect();
+            "if", "then", "else", "elif", "fi", "case", "esac", "for", "while", "until", "do",
+            "done", "in", "function", "switch", "end", "select", "time", "coproc", "return",
+            "break", "continue", "local", "declare", "typeset", "readonly",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
         let known_executables = Self::scan_path_executables();
 
-        Self { keywords, known_executables }
+        Self {
+            keywords,
+            known_executables,
+        }
     }
 
     fn scan_path_executables() -> HashSet<String> {
@@ -63,8 +64,12 @@ impl SyntaxHighlighter {
                 '\'' => {
                     let start = i;
                     i += 1;
-                    while i < len && chars[i] != '\'' { i += 1; }
-                    if i < len { i += 1; }
+                    while i < len && chars[i] != '\'' {
+                        i += 1;
+                    }
+                    if i < len {
+                        i += 1;
+                    }
                     let s: String = chars[start..i].iter().collect();
                     let _ = write!(result, "{}", s.with(Color::Green));
                     in_command_pos = false;
@@ -73,9 +78,15 @@ impl SyntaxHighlighter {
                     let start = i;
                     i += 1;
                     while i < len && chars[i] != '"' {
-                        if chars[i] == '\\' && i + 1 < len { i += 2; } else { i += 1; }
+                        if chars[i] == '\\' && i + 1 < len {
+                            i += 2;
+                        } else {
+                            i += 1;
+                        }
                     }
-                    if i < len { i += 1; }
+                    if i < len {
+                        i += 1;
+                    }
                     let s: String = chars[start..i].iter().collect();
                     let _ = write!(result, "{}", s.with(Color::Green));
                     in_command_pos = false;
@@ -86,26 +97,38 @@ impl SyntaxHighlighter {
                     if i < len {
                         if chars[i] == '{' {
                             i += 1;
-                            while i < len && chars[i] != '}' { i += 1; }
-                            if i < len { i += 1; }
+                            while i < len && chars[i] != '}' {
+                                i += 1;
+                            }
+                            if i < len {
+                                i += 1;
+                            }
                         } else if chars[i] == '(' {
                             i += 1;
                             if i < len && chars[i] == '(' {
                                 i += 1;
                                 while i < len {
-                                    if chars[i] == ')' && i + 1 < len && chars[i + 1] == ')' { i += 2; break; }
+                                    if chars[i] == ')' && i + 1 < len && chars[i + 1] == ')' {
+                                        i += 2;
+                                        break;
+                                    }
                                     i += 1;
                                 }
                             } else {
                                 let mut depth = 1;
                                 while i < len && depth > 0 {
-                                    if chars[i] == '(' { depth += 1; }
-                                    else if chars[i] == ')' { depth -= 1; }
+                                    if chars[i] == '(' {
+                                        depth += 1;
+                                    } else if chars[i] == ')' {
+                                        depth -= 1;
+                                    }
                                     i += 1;
                                 }
                             }
                         } else {
-                            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') { i += 1; }
+                            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                                i += 1;
+                            }
                         }
                     }
                     let s: String = chars[start..i].iter().collect();
@@ -140,7 +163,9 @@ impl SyntaxHighlighter {
                 '>' | '<' => {
                     let start = i;
                     i += 1;
-                    if i < len && (chars[i] == '>' || chars[i] == '&' || chars[i] == '|') { i += 1; }
+                    if i < len && (chars[i] == '>' || chars[i] == '&' || chars[i] == '|') {
+                        i += 1;
+                    }
                     let s: String = chars[start..i].iter().collect();
                     let _ = write!(result, "{}", s.with(Color::Cyan));
                 }
@@ -150,14 +175,36 @@ impl SyntaxHighlighter {
                 }
                 _ => {
                     let word_start = i;
-                    while i < len && !chars[i].is_whitespace()
-                        && !matches!(chars[i], '\'' | '"' | '$' | '#' | '|' | '&' | ';' | '>' | '<' | '!' | '(' | ')' | '{' | '}')
-                    { i += 1; }
+                    while i < len
+                        && !chars[i].is_whitespace()
+                        && !matches!(
+                            chars[i],
+                            '\'' | '"'
+                                | '$'
+                                | '#'
+                                | '|'
+                                | '&'
+                                | ';'
+                                | '>'
+                                | '<'
+                                | '!'
+                                | '('
+                                | ')'
+                                | '{'
+                                | '}'
+                        )
+                    {
+                        i += 1;
+                    }
                     let word: String = chars[word_start..i].iter().collect();
 
                     if in_command_pos {
                         if self.keywords.contains(&word) {
-                            let _ = write!(result, "{}", word.with(Color::White).attribute(Attribute::Bold));
+                            let _ = write!(
+                                result,
+                                "{}",
+                                word.with(Color::White).attribute(Attribute::Bold)
+                            );
                         } else if self.known_executables.contains(&word) || self.is_builtin(&word) {
                             let _ = write!(result, "{}", word.with(Color::Green));
                         } else {
@@ -177,17 +224,62 @@ impl SyntaxHighlighter {
     }
 
     fn is_builtin(&self, word: &str) -> bool {
-        matches!(word,
-            "cd" | "export" | "alias" | "abbr" | "set" | "exit"
-            | "pushd" | "popd" | "dirs" | "history" | "echo" | "printf"
-            | "read" | "test" | "[" | "true" | "false" | "pwd" | "type"
-            | "hash" | "help" | "source" | "." | "eval" | "exec"
-            | "command" | "builtin" | "shift" | "unset" | "trap"
-            |             "and" | "or" | "not" | "count" | "string" | "math"
-            | "jobs" | "fg" | "bg" | "status" | "contains" | "random" | "emit" | "begin"
-            | "edit" | "file" | "head" | "tail" | "try"
-            | "funced" | "funcsave" | "functions"
-            | "test" | "[" | "eval" | "realpath"
+        matches!(
+            word,
+            "cd" | "export"
+                | "alias"
+                | "abbr"
+                | "set"
+                | "exit"
+                | "pushd"
+                | "popd"
+                | "dirs"
+                | "history"
+                | "echo"
+                | "printf"
+                | "read"
+                | "test"
+                | "["
+                | "true"
+                | "false"
+                | "pwd"
+                | "type"
+                | "hash"
+                | "help"
+                | "source"
+                | "."
+                | "eval"
+                | "exec"
+                | "command"
+                | "builtin"
+                | "shift"
+                | "unset"
+                | "trap"
+                | "and"
+                | "or"
+                | "not"
+                | "count"
+                | "string"
+                | "math"
+                | "jobs"
+                | "fg"
+                | "bg"
+                | "status"
+                | "contains"
+                | "random"
+                | "emit"
+                | "begin"
+                | "edit"
+                | "file"
+                | "head"
+                | "tail"
+                | "try"
+                | "funced"
+                | "funcsave"
+                | "functions"
+                | "realpath"
+                | "complete"
+                | "commandline"
         )
     }
 
@@ -198,7 +290,11 @@ impl SyntaxHighlighter {
         }
 
         // Find the most recent history entry that starts with the input
-        history.iter().rev().find(|entry| entry.starts_with(input) && entry.len() > input.len()).cloned()
+        history
+            .iter()
+            .rev()
+            .find(|entry| entry.starts_with(input) && entry.len() > input.len())
+            .cloned()
     }
 }
 

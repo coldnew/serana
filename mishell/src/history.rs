@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write, BufWriter};
 use anyhow::Result;
+use std::fs::File;
+use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::path::PathBuf;
 
 pub struct History {
     entries: Vec<String>,
@@ -133,7 +133,11 @@ mod tests {
 
     fn temp_history() -> (History, PathBuf) {
         let id = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("mishell_test_history_{}_{}", std::process::id(), id));
+        let path = std::env::temp_dir().join(format!(
+            "mishell_test_history_{}_{}",
+            std::process::id(),
+            id
+        ));
         let _ = fs::remove_file(&path);
         let history = History {
             entries: Vec::new(),
@@ -284,7 +288,8 @@ mod tests {
 
     #[test]
     fn test_max_size_enforced() {
-        let path = std::env::temp_dir().join(format!("mishell_test_history_max_{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("mishell_test_history_max_{}", std::process::id()));
         let _ = fs::remove_file(&path);
         let mut history = History {
             entries: Vec::new(),

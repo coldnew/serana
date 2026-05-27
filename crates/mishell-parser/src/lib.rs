@@ -1,9 +1,9 @@
 pub mod ast;
+pub mod expand;
 pub mod lexer;
 pub mod parser;
-pub mod expand;
 
 pub use ast::*;
+pub use expand::Expander;
 pub use lexer::{Lexer, Token};
 pub use parser::Parser;
-pub use expand::Expander;

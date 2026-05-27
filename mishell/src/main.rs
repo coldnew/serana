@@ -8,14 +8,14 @@ use crossterm::{
 };
 use std::io::{self, Write};
 
-mod shell;
 mod autocomplete;
 mod history;
+mod shell;
 mod syntax;
 
-use shell::Shell;
 use autocomplete::AutoCompleter;
 use history::History;
+use shell::Shell;
 use syntax::SyntaxHighlighter;
 
 #[derive(ClapParser)]
@@ -82,9 +82,19 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
         loop {
             match &mode {
                 InputMode::Normal => {
-                    display_prompt(&shell, &highlighter, &input, cursor_pos, fish_features, &hist)?;
+                    display_prompt(
+                        &shell,
+                        &highlighter,
+                        &input,
+                        cursor_pos,
+                        fish_features,
+                        &hist,
+                    )?;
                 }
-                InputMode::ReverseSearch { query, match_idx: _ } => {
+                InputMode::ReverseSearch {
+                    query,
+                    match_idx: _,
+                } => {
                     display_reverse_prompt(&shell, query)?;
                 }
             }
@@ -133,8 +143,18 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                 match key.code {
                     // Ctrl+C - cancel
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
-                        print!("{}^C", style::StyledContent::new(style::ContentStyle::new().with(Color::Red), "^C"));
+                        execute!(
+                            stdout,
+                            cursor::MoveToColumn(0),
+                            terminal::Clear(ClearType::CurrentLine)
+                        )?;
+                        print!(
+                            "{}^C",
+                            style::StyledContent::new(
+                                style::ContentStyle::new().with(Color::Red),
+                                "^C"
+                            )
+                        );
                         println!();
                         input.clear();
                         cursor_pos = 0;
@@ -144,14 +164,26 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                         continue;
                     }
                     // Ctrl+D - exit if empty
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) && input.is_empty() => {
+                    KeyCode::Char('d')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) && input.is_empty() =>
+                    {
                         println!();
                         break;
                     }
                     // Ctrl+Z - suspend (limited support)
                     KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
-                        print!("{}^Z", style::StyledContent::new(style::ContentStyle::new().with(Color::Yellow), "^Z"));
+                        execute!(
+                            stdout,
+                            cursor::MoveToColumn(0),
+                            terminal::Clear(ClearType::CurrentLine)
+                        )?;
+                        print!(
+                            "{}^Z",
+                            style::StyledContent::new(
+                                style::ContentStyle::new().with(Color::Yellow),
+                                "^Z"
+                            )
+                        );
                         println!();
                         input.clear();
                         cursor_pos = 0;
@@ -199,12 +231,20 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                     }
                     // Ctrl+L - clear screen
                     KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        execute!(stdout, terminal::Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                        execute!(
+                            stdout,
+                            terminal::Clear(ClearType::All),
+                            cursor::MoveTo(0, 0)
+                        )?;
                         continue;
                     }
                     // Enter - execute
                     KeyCode::Enter => {
-                        execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
+                        execute!(
+                            stdout,
+                            cursor::MoveToColumn(0),
+                            terminal::Clear(ClearType::CurrentLine)
+                        )?;
                         // Print prompt + input (final, colored)
                         print_prompt(&shell, &input);
                         println!();
@@ -237,7 +277,12 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
 
                         if last_completions.len() == 1 {
                             let completion = &last_completions[0];
-                            input = format!("{}{}{}", &input[..word_start], completion, &input[cursor_pos..]);
+                            input = format!(
+                                "{}{}{}",
+                                &input[..word_start],
+                                completion,
+                                &input[cursor_pos..]
+                            );
                             cursor_pos = word_start + completion.len();
                             last_completion_prefix.clear();
                             last_completions.clear();
@@ -248,18 +293,28 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                                 // First tab: complete common prefix
                                 let common = common_prefix(&last_completions);
                                 if common.len() > current_word.len() {
-                                    input = format!("{}{}{}", &input[..word_start], common, &input[cursor_pos..]);
+                                    input = format!(
+                                        "{}{}{}",
+                                        &input[..word_start],
+                                        common,
+                                        &input[cursor_pos..]
+                                    );
                                     cursor_pos = word_start + common.len();
                                     last_completion_prefix = common;
                                 }
                             } else {
                                 // Second tab: show all completions
-                                execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
+                                execute!(
+                                    stdout,
+                                    cursor::MoveToColumn(0),
+                                    terminal::Clear(ClearType::CurrentLine)
+                                )?;
                                 print_prompt(&shell, &input);
                                 println!();
                                 // Print completions in columns
                                 let term_width = terminal::size()?.0 as usize;
-                                let max_len = last_completions.iter().map(|c| c.len()).max().unwrap_or(0) + 2;
+                                let max_len =
+                                    last_completions.iter().map(|c| c.len()).max().unwrap_or(0) + 2;
                                 let cols = (term_width / max_len).max(1);
                                 for (i, c) in last_completions.iter().enumerate() {
                                     print!("{:<width$}", c, width = max_len);
@@ -312,7 +367,9 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                             }
                         } else if cursor_pos == input.len() && fish_features {
                             // Accept autosuggestion from history
-                            if let Some(suggestion) = highlighter.get_autosuggestion(&input, hist.entries()) {
+                            if let Some(suggestion) =
+                                highlighter.get_autosuggestion(&input, hist.entries())
+                            {
                                 input = suggestion;
                                 cursor_pos = input.len();
                             }
@@ -327,7 +384,8 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                             // Ctrl+Left - move by word
                             let before = &input[..cursor_pos];
                             let trimmed = before.trim_end();
-                            cursor_pos = trimmed.rfind(' ').unwrap_or(0);                        } else {
+                            cursor_pos = trimmed.rfind(' ').unwrap_or(0);
+                        } else {
                             cursor_pos = cursor_pos.saturating_sub(1);
                         }
                         continue;
@@ -433,7 +491,11 @@ fn display_prompt(
     // Get right prompt (git branch)
     let right_prompt = get_right_prompt();
 
-    execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
+    execute!(
+        stdout,
+        cursor::MoveToColumn(0),
+        terminal::Clear(ClearType::CurrentLine)
+    )?;
 
     // Prompt
     let prompt_display_len = user.len() + 1 + hostname.len() + 1 + display_path.len() + 1;
@@ -468,7 +530,12 @@ fn display_prompt(
     let right_len = right_prompt.len();
     if input_display_len + right_len + 2 < term_width {
         let spaces = term_width - input_display_len - right_len;
-        print!("{:spaces$}{}", "", right_prompt.with(Color::DarkGrey), spaces = spaces);
+        print!(
+            "{:spaces$}{}",
+            "",
+            right_prompt.with(Color::DarkGrey),
+            spaces = spaces
+        );
     }
 
     // Position cursor
@@ -481,7 +548,11 @@ fn display_prompt(
 
 fn display_reverse_prompt(_shell: &Shell, query: &str) -> anyhow::Result<()> {
     let mut stdout = io::stdout();
-    execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
+    execute!(
+        stdout,
+        cursor::MoveToColumn(0),
+        terminal::Clear(ClearType::CurrentLine)
+    )?;
     print!(
         "{} {}{}{}",
         "(reverse-i-search)".with(Color::Yellow),

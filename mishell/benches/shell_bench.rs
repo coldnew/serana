@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use mishell_parser::{Lexer, Parser};
+use mishell::shell::{is_builtin, Shell};
 use mishell::syntax::SyntaxHighlighter;
-use mishell::shell::{Shell, is_builtin};
+use mishell_parser::{Lexer, Parser};
 
 fn bench_lexer(c: &mut Criterion) {
     let simple = "echo hello world";
@@ -98,5 +98,13 @@ fn bench_is_builtin(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_lexer, bench_parser, bench_highlight, bench_execute, bench_glob, bench_is_builtin);
+criterion_group!(
+    benches,
+    bench_lexer,
+    bench_parser,
+    bench_highlight,
+    bench_execute,
+    bench_glob,
+    bench_is_builtin
+);
 criterion_main!(benches);

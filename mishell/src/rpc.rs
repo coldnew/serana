@@ -31,7 +31,8 @@ fn read_message(reader: &mut impl BufRead) -> io::Result<String> {
         }
     }
 
-    let len = content_length.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing Content-Length"))?;
+    let len = content_length
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing Content-Length"))?;
     let mut buf = vec![0u8; len];
     reader.read_exact(&mut buf)?;
     String::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
@@ -57,7 +58,11 @@ fn handle_message(msg: &str) -> Option<String> {
         "notifications/initialized" => None,
         "tools/list" => Some(tools_list_response(&id)),
         "tools/call" => Some(tools_call_response(&id, &params)),
-        _ => Some(error_response(id, -32601, &format!("Unknown method: {}", method))),
+        _ => Some(error_response(
+            id,
+            -32601,
+            &format!("Unknown method: {}", method),
+        )),
     }
 }
 
@@ -213,7 +218,10 @@ fn tools_call_response(id: &Value, params: &Value) -> String {
 }
 
 fn tool_bash(args: &Value) -> Result<String, String> {
-    let command = args.get("command").and_then(|v| v.as_str()).ok_or("missing command")?;
+    let command = args
+        .get("command")
+        .and_then(|v| v.as_str())
+        .ok_or("missing command")?;
 
     let _timeout = args.get("timeout").and_then(|v| v.as_u64());
 
@@ -221,7 +229,9 @@ fn tool_bash(args: &Value) -> Result<String, String> {
     cmd.arg("-c").arg(command);
 
     let start = std::time::Instant::now();
-    let output = cmd.output().map_err(|e| format!("failed to execute: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("failed to execute: {}", e))?;
     let elapsed = start.elapsed().as_millis() as u64;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -239,17 +249,25 @@ fn tool_bash(args: &Value) -> Result<String, String> {
 }
 
 fn tool_read(args: &Value) -> Result<String, String> {
-    let path = args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing path")?;
     let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(2000) as usize;
 
-    let content = std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
     let total_lines = content.lines().count();
     let lines: Vec<&str> = content.lines().collect();
 
     let start = offset.saturating_sub(1);
     let end = (start + limit).min(lines.len());
-    let slice = if start < lines.len() { &lines[start..end] } else { &[] };
+    let slice = if start < lines.len() {
+        &lines[start..end]
+    } else {
+        &[]
+    };
 
     let result = json!({
         "content": slice.join("\n"),
@@ -263,11 +281,21 @@ fn tool_read(args: &Value) -> Result<String, String> {
 }
 
 fn tool_edit(args: &Value) -> Result<String, String> {
-    let path = args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
-    let old_text = args.get("old_text").and_then(|v| v.as_str()).ok_or("missing old_text")?;
-    let new_text = args.get("new_text").and_then(|v| v.as_str()).ok_or("missing new_text")?;
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing path")?;
+    let old_text = args
+        .get("old_text")
+        .and_then(|v| v.as_str())
+        .ok_or("missing old_text")?;
+    let new_text = args
+        .get("new_text")
+        .and_then(|v| v.as_str())
+        .ok_or("missing new_text")?;
 
-    let content = std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {}", path, e))?;
 
     // Try exact match
     if let Some(pos) = content.find(old_text) {
@@ -297,14 +325,20 @@ fn tool_edit(args: &Value) -> Result<String, String> {
 
     // Fuzzy match: strip trailing whitespace
     let strip = |s: &str| -> String {
-        s.lines().map(|l| l.trim_end()).collect::<Vec<_>>().join("\n")
+        s.lines()
+            .map(|l| l.trim_end())
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let stripped_content = strip(&content);
     let stripped_old = strip(old_text);
 
     if let Some(pos) = stripped_content.find(&stripped_old) {
-        if stripped_content[pos + stripped_old.len()..].find(&stripped_old).is_some() {
+        if stripped_content[pos + stripped_old.len()..]
+            .find(&stripped_old)
+            .is_some()
+        {
             return Err(format!("old_text is not unique in {}", path));
         }
 
@@ -315,11 +349,15 @@ fn tool_edit(args: &Value) -> Result<String, String> {
         let stripped_content_bytes = stripped_content.as_bytes();
 
         while stripped_pos < pos && orig_pos < content.len() {
-            if stripped_pos < stripped_content.len() && stripped_content_bytes[stripped_pos] == content_bytes[orig_pos] {
+            if stripped_pos < stripped_content.len()
+                && stripped_content_bytes[stripped_pos] == content_bytes[orig_pos]
+            {
                 stripped_pos += 1;
                 orig_pos += 1;
             } else {
-                while orig_pos < content.len() && (content_bytes[orig_pos] == b' ' || content_bytes[orig_pos] == b'\t') {
+                while orig_pos < content.len()
+                    && (content_bytes[orig_pos] == b' ' || content_bytes[orig_pos] == b'\t')
+                {
                     orig_pos += 1;
                 }
             }
@@ -332,7 +370,10 @@ fn tool_edit(args: &Value) -> Result<String, String> {
                 match_end_stripped += 1;
                 match_end_orig += 1;
             } else {
-                while match_end_orig < content.len() && (content_bytes[match_end_orig] == b' ' || content_bytes[match_end_orig] == b'\t') {
+                while match_end_orig < content.len()
+                    && (content_bytes[match_end_orig] == b' '
+                        || content_bytes[match_end_orig] == b'\t')
+                {
                     match_end_orig += 1;
                 }
             }
@@ -362,7 +403,10 @@ fn tool_edit(args: &Value) -> Result<String, String> {
 }
 
 fn tool_file(args: &Value) -> Result<String, String> {
-    let path = args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing path")?;
     let p = std::path::Path::new(path);
 
     if !p.exists() {
@@ -394,7 +438,10 @@ fn tool_file(args: &Value) -> Result<String, String> {
 }
 
 fn tool_head(args: &Value) -> Result<String, String> {
-    let path = args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing path")?;
     let n = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
     let content = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path, e))?;
@@ -409,12 +456,19 @@ fn tool_head(args: &Value) -> Result<String, String> {
 }
 
 fn tool_tail(args: &Value) -> Result<String, String> {
-    let path = args.get("path").and_then(|v| v.as_str()).ok_or("missing path")?;
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing path")?;
     let n = args.get("lines").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
     let content = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path, e))?;
     let all_lines: Vec<&str> = content.lines().collect();
-    let start = if all_lines.len() > n { all_lines.len() - n } else { 0 };
+    let start = if all_lines.len() > n {
+        all_lines.len() - n
+    } else {
+        0
+    };
     let lines = &all_lines[start..];
 
     let result = json!({

@@ -52,7 +52,7 @@ impl Parser {
             Some(Token::Begin) => return self.parse_begin_block(),
             _ => {}
         }
-        
+
         let mut left = self.parse_pipeline()?;
 
         loop {
@@ -188,23 +188,23 @@ impl Parser {
                             break;
                         }
                     }
-                    
+
                     // Check if we found the delimiter
                     if self.check_word(&delimiter) {
                         self.advance();
                         break;
                     }
-                    
+
                     if self.at_end() {
                         return Err(anyhow!("Unterminated here document"));
                     }
-                    
+
                     // Add line to content
                     if !content.is_empty() {
                         content.push('\n');
                     }
                     content.push_str(&line);
-                    
+
                     // Skip newline
                     if self.check(&Token::Newline) {
                         self.advance();
@@ -221,10 +221,13 @@ impl Parser {
 
     fn parse_assignment(&mut self) -> Result<Assignment> {
         let word = self.expect_word()?;
-        let eq_pos = word.to_string().find('=').ok_or_else(|| anyhow!("Expected assignment"))?;
+        let eq_pos = word
+            .to_string()
+            .find('=')
+            .ok_or_else(|| anyhow!("Expected assignment"))?;
         let name = word.to_string()[..eq_pos].to_string();
         let value_str = &word.to_string()[eq_pos + 1..];
-        
+
         // If value after = is non-empty, use it as literal
         if !value_str.is_empty() {
             Ok(Assignment {
@@ -236,11 +239,12 @@ impl Parser {
         } else {
             // Value continues with next tokens (e.g. X=$(cmd) or X="string")
             let value = match self.current() {
-                Some(Token::DollarParen) | Some(Token::DollarBrace) 
-                | Some(Token::SingleQuoted(_)) | Some(Token::DoubleQuoted(_))
-                | Some(Token::Backtick) | Some(Token::Word(_)) => {
-                    self.parse_word()?
-                }
+                Some(Token::DollarParen)
+                | Some(Token::DollarBrace)
+                | Some(Token::SingleQuoted(_))
+                | Some(Token::DoubleQuoted(_))
+                | Some(Token::Backtick)
+                | Some(Token::Word(_)) => self.parse_word()?,
                 _ => Word { parts: vec![] },
             };
             Ok(Assignment { name, value })
@@ -293,7 +297,10 @@ impl Parser {
         let mut literal = String::new();
 
         while i < chars.len() {
-            if chars[i] == '$' && i + 1 < chars.len() && (chars[i + 1].is_alphanumeric() || chars[i + 1] == '_') {
+            if chars[i] == '$'
+                && i + 1 < chars.len()
+                && (chars[i + 1].is_alphanumeric() || chars[i + 1] == '_')
+            {
                 // Flush literal
                 if !literal.is_empty() {
                     parts.push(WordPart::Literal(literal.clone()));
@@ -408,11 +415,11 @@ impl Parser {
             }
         })
     }
-    
+
     fn parse_function_def(&mut self) -> Result<CommandBody> {
         self.advance(); // consume 'function'
         let name = self.expect_word()?;
-        
+
         // Parse optional flags: --on-event EVENT, --on-variable VAR
         let mut on_event = None;
         let mut on_variable = None;
@@ -430,9 +437,9 @@ impl Parser {
                 break;
             }
         }
-        
+
         self.skip_newlines();
-        
+
         // Parse body until 'end'
         let mut body = Vec::new();
         while !self.at_end() && !self.check(&Token::End) {
@@ -447,32 +454,41 @@ impl Parser {
             }
         }
         self.expect(&Token::End)?;
-        
-        Ok(CommandBody::FunctionDef(FunctionDef { name, body, on_event, on_variable }))
+
+        Ok(CommandBody::FunctionDef(FunctionDef {
+            name,
+            body,
+            on_event,
+            on_variable,
+        }))
     }
-    
+
     fn parse_for_loop(&mut self) -> Result<CommandBody> {
         self.advance(); // consume 'for'
         let variable = self.expect_word()?;
         self.skip_newlines();
-        
+
         // Expect 'in'
         self.expect(&Token::In)?;
         self.skip_newlines();
-        
+
         // Parse list of words
         let mut list = Vec::new();
-        while !self.at_end() && !self.is_command_terminator() && !self.check(&Token::Do) && !self.check(&Token::Newline) {
+        while !self.at_end()
+            && !self.is_command_terminator()
+            && !self.check(&Token::Do)
+            && !self.check(&Token::Newline)
+        {
             list.push(self.parse_word()?);
         }
         self.skip_newlines();
-        
+
         // Expect 'do' or 'end' (fish style uses 'end')
         if self.check(&Token::Do) {
             self.advance();
         }
         self.skip_newlines();
-        
+
         // Parse body
         let mut body = Vec::new();
         while !self.at_end() && !self.check(&Token::End) {
@@ -487,14 +503,18 @@ impl Parser {
             }
         }
         self.expect(&Token::End)?;
-        
-        Ok(CommandBody::ForLoop(ForLoop { variable, list, body }))
+
+        Ok(CommandBody::ForLoop(ForLoop {
+            variable,
+            list,
+            body,
+        }))
     }
-    
+
     fn parse_while_loop(&mut self) -> Result<CommandBody> {
         self.advance(); // consume 'while'
         self.skip_newlines();
-        
+
         // Parse condition
         let mut condition = Vec::new();
         while !self.at_end() && !self.check(&Token::Do) && !self.check(&Token::Newline) {
@@ -505,13 +525,13 @@ impl Parser {
             }
         }
         self.skip_newlines();
-        
+
         // Expect 'do'
         if self.check(&Token::Do) {
             self.advance();
         }
         self.skip_newlines();
-        
+
         // Parse body
         let mut body = Vec::new();
         while !self.at_end() && !self.check(&Token::End) {
@@ -526,14 +546,14 @@ impl Parser {
             }
         }
         self.expect(&Token::End)?;
-        
+
         Ok(CommandBody::WhileLoop(WhileLoop { condition, body }))
     }
-    
+
     fn parse_if_statement(&mut self) -> Result<CommandBody> {
         self.advance(); // consume 'if'
         self.skip_newlines();
-        
+
         // Parse condition
         let mut condition = Vec::new();
         while !self.at_end() && !self.check(&Token::Then) {
@@ -544,14 +564,18 @@ impl Parser {
             }
         }
         self.skip_newlines();
-        
+
         // Expect 'then'
         self.expect(&Token::Then)?;
         self.skip_newlines();
-        
+
         // Parse then body
         let mut then_body = Vec::new();
-        while !self.at_end() && !self.check(&Token::Elif) && !self.check(&Token::Else) && !self.check(&Token::End) {
+        while !self.at_end()
+            && !self.check(&Token::Elif)
+            && !self.check(&Token::Else)
+            && !self.check(&Token::End)
+        {
             self.skip_newlines();
             if self.check(&Token::Elif) || self.check(&Token::Else) || self.check(&Token::End) {
                 break;
@@ -562,13 +586,13 @@ impl Parser {
                 self.advance();
             }
         }
-        
+
         // Parse elif branches
         let mut elif_branches = Vec::new();
         while self.check(&Token::Elif) {
             self.advance(); // consume 'elif'
             self.skip_newlines();
-            
+
             let mut elif_condition = Vec::new();
             while !self.at_end() && !self.check(&Token::Then) {
                 elif_condition.push(self.parse_command()?);
@@ -580,9 +604,13 @@ impl Parser {
             self.skip_newlines();
             self.expect(&Token::Then)?;
             self.skip_newlines();
-            
+
             let mut elif_body = Vec::new();
-            while !self.at_end() && !self.check(&Token::Elif) && !self.check(&Token::Else) && !self.check(&Token::End) {
+            while !self.at_end()
+                && !self.check(&Token::Elif)
+                && !self.check(&Token::Else)
+                && !self.check(&Token::End)
+            {
                 self.skip_newlines();
                 if self.check(&Token::Elif) || self.check(&Token::Else) || self.check(&Token::End) {
                     break;
@@ -593,18 +621,18 @@ impl Parser {
                     self.advance();
                 }
             }
-            
+
             elif_branches.push(ElifBranch {
                 condition: elif_condition,
                 body: elif_body,
             });
         }
-        
+
         // Parse else body
         let else_body = if self.check(&Token::Else) {
             self.advance(); // consume 'else'
             self.skip_newlines();
-            
+
             let mut else_body = Vec::new();
             while !self.at_end() && !self.check(&Token::End) {
                 self.skip_newlines();
@@ -621,9 +649,9 @@ impl Parser {
         } else {
             None
         };
-        
+
         self.expect(&Token::End)?;
-        
+
         Ok(CommandBody::If(IfStatement {
             condition,
             then_body,
@@ -648,7 +676,12 @@ impl Parser {
 
             // Parse patterns (one or more words until semicolon or newline)
             let mut patterns = Vec::new();
-            while !self.at_end() && !self.check(&Token::Semi) && !self.check(&Token::Newline) && !self.check(&Token::Case) && !self.check(&Token::End) {
+            while !self.at_end()
+                && !self.check(&Token::Semi)
+                && !self.check(&Token::Newline)
+                && !self.check(&Token::Case)
+                && !self.check(&Token::End)
+            {
                 patterns.push(self.parse_word()?);
             }
             self.skip_seps();
@@ -691,11 +724,13 @@ impl Parser {
 
         // Create a Sequence from the body commands (like a group)
         if body_cmds.is_empty() {
-            Ok(CommandBody::Group(Box::new(CommandBody::Simple(SimpleCommand {
-                redirects: Vec::new(),
-                assignments: Vec::new(),
-                words: vec![],
-            }))))
+            Ok(CommandBody::Group(Box::new(CommandBody::Simple(
+                SimpleCommand {
+                    redirects: Vec::new(),
+                    assignments: Vec::new(),
+                    words: vec![],
+                },
+            ))))
         } else {
             let mut iter = body_cmds.into_iter();
             let first = iter.next().unwrap().body;
@@ -765,7 +800,10 @@ mod tests {
         match &commands[0].body {
             CommandBody::Simple(cmd) => {
                 assert_eq!(cmd.words.len(), 2);
-                assert_eq!(cmd.words[0].parts, vec![WordPart::Literal("echo".to_string())]);
+                assert_eq!(
+                    cmd.words[0].parts,
+                    vec![WordPart::Literal("echo".to_string())]
+                );
                 match &cmd.words[1].parts[0] {
                     WordPart::CommandSub(_) => {}
                     _ => panic!("Expected CommandSub, got {:?}", cmd.words[1].parts[0]),
@@ -795,12 +833,16 @@ mod tests {
 
     #[test]
     fn test_switch_case() {
-        let mut parser = Parser::new("switch hello; case world; echo wrong; case hello; echo right; end");
+        let mut parser =
+            Parser::new("switch hello; case world; echo wrong; case hello; echo right; end");
         let commands = parser.parse().unwrap();
         assert_eq!(commands.len(), 1);
         match &commands[0].body {
             CommandBody::Switch(switch) => {
-                assert_eq!(switch.value.parts, vec![WordPart::Literal("hello".to_string())]);
+                assert_eq!(
+                    switch.value.parts,
+                    vec![WordPart::Literal("hello".to_string())]
+                );
                 assert_eq!(switch.cases.len(), 2);
                 assert_eq!(switch.cases[0].patterns.len(), 1);
                 assert_eq!(switch.cases[1].patterns.len(), 1);
@@ -922,7 +964,10 @@ mod tests {
                 assert!(cmd.words.is_empty());
                 assert_eq!(cmd.assignments.len(), 1);
                 assert_eq!(cmd.assignments[0].name, "FOO");
-                assert_eq!(cmd.assignments[0].value.parts, vec![WordPart::Literal("bar".to_string())]);
+                assert_eq!(
+                    cmd.assignments[0].value.parts,
+                    vec![WordPart::Literal("bar".to_string())]
+                );
             }
             _ => panic!("Expected simple command"),
         }
@@ -950,7 +995,10 @@ mod tests {
         match &commands[0].body {
             CommandBody::Simple(cmd) => {
                 assert_eq!(cmd.words.len(), 2);
-                assert_eq!(cmd.words[1].parts, vec![WordPart::SingleQuoted("hello world".to_string())]);
+                assert_eq!(
+                    cmd.words[1].parts,
+                    vec![WordPart::SingleQuoted("hello world".to_string())]
+                );
             }
             _ => panic!("Expected simple command"),
         }
@@ -979,16 +1027,14 @@ mod tests {
         let mut parser = Parser::new(r#"echo "$FOO bar""#);
         let commands = parser.parse().unwrap();
         match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                match &cmd.words[1].parts[0] {
-                    WordPart::DoubleQuoted(parts) => {
-                        assert_eq!(parts.len(), 2);
-                        assert_eq!(parts[0], WordPart::Variable("FOO".to_string()));
-                        assert_eq!(parts[1], WordPart::Literal(" bar".to_string()));
-                    }
-                    _ => panic!("Expected DoubleQuoted"),
+            CommandBody::Simple(cmd) => match &cmd.words[1].parts[0] {
+                WordPart::DoubleQuoted(parts) => {
+                    assert_eq!(parts.len(), 2);
+                    assert_eq!(parts[0], WordPart::Variable("FOO".to_string()));
+                    assert_eq!(parts[1], WordPart::Literal(" bar".to_string()));
                 }
-            }
+                _ => panic!("Expected DoubleQuoted"),
+            },
             _ => panic!("Expected simple command"),
         }
     }
@@ -999,7 +1045,10 @@ mod tests {
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.words[1].parts, vec![WordPart::Variable("VAR".to_string())]);
+                assert_eq!(
+                    cmd.words[1].parts,
+                    vec![WordPart::Variable("VAR".to_string())]
+                );
             }
             _ => panic!("Expected simple command"),
         }
@@ -1092,7 +1141,8 @@ mod tests {
 
     #[test]
     fn test_if_elif_else() {
-        let mut parser = Parser::new("if false; then echo a; elif true; then echo b; else echo c; end");
+        let mut parser =
+            Parser::new("if false; then echo a; elif true; then echo b; else echo c; end");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::If(stmt) => {
@@ -1110,8 +1160,14 @@ mod tests {
         match &commands[0].body {
             CommandBody::Switch(s) => {
                 assert_eq!(s.cases.len(), 2);
-                assert_eq!(s.cases[0].patterns[0].parts, vec![WordPart::Literal("*.txt".to_string())]);
-                assert_eq!(s.cases[1].patterns[0].parts, vec![WordPart::Literal("*.rs".to_string())]);
+                assert_eq!(
+                    s.cases[0].patterns[0].parts,
+                    vec![WordPart::Literal("*.txt".to_string())]
+                );
+                assert_eq!(
+                    s.cases[1].patterns[0].parts,
+                    vec![WordPart::Literal("*.rs".to_string())]
+                );
             }
             _ => panic!("Expected Switch"),
         }
@@ -1182,12 +1238,10 @@ mod tests {
         let mut parser = Parser::new("echo $(echo $(echo nested))");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                match &cmd.words[1].parts[0] {
-                    WordPart::CommandSub(_) => {}
-                    _ => panic!("Expected CommandSub"),
-                }
-            }
+            CommandBody::Simple(cmd) => match &cmd.words[1].parts[0] {
+                WordPart::CommandSub(_) => {}
+                _ => panic!("Expected CommandSub"),
+            },
             _ => panic!("Expected simple command"),
         }
     }
@@ -1250,12 +1304,10 @@ mod tests {
         assert_eq!(commands.len(), 1);
         // Should be Or(And(a, b), c)
         match &commands[0].body {
-            CommandBody::Or(left, _right) => {
-                match left.as_ref() {
-                    CommandBody::And(_, _) => {}
-                    _ => panic!("Expected And inside Or"),
-                }
-            }
+            CommandBody::Or(left, _right) => match left.as_ref() {
+                CommandBody::And(_, _) => {}
+                _ => panic!("Expected And inside Or"),
+            },
             _ => panic!("Expected Or"),
         }
     }

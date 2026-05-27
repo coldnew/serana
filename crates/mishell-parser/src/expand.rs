@@ -36,11 +36,11 @@ impl Expander {
     pub fn expand_part(&self, part: &WordPart) -> String {
         match part {
             WordPart::Literal(s) => s.clone(),
-            WordPart::Variable(name) => {
-                self.vars.get(name).cloned().unwrap_or_else(|| {
-                    std::env::var(name).unwrap_or_default()
-                })
-            }
+            WordPart::Variable(name) => self
+                .vars
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| std::env::var(name).unwrap_or_default()),
             WordPart::SingleQuoted(s) => s.clone(),
             WordPart::DoubleQuoted(parts) => {
                 let mut result = String::new();
@@ -77,11 +77,15 @@ mod tests {
     use super::*;
 
     fn word_literal(s: &str) -> Word {
-        Word { parts: vec![WordPart::Literal(s.to_string())] }
+        Word {
+            parts: vec![WordPart::Literal(s.to_string())],
+        }
     }
 
     fn word_var(name: &str) -> Word {
-        Word { parts: vec![WordPart::Variable(name.to_string())] }
+        Word {
+            parts: vec![WordPart::Variable(name.to_string())],
+        }
     }
 
     fn word_mixed(parts: Vec<WordPart>) -> Word {
@@ -123,7 +127,9 @@ mod tests {
     #[test]
     fn test_expand_single_quoted() {
         let exp = Expander::new();
-        let word = Word { parts: vec![WordPart::SingleQuoted("literal $VAR".to_string())] };
+        let word = Word {
+            parts: vec![WordPart::SingleQuoted("literal $VAR".to_string())],
+        };
         assert_eq!(exp.expand_word(&word), "literal $VAR");
     }
 
@@ -135,7 +141,7 @@ mod tests {
             parts: vec![WordPart::DoubleQuoted(vec![
                 WordPart::Literal("value=".to_string()),
                 WordPart::Variable("X".to_string()),
-            ])]
+            ])],
         };
         assert_eq!(exp.expand_word(&word), "value=42");
     }
@@ -143,7 +149,9 @@ mod tests {
     #[test]
     fn test_expand_tilde() {
         let exp = Expander::new();
-        let word = Word { parts: vec![WordPart::Tilde(None)] };
+        let word = Word {
+            parts: vec![WordPart::Tilde(None)],
+        };
         let result = exp.expand_word(&word);
         // Should expand to home dir or ~
         assert!(!result.is_empty());
@@ -152,7 +160,9 @@ mod tests {
     #[test]
     fn test_expand_escape() {
         let exp = Expander::new();
-        let word = Word { parts: vec![WordPart::Escape('n')] };
+        let word = Word {
+            parts: vec![WordPart::Escape('n')],
+        };
         assert_eq!(exp.expand_word(&word), "n");
     }
 
@@ -215,9 +225,9 @@ mod tests {
     fn test_expand_double_quoted_literal_only() {
         let exp = Expander::new();
         let word = Word {
-            parts: vec![WordPart::DoubleQuoted(vec![
-                WordPart::Literal("just text".to_string()),
-            ])]
+            parts: vec![WordPart::DoubleQuoted(vec![WordPart::Literal(
+                "just text".to_string(),
+            )])],
         };
         assert_eq!(exp.expand_word(&word), "just text");
     }

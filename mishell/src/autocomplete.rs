@@ -22,165 +22,678 @@ impl AutoCompleter {
 
     fn load_subcommands() -> HashMap<String, Vec<String>> {
         let mut map = HashMap::new();
-        
-        map.insert("git".into(), vec![
-            "add", "am", "archive", "bisect", "branch", "bundle", "checkout",
-            "cherry-pick", "clean", "clone", "commit", "config", "describe",
-            "diff", "fetch", "format-patch", "gc", "gitk", "grep", "gui",
-            "help", "init", "instaweb", "log", "merge", "mv", "notes",
-            "pull", "push", "rebase", "reflog", "remote", "replace",
-            "reset", "restore", "revert", "rm", "shortlog", "show",
-            "stash", "status", "submodule", "switch", "tag", "worktree",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("cargo".into(), vec![
-            "build", "b", "check", "c", "clean", "doc", "fetch",
-            "fix", "generate-lockfile", "init", "install", "locate-project",
-            "login", "metadata", "new", "owner", "package", "pkgid",
-            "publish", "read-manifest", "remove", "report", "run", "r",
-            "rustc", "rustdoc", "search", "test", "t", "tree", "uninstall",
-            "update", "vendor", "verify-project", "version", "yank",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("docker".into(), vec![
-            "attach", "build", "commit", "cp", "create", "diff",
-            "events", "exec", "export", "history", "images", "import",
-            "info", "inspect", "kill", "load", "login", "logout",
-            "logs", "pause", "port", "ps", "pull", "push", "rename",
-            "restart", "rm", "rmi", "run", "save", "search",
-            "start", "stats", "stop", "tag", "top", "unpause",
-            "update", "version", "wait",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("npm".into(), vec![
-            "access", "adduser", "audit", "bin", "bugs", "cache",
-            "ci", "completion", "config", "dedupe", "deprecate",
-            "diff", "dist-tag", "docs", "doctor", "edit", "exec",
-            "explain", "explore", "fund", "help", "hook", "init",
-            "install", "link", "ll", "login", "ls", "org", "outdated",
-            "owner", "pack", "ping", "pkg", "prefix", "profile",
-            "prune", "publish", "query", "rebuild", "repo", "restart",
-            "root", "run-script", "search", "set", "shrinkwrap",
-            "star", "stars", "start", "stop", "team", "test",
-            "token", "uninstall", "unpublish", "unstar", "update",
-            "version", "view", "whoami",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("pip".into(), vec![
-            "install", "download", "uninstall", "freeze", "list",
-            "show", "check", "config", "search", "cache", "index",
-            "wheel", "hash", "completion", "debug", "help",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("systemctl".into(), vec![
-            "list-units", "list-sockets", "list-timers", "start",
-            "stop", "reload", "restart", "try-restart", "reload-or-restart",
-            "try-reload-or-restart", "isolate", "kill", "clean",
-            "freeze", "thaw", "is-active", "is-failed", "status",
-            "show", "cat", "set-property", "help", "reset-failed",
-            "list-dependencies", "list-unit-files", "enable", "disable",
-            "reenable", "preset", "preset-all", "is-enabled", "mask",
-            "unmask", "link", "revert", "add-wants", "add-requires",
-            "edit", "get-default", "set-default", "list-machines",
-            "list-jobs", "cancel", "daemon-reload", "daemon-reexec",
-            "show-environment", "set-environment", "unset-environment",
-            "import-environment", "is-system-running", "default", "rescue",
-            "emergency", "halt", "poweroff", "reboot", "kexec",
-            "exit", "switch-root", "suspend", "hibernate", "hybrid-sleep",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("make".into(), vec![
-            "--always-make", "--directory", "--dry-run", "--environment-overrides",
-            "--file", "--ignore-errors", "--include-dir", "--jobs",
-            "--just-print", "--keep-going", "--load-average", "--max-load",
-            "--no-builtin-rules", "--no-print-directory", "--old-file",
-            "--output-sync", "--print-data-base", "--question", "--quiet",
-            "--recon", "--silent", "--touch", "--version", "--warn-undefined-variables",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("brew".into(), vec![
-            "install", "uninstall", "reinstall", "list", "search",
-            "info", "home", "update", "upgrade", "cleanup", "doctor",
-            "deps", "edit", "fetch", "pin", "unpin", "tap", "untap",
-            "services", "bundle", "cask", "formulae", "outdated",
-            "link", "unlink", "missing", "desc", "cat", "options",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("apt".into(), vec![
-            "install", "remove", "purge", "update", "upgrade",
-            "full-upgrade", "autoremove", "autoclean", "clean",
-            "search", "show", "list", "edit-sources", "satisfy",
-            "depends", "rdepends", "policy", "madison", "download",
-            "changelog", "source", "build-dep", "dist-upgrade",
-            "dselect-upgrade", "indextargets", "add-repository",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("ssh".into(), vec![
-            "-p", "-i", "-L", "-R", "-D", "-N", "-f", "-C",
-            "-o", "-J", "-A", "-X", "-Y", "-v", "-q",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("rsync".into(), vec![
-            "-a", "-v", "-z", "-P", "-r", "-t", "-o", "-g",
-            "--delete", "--exclude", "--include", "--progress",
-            "--dry-run", "--verbose", "-e", "--compress",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("tar".into(), vec![
-            "-c", "-x", "-t", "-f", "-v", "-z", "-j", "-J",
-            "--create", "--extract", "--list", "--file", "--verbose",
-            "--gzip", "--bzip2", "--xz", "--delete", "--append",
-            "--update", "--diff", "--compare",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("grep".into(), vec![
-            "-i", "-v", "-n", "-l", "-c", "-r", "-R", "-w",
-            "-x", "-e", "-f", "--ignore-case", "--invert-match",
-            "--line-number", "--files-with-matches", "--count",
-            "--recursive", "--word-regexp", "--line-regexp",
-            "--only-matching", "--quiet", "--silent", "-o", "-q",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("find".into(), vec![
-            "-name", "-type", "-mtime", "-mmin", "-size", "-exec",
-            "-delete", "-print", "-ls", "-empty", "-newer", "-perm",
-            "-user", "-group", "-maxdepth", "-mindepth", "-iname",
-            "-regex", "-iregex", "-not", "-and", "-or",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("curl".into(), vec![
-            "-X", "-H", "-d", "--data", "-o", "-O", "-s", "-S",
-            "-L", "--location", "-k", "--insecure", "-u", "--user",
-            "-b", "--cookie", "-c", "--cookie-jar", "-A", "--user-agent",
-            "-e", "--referer", "--compressed", "-I", "--head",
-            "-v", "--verbose", "-f", "--fail", "-w", "--write-out",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("wget".into(), vec![
-            "-O", "-P", "-c", "-r", "-np", "-nd", "-l", "-A",
-            "-R", "--reject", "--accept", "-q", "--quiet", "-v",
-            "--verbose", "-b", "--background", "-o", "--output-file",
-            "--limit-rate", "--tries", "--wait", "--random-wait",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("kubectl".into(), vec![
-            "get", "describe", "create", "apply", "delete", "edit",
-            "logs", "exec", "port-forward", "proxy", "run", "expose",
-            "scale", "autoscale", "rollout", "set", "label", "annotate",
-            "taint", "patch", "replace", "convert", "cluster-info",
-            "top", "cordon", "uncordon", "drain", "taint", "api-resources",
-            "api-versions", "config", "plugin", "wait", "attach",
-            "auth", "certificates", "completion", "debug", "diff",
-            "events", "explain", "kustomize", "options", "version",
-        ].iter().map(|s| s.to_string()).collect());
-        
-        map.insert("gh".into(), vec![
-            "api", "auth", "browse", "codespace", "config", "extension",
-            "gist", "gpg-key", "issue", "label", "org", "pr", "release",
-            "repo", "ruleset", "run", "secret", "ssh-key", "status",
-            "variable", "web", "workflow",
-        ].iter().map(|s| s.to_string()).collect());
-        
+
+        map.insert(
+            "git".into(),
+            vec![
+                "add",
+                "am",
+                "archive",
+                "bisect",
+                "branch",
+                "bundle",
+                "checkout",
+                "cherry-pick",
+                "clean",
+                "clone",
+                "commit",
+                "config",
+                "describe",
+                "diff",
+                "fetch",
+                "format-patch",
+                "gc",
+                "gitk",
+                "grep",
+                "gui",
+                "help",
+                "init",
+                "instaweb",
+                "log",
+                "merge",
+                "mv",
+                "notes",
+                "pull",
+                "push",
+                "rebase",
+                "reflog",
+                "remote",
+                "replace",
+                "reset",
+                "restore",
+                "revert",
+                "rm",
+                "shortlog",
+                "show",
+                "stash",
+                "status",
+                "submodule",
+                "switch",
+                "tag",
+                "worktree",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "cargo".into(),
+            vec![
+                "build",
+                "b",
+                "check",
+                "c",
+                "clean",
+                "doc",
+                "fetch",
+                "fix",
+                "generate-lockfile",
+                "init",
+                "install",
+                "locate-project",
+                "login",
+                "metadata",
+                "new",
+                "owner",
+                "package",
+                "pkgid",
+                "publish",
+                "read-manifest",
+                "remove",
+                "report",
+                "run",
+                "r",
+                "rustc",
+                "rustdoc",
+                "search",
+                "test",
+                "t",
+                "tree",
+                "uninstall",
+                "update",
+                "vendor",
+                "verify-project",
+                "version",
+                "yank",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "docker".into(),
+            vec![
+                "attach", "build", "commit", "cp", "create", "diff", "events", "exec", "export",
+                "history", "images", "import", "info", "inspect", "kill", "load", "login",
+                "logout", "logs", "pause", "port", "ps", "pull", "push", "rename", "restart", "rm",
+                "rmi", "run", "save", "search", "start", "stats", "stop", "tag", "top", "unpause",
+                "update", "version", "wait",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "npm".into(),
+            vec![
+                "access",
+                "adduser",
+                "audit",
+                "bin",
+                "bugs",
+                "cache",
+                "ci",
+                "completion",
+                "config",
+                "dedupe",
+                "deprecate",
+                "diff",
+                "dist-tag",
+                "docs",
+                "doctor",
+                "edit",
+                "exec",
+                "explain",
+                "explore",
+                "fund",
+                "help",
+                "hook",
+                "init",
+                "install",
+                "link",
+                "ll",
+                "login",
+                "ls",
+                "org",
+                "outdated",
+                "owner",
+                "pack",
+                "ping",
+                "pkg",
+                "prefix",
+                "profile",
+                "prune",
+                "publish",
+                "query",
+                "rebuild",
+                "repo",
+                "restart",
+                "root",
+                "run-script",
+                "search",
+                "set",
+                "shrinkwrap",
+                "star",
+                "stars",
+                "start",
+                "stop",
+                "team",
+                "test",
+                "token",
+                "uninstall",
+                "unpublish",
+                "unstar",
+                "update",
+                "version",
+                "view",
+                "whoami",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "pip".into(),
+            vec![
+                "install",
+                "download",
+                "uninstall",
+                "freeze",
+                "list",
+                "show",
+                "check",
+                "config",
+                "search",
+                "cache",
+                "index",
+                "wheel",
+                "hash",
+                "completion",
+                "debug",
+                "help",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "systemctl".into(),
+            vec![
+                "list-units",
+                "list-sockets",
+                "list-timers",
+                "start",
+                "stop",
+                "reload",
+                "restart",
+                "try-restart",
+                "reload-or-restart",
+                "try-reload-or-restart",
+                "isolate",
+                "kill",
+                "clean",
+                "freeze",
+                "thaw",
+                "is-active",
+                "is-failed",
+                "status",
+                "show",
+                "cat",
+                "set-property",
+                "help",
+                "reset-failed",
+                "list-dependencies",
+                "list-unit-files",
+                "enable",
+                "disable",
+                "reenable",
+                "preset",
+                "preset-all",
+                "is-enabled",
+                "mask",
+                "unmask",
+                "link",
+                "revert",
+                "add-wants",
+                "add-requires",
+                "edit",
+                "get-default",
+                "set-default",
+                "list-machines",
+                "list-jobs",
+                "cancel",
+                "daemon-reload",
+                "daemon-reexec",
+                "show-environment",
+                "set-environment",
+                "unset-environment",
+                "import-environment",
+                "is-system-running",
+                "default",
+                "rescue",
+                "emergency",
+                "halt",
+                "poweroff",
+                "reboot",
+                "kexec",
+                "exit",
+                "switch-root",
+                "suspend",
+                "hibernate",
+                "hybrid-sleep",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "make".into(),
+            vec![
+                "--always-make",
+                "--directory",
+                "--dry-run",
+                "--environment-overrides",
+                "--file",
+                "--ignore-errors",
+                "--include-dir",
+                "--jobs",
+                "--just-print",
+                "--keep-going",
+                "--load-average",
+                "--max-load",
+                "--no-builtin-rules",
+                "--no-print-directory",
+                "--old-file",
+                "--output-sync",
+                "--print-data-base",
+                "--question",
+                "--quiet",
+                "--recon",
+                "--silent",
+                "--touch",
+                "--version",
+                "--warn-undefined-variables",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "brew".into(),
+            vec![
+                "install",
+                "uninstall",
+                "reinstall",
+                "list",
+                "search",
+                "info",
+                "home",
+                "update",
+                "upgrade",
+                "cleanup",
+                "doctor",
+                "deps",
+                "edit",
+                "fetch",
+                "pin",
+                "unpin",
+                "tap",
+                "untap",
+                "services",
+                "bundle",
+                "cask",
+                "formulae",
+                "outdated",
+                "link",
+                "unlink",
+                "missing",
+                "desc",
+                "cat",
+                "options",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "apt".into(),
+            vec![
+                "install",
+                "remove",
+                "purge",
+                "update",
+                "upgrade",
+                "full-upgrade",
+                "autoremove",
+                "autoclean",
+                "clean",
+                "search",
+                "show",
+                "list",
+                "edit-sources",
+                "satisfy",
+                "depends",
+                "rdepends",
+                "policy",
+                "madison",
+                "download",
+                "changelog",
+                "source",
+                "build-dep",
+                "dist-upgrade",
+                "dselect-upgrade",
+                "indextargets",
+                "add-repository",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "ssh".into(),
+            vec![
+                "-p", "-i", "-L", "-R", "-D", "-N", "-f", "-C", "-o", "-J", "-A", "-X", "-Y", "-v",
+                "-q",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "rsync".into(),
+            vec![
+                "-a",
+                "-v",
+                "-z",
+                "-P",
+                "-r",
+                "-t",
+                "-o",
+                "-g",
+                "--delete",
+                "--exclude",
+                "--include",
+                "--progress",
+                "--dry-run",
+                "--verbose",
+                "-e",
+                "--compress",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "tar".into(),
+            vec![
+                "-c",
+                "-x",
+                "-t",
+                "-f",
+                "-v",
+                "-z",
+                "-j",
+                "-J",
+                "--create",
+                "--extract",
+                "--list",
+                "--file",
+                "--verbose",
+                "--gzip",
+                "--bzip2",
+                "--xz",
+                "--delete",
+                "--append",
+                "--update",
+                "--diff",
+                "--compare",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "grep".into(),
+            vec![
+                "-i",
+                "-v",
+                "-n",
+                "-l",
+                "-c",
+                "-r",
+                "-R",
+                "-w",
+                "-x",
+                "-e",
+                "-f",
+                "--ignore-case",
+                "--invert-match",
+                "--line-number",
+                "--files-with-matches",
+                "--count",
+                "--recursive",
+                "--word-regexp",
+                "--line-regexp",
+                "--only-matching",
+                "--quiet",
+                "--silent",
+                "-o",
+                "-q",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "find".into(),
+            vec![
+                "-name",
+                "-type",
+                "-mtime",
+                "-mmin",
+                "-size",
+                "-exec",
+                "-delete",
+                "-print",
+                "-ls",
+                "-empty",
+                "-newer",
+                "-perm",
+                "-user",
+                "-group",
+                "-maxdepth",
+                "-mindepth",
+                "-iname",
+                "-regex",
+                "-iregex",
+                "-not",
+                "-and",
+                "-or",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "curl".into(),
+            vec![
+                "-X",
+                "-H",
+                "-d",
+                "--data",
+                "-o",
+                "-O",
+                "-s",
+                "-S",
+                "-L",
+                "--location",
+                "-k",
+                "--insecure",
+                "-u",
+                "--user",
+                "-b",
+                "--cookie",
+                "-c",
+                "--cookie-jar",
+                "-A",
+                "--user-agent",
+                "-e",
+                "--referer",
+                "--compressed",
+                "-I",
+                "--head",
+                "-v",
+                "--verbose",
+                "-f",
+                "--fail",
+                "-w",
+                "--write-out",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "wget".into(),
+            vec![
+                "-O",
+                "-P",
+                "-c",
+                "-r",
+                "-np",
+                "-nd",
+                "-l",
+                "-A",
+                "-R",
+                "--reject",
+                "--accept",
+                "-q",
+                "--quiet",
+                "-v",
+                "--verbose",
+                "-b",
+                "--background",
+                "-o",
+                "--output-file",
+                "--limit-rate",
+                "--tries",
+                "--wait",
+                "--random-wait",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "kubectl".into(),
+            vec![
+                "get",
+                "describe",
+                "create",
+                "apply",
+                "delete",
+                "edit",
+                "logs",
+                "exec",
+                "port-forward",
+                "proxy",
+                "run",
+                "expose",
+                "scale",
+                "autoscale",
+                "rollout",
+                "set",
+                "label",
+                "annotate",
+                "taint",
+                "patch",
+                "replace",
+                "convert",
+                "cluster-info",
+                "top",
+                "cordon",
+                "uncordon",
+                "drain",
+                "taint",
+                "api-resources",
+                "api-versions",
+                "config",
+                "plugin",
+                "wait",
+                "attach",
+                "auth",
+                "certificates",
+                "completion",
+                "debug",
+                "diff",
+                "events",
+                "explain",
+                "kustomize",
+                "options",
+                "version",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
+        map.insert(
+            "gh".into(),
+            vec![
+                "api",
+                "auth",
+                "browse",
+                "codespace",
+                "config",
+                "extension",
+                "gist",
+                "gpg-key",
+                "issue",
+                "label",
+                "org",
+                "pr",
+                "release",
+                "repo",
+                "ruleset",
+                "run",
+                "secret",
+                "ssh-key",
+                "status",
+                "variable",
+                "web",
+                "workflow",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        );
+
         map
     }
 
@@ -201,12 +714,19 @@ impl AutoCompleter {
         }
 
         // Add builtins
-        commands.extend([
-            "cd", "export", "alias", "abbr", "set", "exit",
-            "pushd", "popd", "dirs", "history", "echo", "printf",
-            "read", "test", "[", "true", "false", "pwd", "type",
-            "hash", "help", "source", ".", "eval", "exec",
-        ].iter().map(|s| s.to_string()));
+        commands.extend(
+            [
+                "cd", "export", "alias", "abbr", "set", "exit", "pushd", "popd", "dirs", "history",
+                "echo", "printf", "read", "test", "[", "true", "false", "pwd", "type", "hash",
+                "help", "source", ".", "eval", "exec",
+                "and", "or", "not", "count", "string", "math", "status", "command", "builtin",
+                "contains", "random", "emit", "funced", "funcsave", "functions",
+                "edit", "file", "head", "tail", "try", "begin", "realpath",
+                "complete", "commandline", "jobs", "fg", "bg",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        );
 
         commands.sort();
         commands.dedup();
@@ -222,13 +742,33 @@ impl AutoCompleter {
             return self.complete_command(prefix);
         }
 
-        // Check for context-aware subcommand completion
         let cmd_name = parts[0];
+
+        // Check programmatically-registered completions from `complete` builtin
+        if !parts.is_empty() {
+            let prefix = if before_cursor.ends_with(' ') { "" } else { parts.last().unwrap_or(&"") };
+            if let Some(entries) = shell.completions().get(cmd_name) {
+                let mut completions: Vec<String> = entries
+                    .iter()
+                    .flat_map(|e| &e.arguments)
+                    .filter(|a| a.starts_with(prefix))
+                    .cloned()
+                    .collect();
+                if !completions.is_empty() {
+                    completions.sort();
+                    completions.dedup();
+                    completions.truncate(20);
+                    return completions;
+                }
+            }
+        }
+
+        // Check for context-aware subcommand completion
         if parts.len() == 2 && !before_cursor.ends_with(' ') {
-            // Completing subcommand (e.g., "git ch" -> "checkout", "cherry-pick")
             let prefix = parts[1];
             if let Some(subs) = self.subcommands.get(cmd_name) {
-                let completions: Vec<String> = subs.iter()
+                let completions: Vec<String> = subs
+                    .iter()
                     .filter(|s| s.starts_with(prefix))
                     .cloned()
                     .collect();
@@ -237,7 +777,6 @@ impl AutoCompleter {
                 }
             }
         } else if parts.len() >= 2 && before_cursor.ends_with(' ') {
-            // After subcommand, complete based on context
             let subcmd = parts.get(1).unwrap_or(&"");
             return self.complete_context_args(cmd_name, subcmd, "", shell);
         } else if parts.len() >= 3 {
@@ -246,14 +785,19 @@ impl AutoCompleter {
             return self.complete_context_args(cmd_name, subcmd, last_word, shell);
         }
 
-        // Default: file path completion
         let last_word = parts.last().unwrap_or(&"");
         self.complete_argument(last_word, shell)
     }
 
-    fn complete_context_args(&self, cmd: &str, subcmd: &str, prefix: &str, shell: &Shell) -> Vec<String> {
+    fn complete_context_args(
+        &self,
+        cmd: &str,
+        subcmd: &str,
+        prefix: &str,
+        shell: &Shell,
+    ) -> Vec<String> {
         let mut completions = Vec::new();
-        
+
         match cmd {
             "git" => {
                 match subcmd {
@@ -272,8 +816,12 @@ impl AutoCompleter {
                         }
                         // Also suggest remote branches with --track
                         if prefix.starts_with("--") {
-                            completions.extend(["--track", "--orphan", "-b", "--detach"]
-                                .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                            completions.extend(
+                                ["--track", "--orphan", "-b", "--detach"]
+                                    .iter()
+                                    .filter(|s| s.starts_with(prefix))
+                                    .map(|s| s.to_string()),
+                            );
                         }
                     }
                     "add" | "diff" | "log" | "show" | "status" | "restore" | "rm" => {
@@ -282,38 +830,120 @@ impl AutoCompleter {
                         // Common flags
                         if prefix.starts_with('-') {
                             let flags = match subcmd {
-                                "add" => vec!["-p", "--patch", "-n", "--dry-run", "-u", "--update", "-A", "--all", "-i", "--interactive"],
-                                "diff" => vec!["--cached", "--staged", "--stat", "--name-only", "--name-status", "-w", "--word-diff"],
-                                "log" => vec!["--oneline", "--graph", "--all", "--stat", "-n", "--since", "--until", "--author", "--grep"],
-                                "status" => vec!["-s", "--short", "-b", "--branch", "--porcelain", "-u"],
+                                "add" => vec![
+                                    "-p",
+                                    "--patch",
+                                    "-n",
+                                    "--dry-run",
+                                    "-u",
+                                    "--update",
+                                    "-A",
+                                    "--all",
+                                    "-i",
+                                    "--interactive",
+                                ],
+                                "diff" => vec![
+                                    "--cached",
+                                    "--staged",
+                                    "--stat",
+                                    "--name-only",
+                                    "--name-status",
+                                    "-w",
+                                    "--word-diff",
+                                ],
+                                "log" => vec![
+                                    "--oneline",
+                                    "--graph",
+                                    "--all",
+                                    "--stat",
+                                    "-n",
+                                    "--since",
+                                    "--until",
+                                    "--author",
+                                    "--grep",
+                                ],
+                                "status" => {
+                                    vec!["-s", "--short", "-b", "--branch", "--porcelain", "-u"]
+                                }
                                 "restore" => vec!["--staged", "--source", "--worktree"],
                                 "rm" => vec!["-f", "--force", "-r", "--cached", "-n", "--dry-run"],
                                 _ => vec![],
                             };
-                            completions.extend(flags.iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                            completions.extend(
+                                flags
+                                    .iter()
+                                    .filter(|s| s.starts_with(prefix))
+                                    .map(|s| s.to_string()),
+                            );
                         }
                     }
                     "commit" => {
                         if prefix.starts_with('-') {
-                            completions.extend(["-m", "--message", "-a", "--all", "--amend", "-p", "--patch",
-                                "--no-edit", "--allow-empty", "-S", "--gpg-sign", "--signoff", "-s"]
-                                .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                            completions.extend(
+                                [
+                                    "-m",
+                                    "--message",
+                                    "-a",
+                                    "--all",
+                                    "--amend",
+                                    "-p",
+                                    "--patch",
+                                    "--no-edit",
+                                    "--allow-empty",
+                                    "-S",
+                                    "--gpg-sign",
+                                    "--signoff",
+                                    "-s",
+                                ]
+                                .iter()
+                                .filter(|s| s.starts_with(prefix))
+                                .map(|s| s.to_string()),
+                            );
                         }
                     }
                     "push" | "pull" | "fetch" => {
                         if prefix.starts_with('-') {
                             let flags = match subcmd {
-                                "push" => vec!["-u", "--set-upstream", "--force", "-f", "--tags", "--all", "--dry-run", "-n", "--delete"],
-                                "pull" => vec!["--rebase", "--no-rebase", "--ff-only", "--no-ff", "-v", "--verbose"],
-                                "fetch" => vec!["--all", "--tags", "--prune", "--dry-run", "-v", "--verbose", "--depth"],
+                                "push" => vec![
+                                    "-u",
+                                    "--set-upstream",
+                                    "--force",
+                                    "-f",
+                                    "--tags",
+                                    "--all",
+                                    "--dry-run",
+                                    "-n",
+                                    "--delete",
+                                ],
+                                "pull" => vec![
+                                    "--rebase",
+                                    "--no-rebase",
+                                    "--ff-only",
+                                    "--no-ff",
+                                    "-v",
+                                    "--verbose",
+                                ],
+                                "fetch" => vec![
+                                    "--all",
+                                    "--tags",
+                                    "--prune",
+                                    "--dry-run",
+                                    "-v",
+                                    "--verbose",
+                                    "--depth",
+                                ],
                                 _ => vec![],
                             };
-                            completions.extend(flags.iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                            completions.extend(
+                                flags
+                                    .iter()
+                                    .filter(|s| s.starts_with(prefix))
+                                    .map(|s| s.to_string()),
+                            );
                         } else {
                             // Complete remotes
-                            if let Ok(output) = std::process::Command::new("git")
-                                .args(["remote"])
-                                .output()
+                            if let Ok(output) =
+                                std::process::Command::new("git").args(["remote"]).output()
                             {
                                 let remotes = String::from_utf8_lossy(&output.stdout);
                                 for remote in remotes.lines() {
@@ -325,17 +955,47 @@ impl AutoCompleter {
                         }
                     }
                     "stash" => {
-                        completions.extend(["push", "pop", "list", "show", "drop", "clear", "apply", "branch", "create"]
-                            .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                        completions.extend(
+                            [
+                                "push", "pop", "list", "show", "drop", "clear", "apply", "branch",
+                                "create",
+                            ]
+                            .iter()
+                            .filter(|s| s.starts_with(prefix))
+                            .map(|s| s.to_string()),
+                        );
                     }
                     "remote" => {
-                        completions.extend(["add", "remove", "rename", "set-url", "show", "prune", "update"]
-                            .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                        completions.extend(
+                            [
+                                "add", "remove", "rename", "set-url", "show", "prune", "update",
+                            ]
+                            .iter()
+                            .filter(|s| s.starts_with(prefix))
+                            .map(|s| s.to_string()),
+                        );
                     }
                     "branch" if prefix.starts_with('-') => {
-                        completions.extend(["-d", "--delete", "-D", "-a", "--all", "-r", "--remotes",
-                            "-v", "--verbose", "--merged", "--no-merged", "--contains", "--sort"]
-                            .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                        completions.extend(
+                            [
+                                "-d",
+                                "--delete",
+                                "-D",
+                                "-a",
+                                "--all",
+                                "-r",
+                                "--remotes",
+                                "-v",
+                                "--verbose",
+                                "--merged",
+                                "--no-merged",
+                                "--contains",
+                                "--sort",
+                            ]
+                            .iter()
+                            .filter(|s| s.starts_with(prefix))
+                            .map(|s| s.to_string()),
+                        );
                     }
                     "branch" => {
                         completions.extend(self.complete_file_paths(prefix));
@@ -350,35 +1010,133 @@ impl AutoCompleter {
                     "build" | "b" | "check" | "c" | "test" | "t" | "run" | "r" | "doc" => {
                         if prefix.starts_with('-') {
                             let flags = match subcmd {
-                                "build" | "b" | "check" | "c" => vec!["--release", "-r", "--lib", "--bin", "--bins",
-                                    "--example", "--examples", "--test", "--tests", "--bench", "--benches",
-                                    "--all-targets", "-p", "--package", "--features", "--all-features",
-                                    "--no-default-features", "--target", "-j", "--jobs", "--message-format",
-                                    "--manifest-path", "--locked", "--frozen", "--offline", "-v", "--verbose"],
-                                "test" | "t" => vec!["--release", "-r", "--lib", "--bin", "--test", "--bench",
-                                    "-p", "--package", "--features", "--all-features", "--no-default-features",
-                                    "--target", "--no-run", "--nocapture", "--exact", "-j", "--jobs",
-                                    "--manifest-path", "--locked", "--frozen", "--offline", "-v", "--verbose",
-                                    "--doc", "--show-output", "--ignored", "--include-ignored"],
-                                "run" | "r" => vec!["--release", "-r", "--bin", "--example", "-p", "--package",
-                                    "--features", "--target", "-j", "--jobs", "--manifest-path",
-                                    "--locked", "--frozen", "--offline", "-v", "--verbose"],
-                                "doc" => vec!["--open", "--document-private-items", "--no-deps",
-                                    "-p", "--package", "--features", "--target", "--manifest-path",
-                                    "--locked", "--frozen", "--offline", "-v", "--verbose"],
+                                "build" | "b" | "check" | "c" => vec![
+                                    "--release",
+                                    "-r",
+                                    "--lib",
+                                    "--bin",
+                                    "--bins",
+                                    "--example",
+                                    "--examples",
+                                    "--test",
+                                    "--tests",
+                                    "--bench",
+                                    "--benches",
+                                    "--all-targets",
+                                    "-p",
+                                    "--package",
+                                    "--features",
+                                    "--all-features",
+                                    "--no-default-features",
+                                    "--target",
+                                    "-j",
+                                    "--jobs",
+                                    "--message-format",
+                                    "--manifest-path",
+                                    "--locked",
+                                    "--frozen",
+                                    "--offline",
+                                    "-v",
+                                    "--verbose",
+                                ],
+                                "test" | "t" => vec![
+                                    "--release",
+                                    "-r",
+                                    "--lib",
+                                    "--bin",
+                                    "--test",
+                                    "--bench",
+                                    "-p",
+                                    "--package",
+                                    "--features",
+                                    "--all-features",
+                                    "--no-default-features",
+                                    "--target",
+                                    "--no-run",
+                                    "--nocapture",
+                                    "--exact",
+                                    "-j",
+                                    "--jobs",
+                                    "--manifest-path",
+                                    "--locked",
+                                    "--frozen",
+                                    "--offline",
+                                    "-v",
+                                    "--verbose",
+                                    "--doc",
+                                    "--show-output",
+                                    "--ignored",
+                                    "--include-ignored",
+                                ],
+                                "run" | "r" => vec![
+                                    "--release",
+                                    "-r",
+                                    "--bin",
+                                    "--example",
+                                    "-p",
+                                    "--package",
+                                    "--features",
+                                    "--target",
+                                    "-j",
+                                    "--jobs",
+                                    "--manifest-path",
+                                    "--locked",
+                                    "--frozen",
+                                    "--offline",
+                                    "-v",
+                                    "--verbose",
+                                ],
+                                "doc" => vec![
+                                    "--open",
+                                    "--document-private-items",
+                                    "--no-deps",
+                                    "-p",
+                                    "--package",
+                                    "--features",
+                                    "--target",
+                                    "--manifest-path",
+                                    "--locked",
+                                    "--frozen",
+                                    "--offline",
+                                    "-v",
+                                    "--verbose",
+                                ],
                                 _ => vec![],
                             };
-                            completions.extend(flags.iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                            completions.extend(
+                                flags
+                                    .iter()
+                                    .filter(|s| s.starts_with(prefix))
+                                    .map(|s| s.to_string()),
+                            );
                         } else {
                             // Complete binary/example names from Cargo.toml
                             completions.extend(self.complete_cargo_targets(prefix));
                         }
                     }
                     "install" if prefix.starts_with('-') => {
-                        completions.extend(["--force", "-f", "--git", "--branch", "--tag", "--rev",
-                            "--path", "--root", "--registry", "--version", "--features",
-                            "--no-default-features", "--profile", "--debug", "--locked"]
-                            .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                        completions.extend(
+                            [
+                                "--force",
+                                "-f",
+                                "--git",
+                                "--branch",
+                                "--tag",
+                                "--rev",
+                                "--path",
+                                "--root",
+                                "--registry",
+                                "--version",
+                                "--features",
+                                "--no-default-features",
+                                "--profile",
+                                "--debug",
+                                "--locked",
+                            ]
+                            .iter()
+                            .filter(|s| s.starts_with(prefix))
+                            .map(|s| s.to_string()),
+                        );
                     }
                     _ => {}
                 }
@@ -387,14 +1145,49 @@ impl AutoCompleter {
                 match subcmd {
                     "run" | "create" | "exec" if prefix.starts_with('-') => {
                         let flags = match subcmd {
-                            "run" | "create" => vec!["-d", "--detach", "-it", "-p", "--publish", "-v", "--volume",
-                                "-e", "--env", "--name", "--network", "--rm", "--restart",
-                                "-w", "--workdir", "-u", "--user", "--memory", "--cpus",
-                                "--gpus", "--platform", "--privileged", "--cap-add"],
-                            "exec" => vec!["-it", "-d", "-e", "--env", "-u", "--user", "-w", "--workdir"],
+                            "run" | "create" => vec![
+                                "-d",
+                                "--detach",
+                                "-it",
+                                "-p",
+                                "--publish",
+                                "-v",
+                                "--volume",
+                                "-e",
+                                "--env",
+                                "--name",
+                                "--network",
+                                "--rm",
+                                "--restart",
+                                "-w",
+                                "--workdir",
+                                "-u",
+                                "--user",
+                                "--memory",
+                                "--cpus",
+                                "--gpus",
+                                "--platform",
+                                "--privileged",
+                                "--cap-add",
+                            ],
+                            "exec" => vec![
+                                "-it",
+                                "-d",
+                                "-e",
+                                "--env",
+                                "-u",
+                                "--user",
+                                "-w",
+                                "--workdir",
+                            ],
                             _ => vec![],
                         };
-                        completions.extend(flags.iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                        completions.extend(
+                            flags
+                                .iter()
+                                .filter(|s| s.starts_with(prefix))
+                                .map(|s| s.to_string()),
+                        );
                     }
                     "rm" | "stop" | "start" | "restart" | "logs" | "inspect" | "stats" => {
                         // Complete container names/IDs
@@ -415,7 +1208,7 @@ impl AutoCompleter {
                 completions.extend(self.complete_file_paths(prefix));
             }
         }
-        
+
         // Variable completion
         if let Some(var_prefix) = prefix.strip_prefix('$') {
             completions.clear();
@@ -425,7 +1218,7 @@ impl AutoCompleter {
                 }
             }
         }
-        
+
         completions.sort();
         completions.dedup();
         completions.truncate(20);
@@ -528,7 +1321,10 @@ impl AutoCompleter {
                     // Match lines like "target: deps"
                     if let Some(colon_pos) = line.find(':') {
                         let target = line[..colon_pos].trim();
-                        if !target.is_empty() && !target.starts_with('#') && !target.starts_with('\t') {
+                        if !target.is_empty()
+                            && !target.starts_with('#')
+                            && !target.starts_with('\t')
+                        {
                             // Handle multiple targets on one line
                             for t in target.split_whitespace() {
                                 if t.starts_with(prefix) {
@@ -604,5 +1400,76 @@ impl AutoCompleter {
         completions.sort();
         completions.truncate(20);
         completions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_complete_command_prefix() {
+        let ac = AutoCompleter::new();
+        let shell = Shell::new(false).unwrap();
+        let results = ac.complete("ec", 2, &shell);
+        assert!(results.iter().any(|r| r == "echo"));
+    }
+
+    #[test]
+    fn test_complete_builtin_command() {
+        let ac = AutoCompleter::new();
+        let shell = Shell::new(false).unwrap();
+        let results = ac.complete("str", 3, &shell);
+        assert!(results.iter().any(|r| r == "string"));
+    }
+
+    #[test]
+    fn test_complete_registered_completions() {
+        let ac = AutoCompleter::new();
+        let mut shell = Shell::new(false).unwrap();
+        // Register completions via complete builtin
+        shell.execute("complete -c mycmd -a 'start stop restart'").unwrap();
+        let results = ac.complete("mycmd s", 7, &shell);
+        assert!(results.contains(&"start".to_string()));
+        assert!(results.contains(&"stop".to_string()));
+    }
+
+    #[test]
+    fn test_complete_registered_completions_after_space() {
+        let ac = AutoCompleter::new();
+        let mut shell = Shell::new(false).unwrap();
+        shell.execute("complete -c mytool -a 'build test deploy'").unwrap();
+        let results = ac.complete("mytool ", 7, &shell);
+        assert!(results.contains(&"build".to_string()));
+        assert!(results.contains(&"test".to_string()));
+        assert!(results.contains(&"deploy".to_string()));
+    }
+
+    #[test]
+    fn test_complete_registered_overrides_subcommands() {
+        let ac = AutoCompleter::new();
+        let mut shell = Shell::new(false).unwrap();
+        // Register custom completions for git (should override hardcoded subcommands)
+        shell.execute("complete -c git -a 'my-custom-cmd'").unwrap();
+        let results = ac.complete("git my", 6, &shell);
+        assert!(results.contains(&"my-custom-cmd".to_string()));
+    }
+
+    #[test]
+    fn test_complete_variable() {
+        let ac = AutoCompleter::new();
+        let mut shell = Shell::new(false).unwrap();
+        shell.set_var("MY_TEST_VAR", "hello");
+        let results = ac.complete("echo $MY_T", 10, &shell);
+        assert!(results.iter().any(|r| r == "$MY_TEST_VAR"));
+    }
+
+    #[test]
+    fn test_load_commands_has_all_builtins() {
+        let ac = AutoCompleter::new();
+        let builtins = ["and", "or", "not", "string", "math", "status", "emit", "functions", "edit", "file", "head", "tail"];
+        for b in builtins {
+            assert!(ac.commands.iter().any(|c| c == b), "Missing builtin: {}", b);
+        }
     }
 }

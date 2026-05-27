@@ -1,12 +1,20 @@
-use mishell_parser::{Parser, Command, CommandBody, SimpleCommand, Pipeline, Word, WordPart, Redirect, RedirectOp, RedirectTarget, FunctionDef, ForLoop, WhileLoop, IfStatement, SwitchStatement, GlobPattern};
-use std::collections::HashMap;
-use std::process::{Child, Command as ProcessCommand, Stdio};
-use std::path::PathBuf;
 use anyhow::{anyhow, Result};
-use nix::unistd::Pid;
+use mishell_parser::{
+    Command, CommandBody, ForLoop, FunctionDef, GlobPattern, IfStatement, Parser, Pipeline,
+    Redirect, RedirectOp, RedirectTarget, SimpleCommand, SwitchStatement, WhileLoop, Word,
+    WordPart,
+};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::{waitpid, WaitPidFlag};
+use nix::unistd::Pid;
+use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
+use std::path::PathBuf;
+use std::process::{Child, Command as ProcessCommand, Stdio};
+
+fn isatty(fd: std::os::fd::RawFd) -> Option<bool> {
+    Some(nix::unistd::isatty(fd).unwrap_or(false))
+}
 
 pub struct Job {
     pub id: usize,
@@ -49,8 +57,10 @@ impl Shell {
         }
 
         // Set defaults
-        vars.entry("PS1".to_string()).or_insert_with(|| "\\u@\\h:\\w$ ".to_string());
-        vars.entry("PROMPT".to_string()).or_insert_with(|| "mishell> ".to_string());
+        vars.entry("PS1".to_string())
+            .or_insert_with(|| "\\u@\\h:\\w$ ".to_string());
+        vars.entry("PROMPT".to_string())
+            .or_insert_with(|| "mishell> ".to_string());
 
         // Load universal variables
         let universal_vars = Self::load_universal_vars();
@@ -293,7 +303,13 @@ impl Shell {
             "export" => {
                 let mut args: Vec<Word> = cmd.words[1..].to_vec();
                 for assign in &cmd.assignments {
-                    args.push(Word { parts: vec![WordPart::Literal(format!("{}={}", assign.name, self.expand_word(&assign.value)))] });
+                    args.push(Word {
+                        parts: vec![WordPart::Literal(format!(
+                            "{}={}",
+                            assign.name,
+                            self.expand_word(&assign.value)
+                        ))],
+                    });
                 }
                 return self.builtin_export(&args);
             }
@@ -303,12 +319,20 @@ impl Shell {
                 // For set builtin, pass assignments as words too
                 let mut all_args: Vec<Word> = cmd.words[1..].to_vec();
                 for assign in &cmd.assignments {
-                    all_args.push(Word { parts: vec![WordPart::Literal(format!("{}={}", assign.name, self.expand_word(&assign.value)))] });
+                    all_args.push(Word {
+                        parts: vec![WordPart::Literal(format!(
+                            "{}={}",
+                            assign.name,
+                            self.expand_word(&assign.value)
+                        ))],
+                    });
                 }
                 return self.builtin_set(&all_args);
             }
             "exit" => {
-                let code = cmd.words.get(1)
+                let code = cmd
+                    .words
+                    .get(1)
                     .map(|w| self.expand_word(w).parse::<i32>().unwrap_or(0))
                     .unwrap_or(0);
                 std::process::exit(code);
@@ -356,25 +380,23 @@ impl Shell {
             }
             _ => {}
         }
-        
+
         // Check for user-defined functions
         if let Some(func) = self.functions.get(&cmd_name).cloned() {
             // Expand arguments
-            let args: Vec<String> = cmd.words[1..].iter()
-                .map(|w| self.expand_word(w))
-                .collect();
-            
+            let args: Vec<String> = cmd.words[1..].iter().map(|w| self.expand_word(w)).collect();
+
             // Set function arguments as variables
             for (i, arg) in args.iter().enumerate() {
                 self.vars.insert(format!("{}", i + 1), arg.clone());
             }
             self.vars.insert("argv".to_string(), args.join(" "));
-            
+
             // Execute function body
             for cmd in &func.body {
                 self.execute_command(cmd)?;
             }
-            
+
             return Ok(());
         }
 
@@ -401,24 +423,43 @@ impl Shell {
         // Handle redirects
         for redirect in &cmd.redirects {
             match redirect {
-                Redirect { fd: None, op: RedirectOp::Output, target: RedirectTarget::File(path) } => {
+                Redirect {
+                    fd: None,
+                    op: RedirectOp::Output,
+                    target: RedirectTarget::File(path),
+                } => {
                     let path = self.expand_word(path);
                     process_cmd.stdout(Stdio::from(std::fs::File::create(path)?));
                 }
-                Redirect { fd: None, op: RedirectOp::Append, target: RedirectTarget::File(path) } => {
+                Redirect {
+                    fd: None,
+                    op: RedirectOp::Append,
+                    target: RedirectTarget::File(path),
+                } => {
                     let path = self.expand_word(path);
-                    process_cmd.stdout(Stdio::from(std::fs::OpenOptions::new().create(true).append(true).open(path)?));
+                    process_cmd.stdout(Stdio::from(
+                        std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(path)?,
+                    ));
                 }
-                Redirect { fd: None, op: RedirectOp::Input, target: RedirectTarget::File(path) } => {
+                Redirect {
+                    fd: None,
+                    op: RedirectOp::Input,
+                    target: RedirectTarget::File(path),
+                } => {
                     let path = self.expand_word(path);
                     process_cmd.stdin(Stdio::from(std::fs::File::open(path)?));
                 }
-                Redirect { fd: None, op: RedirectOp::HereDoc, target: RedirectTarget::HereDoc(content) } => {
+                Redirect {
+                    fd: None,
+                    op: RedirectOp::HereDoc,
+                    target: RedirectTarget::HereDoc(content),
+                } => {
                     // Write heredoc content to stdin
                     use std::io::Write;
-                    let mut child = process_cmd
-                        .stdin(Stdio::piped())
-                        .spawn()?;
+                    let mut child = process_cmd.stdin(Stdio::piped()).spawn()?;
                     if let Some(mut stdin) = child.stdin.take() {
                         stdin.write_all(content.as_bytes())?;
                     }
@@ -487,20 +528,28 @@ impl Shell {
 
     fn expand_word(&self, word: &Word) -> String {
         // Check if word is entirely double-quoted (no glob expansion)
-        let is_quoted = word.parts.len() == 1 && matches!(&word.parts[0], WordPart::DoubleQuoted(_));
-        
+        let is_quoted =
+            word.parts.len() == 1 && matches!(&word.parts[0], WordPart::DoubleQuoted(_));
+
         // Estimate capacity from parts
-        let est_len: usize = word.parts.iter().map(|p| match p {
-            WordPart::Literal(s) => s.len(),
-            WordPart::SingleQuoted(s) => s.len(),
-            WordPart::DoubleQuoted(parts) => parts.iter().map(|dp| match dp {
+        let est_len: usize = word
+            .parts
+            .iter()
+            .map(|p| match p {
                 WordPart::Literal(s) => s.len(),
+                WordPart::SingleQuoted(s) => s.len(),
+                WordPart::DoubleQuoted(parts) => parts
+                    .iter()
+                    .map(|dp| match dp {
+                        WordPart::Literal(s) => s.len(),
+                        _ => 16,
+                    })
+                    .sum(),
                 _ => 16,
-            }).sum(),
-            _ => 16,
-        }).sum();
+            })
+            .sum();
         let mut result = String::with_capacity(est_len);
-        
+
         for part in &word.parts {
             match part {
                 WordPart::Literal(s) => result.push_str(s),
@@ -535,32 +584,30 @@ impl Shell {
                     let output = self.capture_command_body(body);
                     result.push_str(&output);
                 }
-                WordPart::Glob(pattern) => {
-                    match pattern {
-                        GlobPattern::Star => result.push('*'),
-                        GlobPattern::Question => result.push('?'),
-                        GlobPattern::Class(s) => {
-                            result.push('[');
-                            result.push_str(s);
-                            result.push(']');
-                        }
-                        GlobPattern::Literal(s) => result.push_str(s),
+                WordPart::Glob(pattern) => match pattern {
+                    GlobPattern::Star => result.push('*'),
+                    GlobPattern::Question => result.push('?'),
+                    GlobPattern::Class(s) => {
+                        result.push('[');
+                        result.push_str(s);
+                        result.push(']');
                     }
-                }
+                    GlobPattern::Literal(s) => result.push_str(s),
+                },
                 _ => {}
             }
         }
-        
+
         // Glob expansion (not inside double quotes)
         if !is_quoted && (result.contains('*') || result.contains('?') || result.contains('[')) {
             if let Some(expanded) = self.expand_glob(&result) {
                 return expanded;
             }
         }
-        
+
         result
     }
-    
+
     fn expand_variable_into(&self, name: &str, result: &mut String) {
         if name == "status" {
             result.push_str(&self.last_exit_code.to_string());
@@ -601,15 +648,15 @@ impl Shell {
 
     fn expand_glob(&self, pattern: &str) -> Option<String> {
         use std::fs;
-        
+
         let (dir, file_pattern) = if let Some(pos) = pattern.rfind('/') {
             (&pattern[..pos], &pattern[pos + 1..])
         } else {
             (".", pattern)
         };
-        
+
         let dir_path = if dir.is_empty() { "." } else { dir };
-        
+
         let entries: Vec<String> = fs::read_dir(dir_path)
             .ok()?
             .filter_map(|e| e.ok())
@@ -635,7 +682,7 @@ impl Shell {
                 }
             })
             .collect();
-        
+
         if entries.is_empty() {
             None // No matches, return literal
         } else {
@@ -654,7 +701,7 @@ impl Shell {
         let mut ti = 0;
         let mut star_pi = usize::MAX;
         let mut star_ti = 0;
-        
+
         while ti < text.len() {
             if pi < pattern.len() && (pattern[pi] == '?' || pattern[pi] == text[ti]) {
                 pi += 1;
@@ -663,7 +710,9 @@ impl Shell {
                 // Character class
                 pi += 1;
                 let negated = pi < pattern.len() && pattern[pi] == '^';
-                if negated { pi += 1; }
+                if negated {
+                    pi += 1;
+                }
                 let mut matched = false;
                 let mut first = true;
                 while pi < pattern.len() && (first || pattern[pi] != ']') {
@@ -680,8 +729,12 @@ impl Shell {
                     }
                     first = false;
                 }
-                if pi < pattern.len() { pi += 1; } // skip ]
-                if negated { matched = !matched; }
+                if pi < pattern.len() {
+                    pi += 1;
+                } // skip ]
+                if negated {
+                    matched = !matched;
+                }
                 if matched {
                     ti += 1;
                 } else {
@@ -699,11 +752,11 @@ impl Shell {
                 return false;
             }
         }
-        
+
         while pi < pattern.len() && pattern[pi] == '*' {
             pi += 1;
         }
-        
+
         pi == pattern.len()
     }
 
@@ -731,7 +784,10 @@ impl Shell {
     }
 
     fn reconstruct_word_raw(&self, word: &Word) -> String {
-        word.parts.iter().map(|p| self.reconstruct_wordpart_raw(p)).collect()
+        word.parts
+            .iter()
+            .map(|p| self.reconstruct_wordpart_raw(p))
+            .collect()
     }
 
     fn reconstruct_wordpart_raw(&self, part: &WordPart) -> String {
@@ -752,7 +808,10 @@ impl Shell {
             },
             WordPart::Escape(c) => format!("\\{}", c),
             WordPart::DoubleQuoted(parts) => {
-                let inner: String = parts.iter().map(|p| self.reconstruct_wordpart_raw(p)).collect();
+                let inner: String = parts
+                    .iter()
+                    .map(|p| self.reconstruct_wordpart_raw(p))
+                    .collect();
                 format!("\"{}\"", inner)
             }
             WordPart::SingleQuoted(s) => format!("'{}'", s),
@@ -760,7 +819,10 @@ impl Shell {
     }
 
     fn reconstruct_commands(&self, cmds: &[Command]) -> String {
-        cmds.iter().map(|c| self.reconstruct_command(c)).collect::<Vec<_>>().join("; ")
+        cmds.iter()
+            .map(|c| self.reconstruct_command(c))
+            .collect::<Vec<_>>()
+            .join("; ")
     }
 
     fn reconstruct_redirects(&self, redirects: &[Redirect]) -> String {
@@ -786,28 +848,42 @@ impl Shell {
             };
             parts.push(format!("{}{}{}", fd_prefix, op_str, target));
         }
-        if parts.is_empty() { String::new() } else { format!(" {}", parts.join(" ")) }
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", parts.join(" "))
+        }
     }
 
     fn reconstruct_body(&self, body: &CommandBody) -> String {
         match body {
-            CommandBody::Simple(cmd) => {
-                self.reconstruct_simple(cmd)
-            }
-            CommandBody::Pipeline(pipeline) => {
-                pipeline.commands.iter()
-                    .map(|c| self.reconstruct_simple(c))
-                    .collect::<Vec<_>>()
-                    .join(" | ")
-            }
+            CommandBody::Simple(cmd) => self.reconstruct_simple(cmd),
+            CommandBody::Pipeline(pipeline) => pipeline
+                .commands
+                .iter()
+                .map(|c| self.reconstruct_simple(c))
+                .collect::<Vec<_>>()
+                .join(" | "),
             CommandBody::And(left, right) => {
-                format!("{} && {}", self.reconstruct_body(left), self.reconstruct_body(right))
+                format!(
+                    "{} && {}",
+                    self.reconstruct_body(left),
+                    self.reconstruct_body(right)
+                )
             }
             CommandBody::Or(left, right) => {
-                format!("{} || {}", self.reconstruct_body(left), self.reconstruct_body(right))
+                format!(
+                    "{} || {}",
+                    self.reconstruct_body(left),
+                    self.reconstruct_body(right)
+                )
             }
             CommandBody::Sequence(left, right) => {
-                format!("{}; {}", self.reconstruct_body(left), self.reconstruct_body(right))
+                format!(
+                    "{}; {}",
+                    self.reconstruct_body(left),
+                    self.reconstruct_body(right)
+                )
             }
             CommandBody::Subshell(body) => {
                 format!("({})", self.reconstruct_body(body))
@@ -830,7 +906,11 @@ impl Shell {
                 s
             }
             CommandBody::ForLoop(for_loop) => {
-                let list_str: Vec<String> = for_loop.list.iter().map(|w| self.reconstruct_word_raw(w)).collect();
+                let list_str: Vec<String> = for_loop
+                    .list
+                    .iter()
+                    .map(|w| self.reconstruct_word_raw(w))
+                    .collect();
                 let mut s = format!("for {} in {}", for_loop.variable, list_str.join(" "));
                 for cmd in &for_loop.body {
                     s.push_str(&format!("\n    {}", self.reconstruct_command(cmd)));
@@ -852,7 +932,10 @@ impl Shell {
                     s.push_str(&format!("\n    {}", self.reconstruct_command(cmd)));
                 }
                 for elif in &if_stmt.elif_branches {
-                    s.push_str(&format!("\nelif {}", self.reconstruct_commands(&elif.condition)));
+                    s.push_str(&format!(
+                        "\nelif {}",
+                        self.reconstruct_commands(&elif.condition)
+                    ));
                     for cmd in &elif.body {
                         s.push_str(&format!("\n    {}", self.reconstruct_command(cmd)));
                     }
@@ -869,7 +952,11 @@ impl Shell {
             CommandBody::Switch(switch) => {
                 let mut s = format!("switch {}", self.reconstruct_word_raw(&switch.value));
                 for case in &switch.cases {
-                    let patterns: Vec<String> = case.patterns.iter().map(|p| self.reconstruct_word_raw(p)).collect();
+                    let patterns: Vec<String> = case
+                        .patterns
+                        .iter()
+                        .map(|p| self.reconstruct_word_raw(p))
+                        .collect();
                     s.push_str(&format!("\ncase {}", patterns.join(" ")));
                     for cmd in &case.body {
                         s.push_str(&format!("\n    {}", self.reconstruct_command(cmd)));
@@ -884,7 +971,11 @@ impl Shell {
     fn reconstruct_simple(&self, cmd: &SimpleCommand) -> String {
         let mut parts = Vec::new();
         for assign in &cmd.assignments {
-            parts.push(format!("{}={}", assign.name, self.reconstruct_word_raw(&assign.value)));
+            parts.push(format!(
+                "{}={}",
+                assign.name,
+                self.reconstruct_word_raw(&assign.value)
+            ));
         }
         for word in &cmd.words {
             parts.push(self.reconstruct_word_raw(word));
@@ -897,12 +988,17 @@ impl Shell {
     // Builtins
     fn builtin_cd(&mut self, args: &[Word]) -> Result<()> {
         let path = if args.is_empty() {
-            self.home_dir.clone().ok_or_else(|| anyhow!("No home directory"))?
+            self.home_dir
+                .clone()
+                .ok_or_else(|| anyhow!("No home directory"))?
         } else {
             let path_str = self.expand_word(&args[0]);
             let path = PathBuf::from(&path_str);
             if path_str == "-" {
-                self.dir_stack.last().cloned().unwrap_or_else(|| PathBuf::from("."))
+                self.dir_stack
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| PathBuf::from("."))
             } else if path_str.starts_with('~') {
                 if let Some(ref home) = self.home_dir {
                     home.join(&path_str[2..])
@@ -918,8 +1014,10 @@ impl Shell {
         self.dir_stack.push(old_dir.clone());
 
         std::env::set_current_dir(&path)?;
-        self.vars.insert("PWD".to_string(), path.to_string_lossy().to_string());
-        self.vars.insert("OLDPWD".to_string(), old_dir.to_string_lossy().to_string());
+        self.vars
+            .insert("PWD".to_string(), path.to_string_lossy().to_string());
+        self.vars
+            .insert("OLDPWD".to_string(), old_dir.to_string_lossy().to_string());
 
         Ok(())
     }
@@ -1026,7 +1124,11 @@ impl Shell {
                 "--query" | "-q" => {
                     if i + 1 < expanded.len() {
                         let name = &expanded[i + 1];
-                        self.last_exit_code = if self.abbreviations.contains_key(name) { 0 } else { 1 };
+                        self.last_exit_code = if self.abbreviations.contains_key(name) {
+                            0
+                        } else {
+                            1
+                        };
                         return Ok(());
                     } else {
                         // query with no args: succeed if any abbreviations exist
@@ -1066,7 +1168,7 @@ impl Shell {
 
         let mut universal = false;
         let mut args_iter = args.iter();
-        
+
         while let Some(arg) = args_iter.next() {
             let s = self.expand_word(arg);
             if s == "-U" || s == "--universal" {
@@ -1122,7 +1224,8 @@ impl Shell {
     fn builtin_popd(&mut self) -> Result<()> {
         if let Some(dir) = self.dir_stack.pop() {
             std::env::set_current_dir(&dir)?;
-            self.vars.insert("PWD".to_string(), dir.to_string_lossy().to_string());
+            self.vars
+                .insert("PWD".to_string(), dir.to_string_lossy().to_string());
             self.builtin_dirs()
         } else {
             eprintln!("popd: directory stack empty");
@@ -1165,13 +1268,17 @@ impl Shell {
                 if let Some(ref path) = history_path {
                     if let Ok(content) = std::fs::read_to_string(path) {
                         let lines: Vec<&str> = content.lines().collect();
-                        let kept: Vec<&str> = lines.iter()
+                        let kept: Vec<&str> = lines
+                            .iter()
                             .filter(|l| !l.contains(pattern.as_str()))
                             .copied()
                             .collect();
                         let removed = lines.len() - kept.len();
                         std::fs::write(path, kept.join("\n"))?;
-                        eprintln!("history: deleted {} entries matching '{}'", removed, pattern);
+                        eprintln!(
+                            "history: deleted {} entries matching '{}'",
+                            removed, pattern
+                        );
                     }
                 }
             }
@@ -1278,31 +1385,31 @@ impl Shell {
         }
         self.jobs.clear();
     }
-    
+
     fn execute_for_loop(&mut self, for_loop: &ForLoop) -> Result<()> {
         for item in &for_loop.list {
             let value = self.expand_word(item);
             self.vars.insert(for_loop.variable.clone(), value);
-            
+
             for cmd in &for_loop.body {
                 self.execute_command(cmd)?;
             }
         }
         Ok(())
     }
-    
+
     fn execute_while_loop(&mut self, while_loop: &WhileLoop) -> Result<()> {
         loop {
             // Execute condition
             for cmd in &while_loop.condition {
                 self.execute_command(cmd)?;
             }
-            
+
             // Check condition (exit code 0 = true)
             if self.last_exit_code != 0 {
                 break;
             }
-            
+
             // Execute body
             for cmd in &while_loop.body {
                 self.execute_command(cmd)?;
@@ -1310,7 +1417,7 @@ impl Shell {
         }
         Ok(())
     }
-    
+
     fn execute_if_statement(&mut self, if_stmt: &IfStatement) -> Result<()> {
         // Execute condition
         for cmd in &if_stmt.condition {
@@ -1458,7 +1565,11 @@ impl Shell {
                     println!("{} is a builtin", name);
                 }
             } else {
-                match ProcessCommand::new("sh").arg("-c").arg(format!("command -v {}", name)).output() {
+                match ProcessCommand::new("sh")
+                    .arg("-c")
+                    .arg(format!("command -v {}", name))
+                    .output()
+                {
                     Ok(output) if output.status.success() => {
                         let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                         if path_only {
@@ -1546,8 +1657,8 @@ impl Shell {
             return Ok(());
         }
         let path = self.expand_word(&args[0]);
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| anyhow!("source: {}: {}", path, e))?;
+        let content =
+            std::fs::read_to_string(&path).map_err(|e| anyhow!("source: {}: {}", path, e))?;
         self.execute(&content)
     }
 
@@ -1579,7 +1690,10 @@ impl Shell {
 
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
-        let input = input.trim_end_matches('\n').trim_end_matches('\r').to_string();
+        let input = input
+            .trim_end_matches('\n')
+            .trim_end_matches('\r')
+            .to_string();
         self.vars.insert(var_name, input);
         Ok(())
     }
@@ -1721,12 +1835,18 @@ impl Shell {
                 println!();
             }
             "collect" => {
-                let separator = if !sub_args.is_empty() && sub_args[0] == "-n" || sub_args[0] == "--no-newline" {
-                    ""
+                if sub_args.is_empty() {
+                    // Read from stdin
+                    let mut input = String::new();
+                    std::io::stdin().read_line(&mut input)?;
+                    print!("{}", input);
+                    return Ok(());
+                }
+                let (start, separator) = if sub_args[0] == "-n" || sub_args[0] == "--no-newline" {
+                    (1, "")
                 } else {
-                    "\n"
+                    (0, "\n")
                 };
-                let start = if separator.is_empty() { 1 } else { 0 };
                 for (i, arg) in sub_args[start..].iter().enumerate() {
                     if i > 0 {
                         print!("{}", separator);
@@ -1739,20 +1859,23 @@ impl Shell {
             }
             "escape" => {
                 for arg in &sub_args {
-                    let escaped: String = arg.chars().map(|c| match c {
-                        '\n' => "\\n".to_string(),
-                        '\t' => "\\t".to_string(),
-                        '\r' => "\\r".to_string(),
-                        '\\' => "\\\\".to_string(),
-                        '"' => "\\\"".to_string(),
-                        '\'' => "\\'".to_string(),
-                        '\x07' => "\\a".to_string(),
-                        '\x08' => "\\b".to_string(),
-                        '\x0c' => "\\f".to_string(),
-                        '\x0b' => "\\v".to_string(),
-                        c if c.is_control() => format!("\\x{:02x}", c as u8),
-                        c => c.to_string(),
-                    }).collect();
+                    let escaped: String = arg
+                        .chars()
+                        .map(|c| match c {
+                            '\n' => "\\n".to_string(),
+                            '\t' => "\\t".to_string(),
+                            '\r' => "\\r".to_string(),
+                            '\\' => "\\\\".to_string(),
+                            '"' => "\\\"".to_string(),
+                            '\'' => "\\'".to_string(),
+                            '\x07' => "\\a".to_string(),
+                            '\x08' => "\\b".to_string(),
+                            '\x0c' => "\\f".to_string(),
+                            '\x0b' => "\\v".to_string(),
+                            c if c.is_control() => format!("\\x{:02x}", c as u8),
+                            c => c.to_string(),
+                        })
+                        .collect();
                     println!("{}", escaped);
                 }
             }
@@ -1776,7 +1899,9 @@ impl Shell {
                                 Some('x') => {
                                     let h1 = chars.next().unwrap_or('0');
                                     let h2 = chars.next().unwrap_or('0');
-                                    if let Ok(byte) = u8::from_str_radix(&format!("{}{}", h1, h2), 16) {
+                                    if let Ok(byte) =
+                                        u8::from_str_radix(&format!("{}{}", h1, h2), 16)
+                                    {
                                         result.push(byte as char);
                                     }
                                 }
@@ -1856,7 +1981,11 @@ impl Shell {
             return Ok(());
         }
         // Reconstruct raw words without glob expansion to preserve * and other operators
-        let expr: String = args.iter().map(|w| self.expand_word_flat(w)).collect::<Vec<_>>().join(" ");
+        let expr: String = args
+            .iter()
+            .map(|w| self.expand_word_flat(w))
+            .collect::<Vec<_>>()
+            .join(" ");
         // Use sh -c echo $((expr)) for arithmetic evaluation
         let cmd_str = format!("echo $(( {} ))", expr);
         match ProcessCommand::new("sh").arg("-c").arg(&cmd_str).output() {
@@ -1922,7 +2051,8 @@ impl Shell {
                 }
             }
             "exit" => {
-                let code = args.get(1)
+                let code = args
+                    .get(1)
                     .map(|w| self.expand_word(w).parse::<i32>().unwrap_or(0))
                     .unwrap_or(self.last_exit_code);
                 std::process::exit(code);
@@ -2075,7 +2205,9 @@ impl Shell {
                 // `random [min] [max]` - random number in range
                 let min = arg.parse::<i64>().unwrap_or(0);
                 let max = if args.len() >= 2 {
-                    self.expand_word(&args[1]).parse::<i64>().unwrap_or(i32::MAX as i64)
+                    self.expand_word(&args[1])
+                        .parse::<i64>()
+                        .unwrap_or(i32::MAX as i64)
                 } else {
                     // Single arg: random 0..arg
                     let val = min;
@@ -2127,8 +2259,12 @@ impl Shell {
 
         // Restore $argv
         match saved_argv {
-            Some(v) => { self.vars.insert("argv".to_string(), v); }
-            None => { self.vars.remove("argv"); }
+            Some(v) => {
+                self.vars.insert("argv".to_string(), v);
+            }
+            None => {
+                self.vars.remove("argv");
+            }
         }
 
         self.last_exit_code = 0;
@@ -2144,22 +2280,31 @@ impl Shell {
         let name = self.expand_word(&args[0]);
 
         // Get existing function body or empty
-        let existing = self.functions.get(&name).map(|f| {
-            f.body.iter().map(|c| self.reconstruct_command(c)).collect::<Vec<_>>().join("\n")
-        }).unwrap_or_default();
+        let existing = self
+            .functions
+            .get(&name)
+            .map(|f| {
+                f.body
+                    .iter()
+                    .map(|c| self.reconstruct_command(c))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default();
 
         // Write to temp file
         let tmp = std::env::temp_dir().join(format!("mishell_funced_{}.fish", name));
         std::fs::write(&tmp, &existing)?;
 
         // Open in $EDITOR
-        let editor = self.vars.get("EDITOR").cloned()
+        let editor = self
+            .vars
+            .get("EDITOR")
+            .cloned()
             .or_else(|| std::env::var("EDITOR").ok())
             .unwrap_or_else(|| "vi".to_string());
 
-        let status = ProcessCommand::new(&editor)
-            .arg(&tmp)
-            .status();
+        let status = ProcessCommand::new(&editor).arg(&tmp).status();
 
         match status {
             Ok(s) if s.success() => {
@@ -2169,12 +2314,15 @@ impl Shell {
                         // Parse the new body
                         match mishell_parser::Parser::new(trimmed).parse() {
                             Ok(cmds) => {
-                                self.functions.insert(name.clone(), FunctionDef {
-                                    name: name.clone(),
-                                    body: cmds,
-                                    on_event: None,
-                                    on_variable: None,
-                                });
+                                self.functions.insert(
+                                    name.clone(),
+                                    FunctionDef {
+                                        name: name.clone(),
+                                        body: cmds,
+                                        on_event: None,
+                                        on_variable: None,
+                                    },
+                                );
                                 eprintln!("funced: function '{}' updated", name);
                             }
                             Err(e) => {
@@ -2242,7 +2390,11 @@ impl Shell {
         output.push_str("end\n");
 
         std::fs::write(&func_file, output)?;
-        eprintln!("funcsave: function '{}' saved to {}", name, func_file.display());
+        eprintln!(
+            "funcsave: function '{}' saved to {}",
+            name,
+            func_file.display()
+        );
         self.last_exit_code = 0;
         Ok(())
     }
@@ -2319,7 +2471,10 @@ impl Shell {
         if let Some(pos) = exact_pos {
             // Check uniqueness
             if content[pos + old_text.len()..].find(&old_text).is_some() {
-                eprintln!("edit: old_text is not unique in file: {}", &old_text[..old_text.len().min(40)]);
+                eprintln!(
+                    "edit: old_text is not unique in file: {}",
+                    &old_text[..old_text.len().min(40)]
+                );
                 self.last_exit_code = 1;
                 return Ok(());
             }
@@ -2362,8 +2517,14 @@ impl Shell {
 
         if let Some(pos) = stripped_content.find(&stripped_old) {
             // Check uniqueness in stripped space
-            if stripped_content[pos + stripped_old.len()..].find(&stripped_old).is_some() {
-                eprintln!("edit: old_text is not unique in file: {}", &old_text[..old_text.len().min(40)]);
+            if stripped_content[pos + stripped_old.len()..]
+                .find(&stripped_old)
+                .is_some()
+            {
+                eprintln!(
+                    "edit: old_text is not unique in file: {}",
+                    &old_text[..old_text.len().min(40)]
+                );
                 self.last_exit_code = 1;
                 return Ok(());
             }
@@ -2372,12 +2533,17 @@ impl Shell {
             let mut orig_pos = 0;
             let mut stripped_pos = 0;
             while stripped_pos < pos && orig_pos < content.len() {
-                if stripped_pos < stripped_content.len() && stripped_content.as_bytes()[stripped_pos] == content.as_bytes()[orig_pos] {
+                if stripped_pos < stripped_content.len()
+                    && stripped_content.as_bytes()[stripped_pos] == content.as_bytes()[orig_pos]
+                {
                     stripped_pos += 1;
                     orig_pos += 1;
                 } else {
                     // Skip trailing whitespace in original
-                    while orig_pos < content.len() && (content.as_bytes()[orig_pos] == b' ' || content.as_bytes()[orig_pos] == b'\t') {
+                    while orig_pos < content.len()
+                        && (content.as_bytes()[orig_pos] == b' '
+                            || content.as_bytes()[orig_pos] == b'\t')
+                    {
                         orig_pos += 1;
                     }
                 }
@@ -2387,11 +2553,16 @@ impl Shell {
             let mut match_end_orig = orig_pos;
             let mut match_end_stripped = pos + stripped_old.len();
             while match_end_stripped < stripped_content.len() && match_end_orig < content.len() {
-                if stripped_content.as_bytes()[match_end_stripped] == content.as_bytes()[match_end_orig] {
+                if stripped_content.as_bytes()[match_end_stripped]
+                    == content.as_bytes()[match_end_orig]
+                {
                     match_end_stripped += 1;
                     match_end_orig += 1;
                 } else {
-                    while match_end_orig < content.len() && (content.as_bytes()[match_end_orig] == b' ' || content.as_bytes()[match_end_orig] == b'\t') {
+                    while match_end_orig < content.len()
+                        && (content.as_bytes()[match_end_orig] == b' '
+                            || content.as_bytes()[match_end_orig] == b'\t')
+                    {
                         match_end_orig += 1;
                     }
                 }
@@ -2422,7 +2593,10 @@ impl Shell {
             return Ok(());
         }
 
-        eprintln!("edit: old_text not found in file: {}", &old_text[..old_text.len().min(40)]);
+        eprintln!(
+            "edit: old_text not found in file: {}",
+            &old_text[..old_text.len().min(40)]
+        );
         self.last_exit_code = 1;
         Ok(())
     }
@@ -2471,7 +2645,11 @@ impl Shell {
                         println!("{}: data ({} bytes)", path, size);
                     } else {
                         // Check if it looks like text
-                        let non_text = buf.iter().take(512).filter(|&&b| b < 0x20 && b != b'\n' && b != b'\r' && b != b'\t').count();
+                        let non_text = buf
+                            .iter()
+                            .take(512)
+                            .filter(|&&b| b < 0x20 && b != b'\n' && b != b'\r' && b != b'\t')
+                            .count();
                         if non_text > 2 {
                             println!("{}: data ({} bytes)", path, size);
                         } else {
@@ -2569,7 +2747,9 @@ impl Shell {
     }
 
     fn builtin_try(&mut self, args: &[Word]) -> Result<()> {
-        let dir = self.expand_word(args.first().unwrap_or(&Word { parts: vec![WordPart::Literal(".".to_string())] }));
+        let dir = self.expand_word(args.first().unwrap_or(&Word {
+            parts: vec![WordPart::Literal(".".to_string())],
+        }));
         let path = std::path::Path::new(&dir);
 
         if !path.is_dir() {
@@ -2602,14 +2782,25 @@ impl Shell {
 
         // Set up environment for sandboxed shell
         let saved_cd = self.vars.get("PWD").cloned();
-        self.vars.insert("PWD".to_string(), work_dir.to_string_lossy().to_string());
-        self.vars.insert("TRY_ORIGINAL_DIR".to_string(), abs_path.to_string_lossy().to_string());
-        self.vars.insert("TRY_WORK_DIR".to_string(), work_dir.to_string_lossy().to_string());
+        self.vars
+            .insert("PWD".to_string(), work_dir.to_string_lossy().to_string());
+        self.vars.insert(
+            "TRY_ORIGINAL_DIR".to_string(),
+            abs_path.to_string_lossy().to_string(),
+        );
+        self.vars.insert(
+            "TRY_WORK_DIR".to_string(),
+            work_dir.to_string_lossy().to_string(),
+        );
 
         // Note: In a real implementation, this would use overlayfs or similar
         // For now, just set up the environment and let the user work in the temp dir
         println!("try: (note: overlayfs not available, working in temp copy)");
-        println!("try: use 'cp -r {}/* {}/' to copy files", abs_path.display(), work_dir.display());
+        println!(
+            "try: use 'cp -r {}/* {}/' to copy files",
+            abs_path.display(),
+            work_dir.display()
+        );
 
         // Restore on exit
         if let Some(cd) = saved_cd {
@@ -2631,7 +2822,7 @@ impl Shell {
             return false;
         }
         // Handle [ ... ] form - trailing ] already stripped by caller
-        self.test_expr(&args)
+        self.test_expr(args)
     }
 
     fn test_expr(&self, args: &[String]) -> bool {
@@ -2773,12 +2964,11 @@ impl Shell {
                     return false;
                 }
                 "-t" => {
-                    if let Ok(fd) = arg.parse::<i32>() {
-                        use std::os::unix::io::FromRawFd;
-                        if fd == 0 {
-                            let _ = unsafe { std::fs::File::from_raw_fd(fd) };
-                            return true;
-                        }
+                    // Check if fd refers to a terminal
+                    if let Ok(fd) = arg.parse::<std::os::fd::RawFd>() {
+                        use std::os::fd::AsRawFd;
+                        let stdin = std::io::stdin();
+                        return stdin.as_raw_fd() == fd && isatty(fd).unwrap_or(false);
                     }
                     return false;
                 }
@@ -2806,19 +2996,21 @@ impl Shell {
                 "-O" => {
                     use std::os::unix::fs::MetadataExt;
                     if let Ok(meta) = std::fs::metadata(arg) {
-                        return meta.uid() == unsafe { libc::getuid() };
+                        return meta.uid() == nix::unistd::getuid().as_raw();
                     }
                     return false;
                 }
                 "-G" => {
                     use std::os::unix::fs::MetadataExt;
                     if let Ok(meta) = std::fs::metadata(arg) {
-                        return meta.gid() == unsafe { libc::getgid() };
+                        return meta.gid() == nix::unistd::getgid().as_raw();
                     }
                     return false;
                 }
                 "-N" => {
-                    if let (Ok(meta), Ok(atime_meta)) = (std::fs::metadata(arg), std::fs::metadata(arg)) {
+                    if let (Ok(meta), Ok(atime_meta)) =
+                        (std::fs::metadata(arg), std::fs::metadata(arg))
+                    {
                         use std::os::unix::fs::MetadataExt;
                         return meta.mtime() > atime_meta.atime();
                     }
@@ -2845,7 +3037,11 @@ impl Shell {
     }
 
     fn builtin_eval(&mut self, args: &[Word]) -> Result<()> {
-        let cmd_str: String = args.iter().map(|w| self.expand_word(w)).collect::<Vec<_>>().join(" ");
+        let cmd_str: String = args
+            .iter()
+            .map(|w| self.expand_word(w))
+            .collect::<Vec<_>>()
+            .join(" ");
         if cmd_str.is_empty() {
             return Ok(());
         }
@@ -2880,7 +3076,9 @@ impl Shell {
                     if name == "status" {
                         result.push_str(&self.last_exit_code.to_string());
                     } else {
-                        let value = self.vars.get(name)
+                        let value = self
+                            .vars
+                            .get(name)
                             .or_else(|| self.universal_vars.get(name))
                             .cloned()
                             .unwrap_or_else(|| std::env::var(name).unwrap_or_default());
@@ -2896,7 +3094,9 @@ impl Shell {
                                 if name == "status" {
                                     result.push_str(&self.last_exit_code.to_string());
                                 } else {
-                                    let value = self.vars.get(name)
+                                    let value = self
+                                        .vars
+                                        .get(name)
                                         .or_else(|| self.universal_vars.get(name))
                                         .cloned()
                                         .unwrap_or_else(|| std::env::var(name).unwrap_or_default());
@@ -2907,14 +3107,12 @@ impl Shell {
                         }
                     }
                 }
-                WordPart::Glob(pattern) => {
-                    match pattern {
-                        GlobPattern::Star => result.push('*'),
-                        GlobPattern::Question => result.push('?'),
-                        GlobPattern::Class(s) => result.push_str(&format!("[{}]", s)),
-                        GlobPattern::Literal(s) => result.push_str(s),
-                    }
-                }
+                WordPart::Glob(pattern) => match pattern {
+                    GlobPattern::Star => result.push('*'),
+                    GlobPattern::Question => result.push('?'),
+                    GlobPattern::Class(s) => result.push_str(&format!("[{}]", s)),
+                    GlobPattern::Literal(s) => result.push_str(s),
+                },
                 _ => {}
             }
         }
@@ -2929,6 +3127,10 @@ impl Shell {
         &self.aliases
     }
 
+    pub fn completions(&self) -> &HashMap<String, Vec<CompletionEntry>> {
+        &self.completions
+    }
+
     pub fn set_interactive(&mut self, interactive: bool) {
         self.is_interactive = interactive;
     }
@@ -2936,6 +3138,84 @@ impl Shell {
     #[allow(dead_code)]
     pub fn set_var(&mut self, key: &str, value: &str) {
         self.vars.insert(key.to_string(), value.to_string());
+    }
+
+    fn builtin_complete(&mut self, args: &[Word]) -> Result<()> {
+        if args.is_empty() {
+            for (cmd, entries) in &self.completions {
+                for entry in entries {
+                    if entry.condition.is_empty() {
+                        println!("complete -c {} -a '{}'", cmd, entry.arguments.join(" "));
+                    } else {
+                        println!(
+                            "complete -c {} -a '{}' -d '{}'",
+                            cmd,
+                            entry.arguments.join(" "),
+                            entry.description
+                        );
+                    }
+                }
+            }
+            return Ok(());
+        }
+        let mut cmd_name = String::new();
+        let mut arguments = Vec::new();
+        let mut description = String::new();
+        let mut erase = false;
+        let mut i = 0;
+        let expanded: Vec<String> = args.iter().map(|a| self.expand_word(a)).collect();
+        while i < expanded.len() {
+            match expanded[i].as_str() {
+                "-c" | "--command" if i + 1 < expanded.len() => {
+                    cmd_name = expanded[i + 1].clone();
+                    i += 2;
+                }
+                "-a" | "--arguments" if i + 1 < expanded.len() => {
+                    arguments = expanded[i + 1]
+                        .split_whitespace()
+                        .map(String::from)
+                        .collect();
+                    i += 2;
+                }
+                "-d" | "--description" if i + 1 < expanded.len() => {
+                    description = expanded[i + 1].clone();
+                    i += 2;
+                }
+                "-e" | "--erase" => {
+                    erase = true;
+                    i += 1;
+                }
+                _ => {
+                    i += 1;
+                }
+            }
+        }
+        if cmd_name.is_empty() {
+            eprintln!("complete: expected -c COMMAND");
+            self.last_exit_code = 1;
+            return Ok(());
+        }
+        if erase {
+            self.completions.remove(&cmd_name);
+        } else {
+            self.completions
+                .entry(cmd_name)
+                .or_default()
+                .push(CompletionEntry {
+                    condition: String::new(),
+                    description,
+                    arguments,
+                });
+        }
+        Ok(())
+    }
+
+    fn builtin_commandline(&self, _args: &[Word]) -> Result<()> {
+        if !self.is_interactive {
+            return Ok(());
+        }
+        // Minimal stub: real implementation would read/write the readline buffer
+        Ok(())
     }
 }
 
@@ -2951,60 +3231,130 @@ pub fn detect_file_type(buf: &[u8], path: &str) -> Option<String> {
     }
 
     // Images
-    if buf.starts_with(b"\x89PNG\r\n\x1a\n") { return Some("image/png".to_string()); }
-    if buf.starts_with(b"\xff\xd8\xff") { return Some("image/jpeg".to_string()); }
-    if buf.starts_with(b"GIF87a") || buf.starts_with(b"GIF89a") { return Some("image/gif".to_string()); }
-    if buf.starts_with(b"RIFF") && buf.len() >= 12 && &buf[8..12] == b"WEBP" { return Some("image/webp".to_string()); }
-    if buf.starts_with(b"BM") { return Some("image/bmp".to_string()); }
+    if buf.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("image/png".to_string());
+    }
+    if buf.starts_with(b"\xff\xd8\xff") {
+        return Some("image/jpeg".to_string());
+    }
+    if buf.starts_with(b"GIF87a") || buf.starts_with(b"GIF89a") {
+        return Some("image/gif".to_string());
+    }
+    if buf.starts_with(b"RIFF") && buf.len() >= 12 && &buf[8..12] == b"WEBP" {
+        return Some("image/webp".to_string());
+    }
+    if buf.starts_with(b"BM") {
+        return Some("image/bmp".to_string());
+    }
 
     // Audio
-    if buf.starts_with(b"ID3") || (buf.len() >= 3 && buf[0] == 0xff && (buf[1] & 0xe0) == 0xe0) { return Some("audio/mpeg".to_string()); }
-    if buf.starts_with(b"OggS") { return Some("audio/ogg".to_string()); }
-    if buf.starts_with(b"fLaC") { return Some("audio/flac".to_string()); }
-    if buf.starts_with(b"RIFF") && buf.len() >= 12 && &buf[8..12] == b"WAVE" { return Some("audio/wav".to_string()); }
+    if buf.starts_with(b"ID3") || (buf.len() >= 3 && buf[0] == 0xff && (buf[1] & 0xe0) == 0xe0) {
+        return Some("audio/mpeg".to_string());
+    }
+    if buf.starts_with(b"OggS") {
+        return Some("audio/ogg".to_string());
+    }
+    if buf.starts_with(b"fLaC") {
+        return Some("audio/flac".to_string());
+    }
+    if buf.starts_with(b"RIFF") && buf.len() >= 12 && &buf[8..12] == b"WAVE" {
+        return Some("audio/wav".to_string());
+    }
 
     // Video
-    if buf.len() >= 12 && &buf[4..8] == b"ftyp" { return Some("video/mp4".to_string()); }
-    if buf.starts_with(b"\x1a\x45\xdf\xa3") { return Some("video/webm".to_string()); }
-    if buf.starts_with(b"FLV") { return Some("video/x-flv".to_string()); }
-    if buf.starts_with(b"\x00\x00\x01\xba") || buf.starts_with(b"\x00\x00\x01\xb3") { return Some("video/mpeg".to_string()); }
+    if buf.len() >= 12 && &buf[4..8] == b"ftyp" {
+        return Some("video/mp4".to_string());
+    }
+    if buf.starts_with(b"\x1a\x45\xdf\xa3") {
+        return Some("video/webm".to_string());
+    }
+    if buf.starts_with(b"FLV") {
+        return Some("video/x-flv".to_string());
+    }
+    if buf.starts_with(b"\x00\x00\x01\xba") || buf.starts_with(b"\x00\x00\x01\xb3") {
+        return Some("video/mpeg".to_string());
+    }
 
     // Archives
-    if buf.starts_with(b"PK\x03\x04") { return Some("application/zip".to_string()); }
-    if buf.starts_with(b"\x1f\x8b") { return Some("application/gzip".to_string()); }
-    if buf.starts_with(b"BZh") { return Some("application/x-bzip2".to_string()); }
-    if buf.starts_with(b"\xfd7zXZ\x00") { return Some("application/x-xz".to_string()); }
-    if buf.starts_with(b"\x28\xb5\x2f\xfd") { return Some("application/zstd".to_string()); }
-    if buf.starts_with(b"7z\xbc\xaf\x27\x1c") { return Some("application/x-7z-compressed".to_string()); }
-    if buf.starts_with(b"Rar!\x1a\x07") { return Some("application/x-rar-compressed".to_string()); }
+    if buf.starts_with(b"PK\x03\x04") {
+        return Some("application/zip".to_string());
+    }
+    if buf.starts_with(b"\x1f\x8b") {
+        return Some("application/gzip".to_string());
+    }
+    if buf.starts_with(b"BZh") {
+        return Some("application/x-bzip2".to_string());
+    }
+    if buf.starts_with(b"\xfd7zXZ\x00") {
+        return Some("application/x-xz".to_string());
+    }
+    if buf.starts_with(b"\x28\xb5\x2f\xfd") {
+        return Some("application/zstd".to_string());
+    }
+    if buf.starts_with(b"7z\xbc\xaf\x27\x1c") {
+        return Some("application/x-7z-compressed".to_string());
+    }
+    if buf.starts_with(b"Rar!\x1a\x07") {
+        return Some("application/x-rar-compressed".to_string());
+    }
 
     // Documents
-    if buf.starts_with(b"%PDF") { return Some("application/pdf".to_string()); }
-    if buf.starts_with(b"SQLite format 3\0") { return Some("application/x-sqlite3".to_string()); }
+    if buf.starts_with(b"%PDF") {
+        return Some("application/pdf".to_string());
+    }
+    if buf.starts_with(b"SQLite format 3\0") {
+        return Some("application/x-sqlite3".to_string());
+    }
 
     // Executables
-    if buf.starts_with(b"\x7fELF") { return Some("application/x-executable".to_string()); }
-    if buf.starts_with(b"Mach-O") || buf.starts_with(b"\xfe\xed\xfa") || buf.starts_with(b"\xfe\xed\xfa\xce") || buf.starts_with(b"\xfe\xed\xfa\xcf") || buf.starts_with(b"\xce\xfa\xed\xfe") || buf.starts_with(b"\xcf\xfa\xed\xfe") { return Some("application/x-mach-binary".to_string()); }
-    if buf.starts_with(b"MZ") { return Some("application/x-dosexec".to_string()); }
+    if buf.starts_with(b"\x7fELF") {
+        return Some("application/x-executable".to_string());
+    }
+    if buf.starts_with(b"Mach-O")
+        || buf.starts_with(b"\xfe\xed\xfa")
+        || buf.starts_with(b"\xfe\xed\xfa\xce")
+        || buf.starts_with(b"\xfe\xed\xfa\xcf")
+        || buf.starts_with(b"\xce\xfa\xed\xfe")
+        || buf.starts_with(b"\xcf\xfa\xed\xfe")
+    {
+        return Some("application/x-mach-binary".to_string());
+    }
+    if buf.starts_with(b"MZ") {
+        return Some("application/x-dosexec".to_string());
+    }
 
     // Fonts
-    if buf.starts_with(b"\x00\x01\x00\x00") { return Some("font/ttf".to_string()); }
-    if buf.starts_with(b"OTTO") { return Some("font/otf".to_string()); }
-    if buf.starts_with(b"wOFF") { return Some("font/woff".to_string()); }
-    if buf.starts_with(b"wOF2") { return Some("font/woff2".to_string()); }
+    if buf.starts_with(b"\x00\x01\x00\x00") {
+        return Some("font/ttf".to_string());
+    }
+    if buf.starts_with(b"OTTO") {
+        return Some("font/otf".to_string());
+    }
+    if buf.starts_with(b"wOFF") {
+        return Some("font/woff".to_string());
+    }
+    if buf.starts_with(b"wOF2") {
+        return Some("font/woff2".to_string());
+    }
 
     // WebAssembly
-    if buf.starts_with(b"\x00asm") { return Some("application/wasm".to_string()); }
+    if buf.starts_with(b"\x00asm") {
+        return Some("application/wasm".to_string());
+    }
 
     // Java
-    if buf.starts_with(b"\xca\xfe\xba\xbe") { return Some("application/java-archive".to_string()); }
+    if buf.starts_with(b"\xca\xfe\xba\xbe") {
+        return Some("application/java-archive".to_string());
+    }
 
     // By extension
     let ext = path.rsplit('.').next().unwrap_or("");
     match ext {
         "tar" => Some("application/x-tar".to_string()),
-        "rs" | "py" | "js" | "ts" | "c" | "cpp" | "h" | "hpp" | "java" | "go" | "rb" | "sh" | "bash" | "zsh" | "fish" => Some("text/x-source".to_string()),
-        "md" | "txt" | "log" | "csv" | "json" | "xml" | "yaml" | "yml" | "toml" | "ini" | "cfg" | "conf" => Some("text/plain".to_string()),
+        "rs" | "py" | "js" | "ts" | "c" | "cpp" | "h" | "hpp" | "java" | "go" | "rb" | "sh"
+        | "bash" | "zsh" | "fish" => Some("text/x-source".to_string()),
+        "md" | "txt" | "log" | "csv" | "json" | "xml" | "yaml" | "yml" | "toml" | "ini" | "cfg"
+        | "conf" => Some("text/plain".to_string()),
         "html" | "htm" => Some("text/html".to_string()),
         "css" => Some("text/css".to_string()),
         "svg" => Some("image/svg+xml".to_string()),
@@ -3012,84 +3362,6 @@ pub fn detect_file_type(buf: &[u8], path: &str) -> Option<String> {
         _ => None,
     }
 }
-
-    fn builtin_complete(&mut self, args: &[Word]) -> Result<()> {
-        if args.is_empty() {
-            // List all completions
-            for (cmd, entries) in &self.completions {
-                for entry in entries {
-                    if entry.condition.is_empty() {
-                        println!("complete -c {} -a '{}'", cmd, entry.arguments.join(" "));
-                    } else {
-                        println!("complete -c {} -a '{}' -d '{}'", cmd, entry.arguments.join(" "), entry.description);
-                    }
-                }
-            }
-            return Ok(());
-        }
-        let mut cmd_name = String::new();
-        let mut arguments = Vec::new();
-        let mut condition = String::new();
-        let mut description = String::new();
-        let mut erase = false;
-        let mut i = 0;
-        let expanded: Vec<String> = args.iter().map(|a| self.expand_word(a)).collect();
-        while i < expanded.len() {
-            match expanded[i].as_str() {
-                "-c" | "--command" => {
-                    if i + 1 < expanded.len() { cmd_name = expanded[i + 1].clone(); i += 2; } else { i += 1; }
-                }
-                "-a" | "--arguments" => {
-                    if i + 1 < expanded.len() { arguments = expanded[i + 1].split_whitespace().map(String::from).collect(); i += 2; } else { i += 1; }
-                }
-                "-d" | "--description" => {
-                    if i + 1 < expanded.len() { description = expanded[i + 1].clone(); i += 2; } else { i += 1; }
-                }
-                "-e" | "--erase" => { erase = true; i += 1; }
-                _ => { i += 1; }
-            }
-        }
-        if cmd_name.is_empty() {
-            eprintln!("complete: expected -c COMMAND");
-            self.last_exit_code = 1;
-            return Ok(());
-        }
-        if erase {
-            self.completions.remove(&cmd_name);
-        } else {
-            self.completions.entry(cmd_name).or_default().push(CompletionEntry {
-                condition,
-                description,
-                arguments,
-            });
-        }
-        Ok(())
-    }
-
-    fn builtin_commandline(&self, args: &[Word]) -> Result<()> {
-        // In non-interactive mode, this is a no-op
-        if !self.is_interactive {
-            return Ok(());
-        }
-        // Minimal implementation: print info about current commandline
-        let mut mode = "BUFFER";
-        let expanded: Vec<String> = args.iter().map(|a| self.expand_word(a)).collect();
-        for arg in &expanded {
-            match arg.as_str() {
-                "-c" | "--current-token" => { mode = "TOKEN"; }
-                "-b" | "--current-buffer" => { mode = "BUFFER"; }
-                "-o" | "--current-token" => { mode = "TOKEN"; }
-                "-p" | "--current-process" => { mode = "PROCESS"; }
-                _ => {}
-            }
-        }
-        // In a real implementation this would read from the readline buffer
-        // For now just print empty
-        if mode == "BUFFER" || mode == "TOKEN" {
-            // no-op, handled by interactive loop
-        }
-        Ok(())
-    }
 
 pub fn is_builtin(name: &str) -> bool {
     matches!(
@@ -3136,6 +3408,8 @@ pub fn is_builtin(name: &str) -> bool {
             | "eval"
             | "realpath"
             | "begin"
+            | "complete"
+            | "commandline"
     )
 }
 
@@ -3225,7 +3499,10 @@ mod tests {
     fn test_glob_no_match_returns_literal() {
         // When expand_glob finds no matches, it returns None (literal used)
         // glob_match itself just returns false
-        assert!(!Shell::glob_match("*.nonexistent_extension_xyz", "file.txt"));
+        assert!(!Shell::glob_match(
+            "*.nonexistent_extension_xyz",
+            "file.txt"
+        ));
     }
 
     #[test]
@@ -3327,15 +3604,21 @@ mod tests {
     #[test]
     fn test_expand_word_literal() {
         let shell = Shell::new(false).unwrap();
-        let word = Word { parts: vec![WordPart::Literal("hello".to_string())] };
+        let word = Word {
+            parts: vec![WordPart::Literal("hello".to_string())],
+        };
         assert_eq!(shell.expand_word(&word), "hello");
     }
 
     #[test]
     fn test_expand_word_variable() {
         let mut shell = Shell::new(false).unwrap();
-        shell.vars.insert("MYVAR".to_string(), "myvalue".to_string());
-        let word = Word { parts: vec![WordPart::Variable("MYVAR".to_string())] };
+        shell
+            .vars
+            .insert("MYVAR".to_string(), "myvalue".to_string());
+        let word = Word {
+            parts: vec![WordPart::Variable("MYVAR".to_string())],
+        };
         assert_eq!(shell.expand_word(&word), "myvalue");
     }
 
@@ -3343,7 +3626,9 @@ mod tests {
     fn test_expand_word_status_variable() {
         let mut shell = Shell::new(false).unwrap();
         shell.last_exit_code = 42;
-        let word = Word { parts: vec![WordPart::Variable("status".to_string())] };
+        let word = Word {
+            parts: vec![WordPart::Variable("status".to_string())],
+        };
         assert_eq!(shell.expand_word(&word), "42");
     }
 
@@ -3356,7 +3641,7 @@ mod tests {
                 WordPart::Literal("hello_".to_string()),
                 WordPart::Variable("NAME".to_string()),
                 WordPart::Literal("!".to_string()),
-            ]
+            ],
         };
         assert_eq!(shell.expand_word(&word), "hello_world!");
     }
@@ -3364,7 +3649,9 @@ mod tests {
     #[test]
     fn test_expand_word_single_quoted() {
         let shell = Shell::new(false).unwrap();
-        let word = Word { parts: vec![WordPart::SingleQuoted("$VAR literal".to_string())] };
+        let word = Word {
+            parts: vec![WordPart::SingleQuoted("$VAR literal".to_string())],
+        };
         assert_eq!(shell.expand_word(&word), "$VAR literal");
     }
 
@@ -3376,7 +3663,7 @@ mod tests {
             parts: vec![WordPart::DoubleQuoted(vec![
                 WordPart::Literal("val=".to_string()),
                 WordPart::Variable("X".to_string()),
-            ])]
+            ])],
         };
         assert_eq!(shell.expand_word(&word), "val=42");
     }
@@ -3384,7 +3671,9 @@ mod tests {
     #[test]
     fn test_expand_word_escape() {
         let shell = Shell::new(false).unwrap();
-        let word = Word { parts: vec![WordPart::Escape('n')] };
+        let word = Word {
+            parts: vec![WordPart::Escape('n')],
+        };
         assert_eq!(shell.expand_word(&word), "n");
     }
 
@@ -3398,7 +3687,9 @@ mod tests {
     #[test]
     fn test_expand_word_tilde() {
         let shell = Shell::new(false).unwrap();
-        let word = Word { parts: vec![WordPart::Tilde(None)] };
+        let word = Word {
+            parts: vec![WordPart::Tilde(None)],
+        };
         let result = shell.expand_word(&word);
         // Should be home dir path or ~
         assert!(!result.is_empty());
@@ -3409,7 +3700,9 @@ mod tests {
     #[test]
     fn test_expand_abbreviation_at_start() {
         let mut shell = Shell::new(true).unwrap();
-        shell.abbreviations.insert("gc".to_string(), "git commit".to_string());
+        shell
+            .abbreviations
+            .insert("gc".to_string(), "git commit".to_string());
         let result = shell.expand_abbreviations("gc -m test");
         assert_eq!(result, "git commit -m test");
     }
@@ -3417,16 +3710,20 @@ mod tests {
     #[test]
     fn test_expand_abbreviation_in_middle() {
         let mut shell = Shell::new(true).unwrap();
-        shell.abbreviations.insert("gp".to_string(), "git push".to_string());
+        shell
+            .abbreviations
+            .insert("gp".to_string(), "git push".to_string());
         let result = shell.expand_abbreviations("echo gp"); // not at word boundary with space before
-        // The abbreviation expansion looks for " gp " pattern
+                                                            // The abbreviation expansion looks for " gp " pattern
         assert!(result.contains("echo"));
     }
 
     #[test]
     fn test_expand_abbreviation_no_match() {
         let mut shell = Shell::new(true).unwrap();
-        shell.abbreviations.insert("gc".to_string(), "git commit".to_string());
+        shell
+            .abbreviations
+            .insert("gc".to_string(), "git commit".to_string());
         let result = shell.expand_abbreviations("echo hello");
         assert_eq!(result, "echo hello");
     }
@@ -3434,7 +3731,9 @@ mod tests {
     #[test]
     fn test_expand_abbreviation_disabled() {
         let mut shell = Shell::new(false).unwrap();
-        shell.abbreviations.insert("gc".to_string(), "git commit".to_string());
+        shell
+            .abbreviations
+            .insert("gc".to_string(), "git commit".to_string());
         // fish_features is false, so execute() won't expand
         // But expand_abbreviations is called only when fish_features is true
         let result = shell.expand_abbreviations("gc -m test");
@@ -3456,7 +3755,9 @@ mod tests {
     #[test]
     fn test_vars_accessor() {
         let mut shell = Shell::new(false).unwrap();
-        shell.vars.insert("TESTVAR".to_string(), "value".to_string());
+        shell
+            .vars
+            .insert("TESTVAR".to_string(), "value".to_string());
         assert_eq!(shell.vars().get("TESTVAR").unwrap(), "value");
     }
 
@@ -3469,8 +3770,12 @@ mod tests {
             redirects: vec![],
             assignments: vec![],
             words: vec![
-                Word { parts: vec![WordPart::Literal("echo".to_string())] },
-                Word { parts: vec![WordPart::Literal("hello".to_string())] },
+                Word {
+                    parts: vec![WordPart::Literal("echo".to_string())],
+                },
+                Word {
+                    parts: vec![WordPart::Literal("hello".to_string())],
+                },
             ],
         });
         assert_eq!(shell.reconstruct_body(&body), "echo hello");
@@ -3484,16 +3789,20 @@ mod tests {
                 SimpleCommand {
                     redirects: vec![],
                     assignments: vec![],
-                    words: vec![
-                        Word { parts: vec![WordPart::Literal("ls".to_string())] },
-                    ],
+                    words: vec![Word {
+                        parts: vec![WordPart::Literal("ls".to_string())],
+                    }],
                 },
                 SimpleCommand {
                     redirects: vec![],
                     assignments: vec![],
                     words: vec![
-                        Word { parts: vec![WordPart::Literal("grep".to_string())] },
-                        Word { parts: vec![WordPart::Literal("foo".to_string())] },
+                        Word {
+                            parts: vec![WordPart::Literal("grep".to_string())],
+                        },
+                        Word {
+                            parts: vec![WordPart::Literal("foo".to_string())],
+                        },
                     ],
                 },
             ],
@@ -3508,13 +3817,21 @@ mod tests {
         let left = CommandBody::Simple(SimpleCommand {
             redirects: vec![],
             assignments: vec![],
-            words: vec![Word { parts: vec![WordPart::Literal("true".to_string())] }],
+            words: vec![Word {
+                parts: vec![WordPart::Literal("true".to_string())],
+            }],
         });
         let right = CommandBody::Simple(SimpleCommand {
             redirects: vec![],
             assignments: vec![],
-            words: vec![Word { parts: vec![WordPart::Literal("echo".to_string())] },
-                        Word { parts: vec![WordPart::Literal("ok".to_string())] }],
+            words: vec![
+                Word {
+                    parts: vec![WordPart::Literal("echo".to_string())],
+                },
+                Word {
+                    parts: vec![WordPart::Literal("ok".to_string())],
+                },
+            ],
         });
         let body = CommandBody::And(Box::new(left), Box::new(right));
         assert_eq!(shell.reconstruct_body(&body), "true && echo ok");
@@ -3526,12 +3843,16 @@ mod tests {
         let left = CommandBody::Simple(SimpleCommand {
             redirects: vec![],
             assignments: vec![],
-            words: vec![Word { parts: vec![WordPart::Literal("a".to_string())] }],
+            words: vec![Word {
+                parts: vec![WordPart::Literal("a".to_string())],
+            }],
         });
         let right = CommandBody::Simple(SimpleCommand {
             redirects: vec![],
             assignments: vec![],
-            words: vec![Word { parts: vec![WordPart::Literal("b".to_string())] }],
+            words: vec![Word {
+                parts: vec![WordPart::Literal("b".to_string())],
+            }],
         });
         let body = CommandBody::Sequence(Box::new(left), Box::new(right));
         assert_eq!(shell.reconstruct_body(&body), "a; b");
@@ -3637,7 +3958,9 @@ mod tests {
     #[test]
     fn test_execute_if_false_else() {
         let mut shell = Shell::new(false).unwrap();
-        shell.execute("if false; then echo yes; else echo no; end").unwrap();
+        shell
+            .execute("if false; then echo yes; else echo no; end")
+            .unwrap();
         assert_eq!(shell.last_exit_code, 0);
     }
 
@@ -3767,7 +4090,9 @@ mod tests {
         let mut shell = Shell::new(false).unwrap();
         // Create temp file
         std::fs::write("/tmp/mishell_test_edit.txt", "hello world").unwrap();
-        shell.execute("edit /tmp/mishell_test_edit.txt \"hello world\" \"goodbye world\"").unwrap();
+        shell
+            .execute("edit /tmp/mishell_test_edit.txt \"hello world\" \"goodbye world\"")
+            .unwrap();
         assert_eq!(shell.last_exit_code, 0);
         let content = std::fs::read_to_string("/tmp/mishell_test_edit.txt").unwrap();
         assert_eq!(content, "goodbye world");
@@ -3778,7 +4103,9 @@ mod tests {
     fn test_execute_edit_not_found() {
         let mut shell = Shell::new(false).unwrap();
         std::fs::write("/tmp/mishell_test_edit2.txt", "hello world").unwrap();
-        shell.execute("edit /tmp/mishell_test_edit2.txt \"not found\" \"replacement\"").unwrap();
+        shell
+            .execute("edit /tmp/mishell_test_edit2.txt \"not found\" \"replacement\"")
+            .unwrap();
         assert_eq!(shell.last_exit_code, 1);
         let _ = std::fs::remove_file("/tmp/mishell_test_edit2.txt");
     }
@@ -3788,7 +4115,9 @@ mod tests {
         let mut shell = Shell::new(false).unwrap();
         // File has trailing spaces, search term doesn't
         std::fs::write("/tmp/mishell_test_fuzzy.txt", "hello   \nworld   ").unwrap();
-        shell.execute("edit /tmp/mishell_test_fuzzy.txt \"hello\" \"goodbye\"").unwrap();
+        shell
+            .execute("edit /tmp/mishell_test_fuzzy.txt \"hello\" \"goodbye\"")
+            .unwrap();
         assert_eq!(shell.last_exit_code, 0);
         let content = std::fs::read_to_string("/tmp/mishell_test_fuzzy.txt").unwrap();
         assert!(content.contains("goodbye"));
@@ -3797,22 +4126,239 @@ mod tests {
 
     #[test]
     fn test_detect_file_type() {
-        assert_eq!(detect_file_type(b"\x89PNG\r\n\x1a\n", "test.png"), Some("image/png".to_string()));
-        assert_eq!(detect_file_type(b"\xff\xd8\xff", "test.jpg"), Some("image/jpeg".to_string()));
-        assert_eq!(detect_file_type(b"GIF89a", "test.gif"), Some("image/gif".to_string()));
-        assert_eq!(detect_file_type(b"%PDF", "test.pdf"), Some("application/pdf".to_string()));
-        assert_eq!(detect_file_type(b"\x7fELF", "test"), Some("application/x-executable".to_string()));
-        assert_eq!(detect_file_type(b"PK\x03\x04", "test.zip"), Some("application/zip".to_string()));
-        assert_eq!(detect_file_type(b"\x1f\x8b", "test.gz"), Some("application/gzip".to_string()));
-        assert_eq!(detect_file_type(b"MZ", "test.exe"), Some("application/x-dosexec".to_string()));
-        assert_eq!(detect_file_type(b"\x00asm", "test.wasm"), Some("application/wasm".to_string()));
+        assert_eq!(
+            detect_file_type(b"\x89PNG\r\n\x1a\n", "test.png"),
+            Some("image/png".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"\xff\xd8\xff", "test.jpg"),
+            Some("image/jpeg".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"GIF89a", "test.gif"),
+            Some("image/gif".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"%PDF", "test.pdf"),
+            Some("application/pdf".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"\x7fELF", "test"),
+            Some("application/x-executable".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"PK\x03\x04", "test.zip"),
+            Some("application/zip".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"\x1f\x8b", "test.gz"),
+            Some("application/gzip".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"MZ", "test.exe"),
+            Some("application/x-dosexec".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"\x00asm", "test.wasm"),
+            Some("application/wasm".to_string())
+        );
         // Extension-based fallback
-        assert_eq!(detect_file_type(b"hello", "test.rs"), Some("text/x-source".to_string()));
-        assert_eq!(detect_file_type(b"hello", "test.md"), Some("text/plain".to_string()));
-        assert_eq!(detect_file_type(b"hello", "test.html"), Some("text/html".to_string()));
-        assert_eq!(detect_file_type(b"hello", "test.css"), Some("text/css".to_string()));
-        assert_eq!(detect_file_type(b"hello", "test.svg"), Some("image/svg+xml".to_string()));
+        assert_eq!(
+            detect_file_type(b"hello", "test.rs"),
+            Some("text/x-source".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"hello", "test.md"),
+            Some("text/plain".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"hello", "test.html"),
+            Some("text/html".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"hello", "test.css"),
+            Some("text/css".to_string())
+        );
+        assert_eq!(
+            detect_file_type(b"hello", "test.svg"),
+            Some("image/svg+xml".to_string())
+        );
         // Unknown
         assert_eq!(detect_file_type(b"hello", "test.xyz"), None);
+    }
+
+    // --- special variables tests ---
+
+    #[test]
+    fn test_expand_special_var_fish_pid() {
+        let shell = Shell::new(false).unwrap();
+        let w = Word {
+            parts: vec![WordPart::Variable("fish_pid".to_string())],
+        };
+        let result = shell.expand_word(&w);
+        assert!(!result.is_empty());
+        // Should be a valid PID (numeric)
+        assert!(result.parse::<u32>().is_ok());
+    }
+
+    #[test]
+    fn test_expand_special_var_hostname() {
+        let shell = Shell::new(false).unwrap();
+        let w = Word {
+            parts: vec![WordPart::Variable("hostname".to_string())],
+        };
+        let result = shell.expand_word(&w);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_expand_special_var_version() {
+        let shell = Shell::new(false).unwrap();
+        let w = Word {
+            parts: vec![WordPart::Variable("version".to_string())],
+        };
+        let result = shell.expand_word(&w);
+        assert_eq!(result, "0.1.0");
+    }
+
+    #[test]
+    fn test_expand_special_var_user() {
+        let shell = Shell::new(false).unwrap();
+        let w = Word {
+            parts: vec![WordPart::Variable("USER".to_string())],
+        };
+        let result = shell.expand_word(&w);
+        // USER is set in most environments
+        if std::env::var("USER").is_ok() {
+            assert!(!result.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_expand_special_var_home() {
+        let shell = Shell::new(false).unwrap();
+        let w = Word {
+            parts: vec![WordPart::Variable("HOME".to_string())],
+        };
+        let result = shell.expand_word(&w);
+        // HOME should be set via home_dir
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_expand_special_var_shell() {
+        let shell = Shell::new(false).unwrap();
+        let w = Word {
+            parts: vec![WordPart::Variable("SHELL".to_string())],
+        };
+        let result = shell.expand_word(&w);
+        assert!(!result.is_empty());
+    }
+
+    // --- type --path tests ---
+
+    #[test]
+    fn test_type_path_flag() {
+        let mut shell = Shell::new(false).unwrap();
+        // type --path on a known executable should print a path
+        shell.execute("type --path ls").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+    }
+
+    #[test]
+    fn test_type_path_builtin() {
+        let mut shell = Shell::new(false).unwrap();
+        // type --path on a builtin should fail (exit code 1)
+        shell.execute("type --path cd").unwrap();
+        assert_eq!(shell.last_exit_code, 1);
+    }
+
+    // --- string subcommand tests ---
+
+    #[test]
+    fn test_string_escape() {
+        let mut shell = Shell::new(false).unwrap();
+        shell.execute("string escape \"hello\\nworld\"").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+    }
+
+    #[test]
+    fn test_string_unescape() {
+        let mut shell = Shell::new(false).unwrap();
+        shell
+            .execute("string unescape \"hello\\\\nworld\"")
+            .unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+    }
+
+    #[test]
+    fn test_string_pad() {
+        let mut shell = Shell::new(false).unwrap();
+        shell.execute("string pad -w 10 hello").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+    }
+
+    // --- complete builtin tests ---
+
+    #[test]
+    fn test_complete_add_and_list() {
+        let mut shell = Shell::new(false).unwrap();
+        shell.execute("complete -c mycmd -a 'arg1 arg2'").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+        assert!(shell.completions.contains_key("mycmd"));
+        let entries = shell.completions.get("mycmd").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].arguments, vec!["arg1", "arg2"]);
+    }
+
+    #[test]
+    fn test_complete_erase() {
+        let mut shell = Shell::new(false).unwrap();
+        shell.execute("complete -c mycmd -a 'arg1'").unwrap();
+        assert!(shell.completions.contains_key("mycmd"));
+        shell.execute("complete -c mycmd -e").unwrap();
+        assert!(!shell.completions.contains_key("mycmd"));
+    }
+
+    // --- history subcommand tests ---
+
+    #[test]
+    fn test_history_clear() {
+        let mut shell = Shell::new(false).unwrap();
+        // Use a unique temp dir to avoid race with parallel tests
+        static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = std::path::PathBuf::from(format!("/tmp/mishell_hist_{}_{n}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        shell.home_dir = Some(tmp.clone());
+        let path = tmp.join(".mishell_history");
+        std::fs::write(&path, "line1\nline2\nline3").unwrap();
+        shell.execute("history clear").unwrap();
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(content.is_empty(), "expected empty history, got: {content:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_history_search() {
+        let mut shell = Shell::new(false).unwrap();
+        static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = std::path::PathBuf::from(format!("/tmp/mishell_hist_search_{}_{n}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        shell.home_dir = Some(tmp.clone());
+        let path = tmp.join(".mishell_history");
+        std::fs::write(&path, "git status\ncargo build\ngit log").unwrap();
+        shell.execute("history search git").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // --- is_builtin tests for new entries ---
+
+    #[test]
+    fn test_is_builtin_new_entries() {
+        assert!(is_builtin("complete"));
+        assert!(is_builtin("commandline"));
     }
 }
