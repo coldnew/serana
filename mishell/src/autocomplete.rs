@@ -6,6 +6,12 @@ pub struct AutoCompleter {
     subcommands: HashMap<String, Vec<String>>,
 }
 
+impl Default for AutoCompleter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutoCompleter {
     pub fn new() -> Self {
         Self {
@@ -326,14 +332,13 @@ impl AutoCompleter {
                         completions.extend(["add", "remove", "rename", "set-url", "show", "prune", "update"]
                             .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
                     }
+                    "branch" if prefix.starts_with('-') => {
+                        completions.extend(["-d", "--delete", "-D", "-a", "--all", "-r", "--remotes",
+                            "-v", "--verbose", "--merged", "--no-merged", "--contains", "--sort"]
+                            .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
+                    }
                     "branch" => {
-                        if prefix.starts_with('-') {
-                            completions.extend(["-d", "--delete", "-D", "-a", "--all", "-r", "--remotes",
-                                "-v", "--verbose", "--merged", "--no-merged", "--contains", "--sort"]
-                                .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
-                        } else {
-                            completions.extend(self.complete_file_paths(prefix));
-                        }
+                        completions.extend(self.complete_file_paths(prefix));
                     }
                     _ => {
                         completions.extend(self.complete_file_paths(prefix));
@@ -369,31 +374,27 @@ impl AutoCompleter {
                             completions.extend(self.complete_cargo_targets(prefix));
                         }
                     }
-                    "install" => {
-                        if prefix.starts_with('-') {
-                            completions.extend(["--force", "-f", "--git", "--branch", "--tag", "--rev",
-                                "--path", "--root", "--registry", "--version", "--features",
-                                "--no-default-features", "--profile", "--debug", "--locked"]
-                                .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
-                        }
+                    "install" if prefix.starts_with('-') => {
+                        completions.extend(["--force", "-f", "--git", "--branch", "--tag", "--rev",
+                            "--path", "--root", "--registry", "--version", "--features",
+                            "--no-default-features", "--profile", "--debug", "--locked"]
+                            .iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
                     }
                     _ => {}
                 }
             }
             "docker" => {
                 match subcmd {
-                    "run" | "create" | "exec" => {
-                        if prefix.starts_with('-') {
-                            let flags = match subcmd {
-                                "run" | "create" => vec!["-d", "--detach", "-it", "-p", "--publish", "-v", "--volume",
-                                    "-e", "--env", "--name", "--network", "--rm", "--restart",
-                                    "-w", "--workdir", "-u", "--user", "--memory", "--cpus",
-                                    "--gpus", "--platform", "--privileged", "--cap-add"],
-                                "exec" => vec!["-it", "-d", "-e", "--env", "-u", "--user", "-w", "--workdir"],
-                                _ => vec![],
-                            };
-                            completions.extend(flags.iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
-                        }
+                    "run" | "create" | "exec" if prefix.starts_with('-') => {
+                        let flags = match subcmd {
+                            "run" | "create" => vec!["-d", "--detach", "-it", "-p", "--publish", "-v", "--volume",
+                                "-e", "--env", "--name", "--network", "--rm", "--restart",
+                                "-w", "--workdir", "-u", "--user", "--memory", "--cpus",
+                                "--gpus", "--platform", "--privileged", "--cap-add"],
+                            "exec" => vec!["-it", "-d", "-e", "--env", "-u", "--user", "-w", "--workdir"],
+                            _ => vec![],
+                        };
+                        completions.extend(flags.iter().filter(|s| s.starts_with(prefix)).map(|s| s.to_string()));
                     }
                     "rm" | "stop" | "start" | "restart" | "logs" | "inspect" | "stats" => {
                         // Complete container names/IDs
@@ -416,9 +417,8 @@ impl AutoCompleter {
         }
         
         // Variable completion
-        if prefix.starts_with('$') {
+        if let Some(var_prefix) = prefix.strip_prefix('$') {
             completions.clear();
-            let var_prefix = &prefix[1..];
             for key in shell.vars().keys() {
                 if key.starts_with(var_prefix) {
                     completions.push(format!("${}", key));
@@ -557,8 +557,7 @@ impl AutoCompleter {
         let mut completions = Vec::new();
 
         // Variable completion
-        if prefix.starts_with('$') {
-            let var_prefix = &prefix[1..];
+        if let Some(var_prefix) = prefix.strip_prefix('$') {
             for key in shell.vars().keys() {
                 if key.starts_with(var_prefix) {
                     completions.push(format!("${}", key));
@@ -568,8 +567,7 @@ impl AutoCompleter {
         }
 
         // Alias completion
-        if prefix.starts_with('!') {
-            let alias_prefix = &prefix[1..];
+        if let Some(alias_prefix) = prefix.strip_prefix('!') {
             for name in shell.aliases().keys() {
                 if name.starts_with(alias_prefix) {
                     completions.push(format!("!{}", name));

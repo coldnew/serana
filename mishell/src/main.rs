@@ -125,7 +125,7 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                     // Ctrl+C - cancel
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
-                        print!("{}^C{}", style::StyledContent::new(style::ContentStyle::new().with(Color::Red), "^C"), "");
+                        print!("{}^C", style::StyledContent::new(style::ContentStyle::new().with(Color::Red), "^C"));
                         println!();
                         input.clear();
                         cursor_pos = 0;
@@ -135,16 +135,14 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                         continue;
                     }
                     // Ctrl+D - exit if empty
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        if input.is_empty() {
-                            println!();
-                            break;
-                        }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) && input.is_empty() => {
+                        println!();
+                        break;
                     }
                     // Ctrl+Z - suspend (limited support)
                     KeyCode::Char('z') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         execute!(stdout, cursor::MoveToColumn(0), terminal::Clear(ClearType::CurrentLine))?;
-                        print!("{}^Z{}", style::StyledContent::new(style::ContentStyle::new().with(Color::Yellow), "^Z"), "");
+                        print!("{}^Z", style::StyledContent::new(style::ContentStyle::new().with(Color::Yellow), "^Z"));
                         println!();
                         input.clear();
                         cursor_pos = 0;
@@ -260,7 +258,7 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                                         println!();
                                     }
                                 }
-                                if last_completions.len() % cols != 0 {
+                                if !last_completions.len().is_multiple_of(cols) {
                                     println!();
                                 }
                                 tab_count = 0;
@@ -281,7 +279,7 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                     }
                     // Down - history next
                     KeyCode::Down => {
-                        if let Some(entry) = hist.next() {
+                        if let Some(entry) = hist.next_entry() {
                             input = entry.to_string();
                             cursor_pos = input.len();
                         } else {
@@ -320,9 +318,8 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                             // Ctrl+Left - move by word
                             let before = &input[..cursor_pos];
                             let trimmed = before.trim_end();
-                            cursor_pos = trimmed.rfind(' ').unwrap_or(0);
-                        } else if cursor_pos > 0 {
-                            cursor_pos -= 1;
+                            cursor_pos = trimmed.rfind(' ').unwrap_or(0);                        } else {
+                            cursor_pos = cursor_pos.saturating_sub(1);
                         }
                         continue;
                     }

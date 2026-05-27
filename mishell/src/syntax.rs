@@ -7,6 +7,12 @@ pub struct SyntaxHighlighter {
     known_executables: HashSet<String>,
 }
 
+impl Default for SyntaxHighlighter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SyntaxHighlighter {
     pub fn new() -> Self {
         let keywords = vec![

@@ -91,7 +91,7 @@ impl History {
         Some(&self.entries[self.index])
     }
 
-    pub fn next(&mut self) -> Option<&str> {
+    pub fn next_entry(&mut self) -> Option<&str> {
         if self.entries.is_empty() {
             return None;
         }
@@ -224,9 +224,9 @@ mod tests {
         history.prev();
 
         // Now go forward
-        assert_eq!(history.next(), Some("second"));
-        assert_eq!(history.next(), Some("third"));
-        assert_eq!(history.next(), None); // past end
+        assert_eq!(history.next_entry(), Some("second"));
+        assert_eq!(history.next_entry(), Some("third"));
+        assert_eq!(history.next_entry(), None); // past end
         cleanup(&path);
     }
 
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_next_on_empty() {
         let (mut history, path) = temp_history();
-        assert_eq!(history.next(), None);
+        assert_eq!(history.next_entry(), None);
         cleanup(&path);
     }
 
