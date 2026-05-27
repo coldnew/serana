@@ -41,7 +41,7 @@ impl MemoryStore {
         Ok(Arc::new(store))
     }
 
-    fn db_path() -> Result<PathBuf> {
+    pub fn db_path() -> Result<PathBuf> {
         let data_dir =
             dirs::data_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?;
         Ok(data_dir.join("serana").join("memory.db"))
