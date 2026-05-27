@@ -5,6 +5,8 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::tool_approval::RiskLevel;
+
 /// Tool execution progress callback.
 pub type ToolProgressCallback = Arc<dyn Fn(&str, &str, bool) + Send + Sync>;
 
@@ -19,6 +21,9 @@ pub type StreamDeltaCallback = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Status change callback.
 pub type StatusCallback = Arc<dyn Fn(AgentStatus) + Send + Sync>;
+
+/// Tool approval request callback. Returns true if approved.
+pub type ApprovalCallback = Arc<dyn Fn(&str, &str, RiskLevel) -> bool + Send + Sync>;
 
 /// Agent status states.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +47,7 @@ pub struct AgentCallbacks {
     pub reasoning: Option<ReasoningCallback>,
     pub stream_delta: Option<StreamDeltaCallback>,
     pub status: Option<StatusCallback>,
+    pub request_approval: Option<ApprovalCallback>,
 }
 
 impl std::fmt::Debug for AgentCallbacks {
@@ -52,6 +58,7 @@ impl std::fmt::Debug for AgentCallbacks {
             .field("has_reasoning", &self.reasoning.is_some())
             .field("has_stream_delta", &self.stream_delta.is_some())
             .field("has_status", &self.status.is_some())
+            .field("has_request_approval", &self.request_approval.is_some())
             .finish()
     }
 }
@@ -88,6 +95,12 @@ impl AgentCallbacks {
     /// Set status callback.
     pub fn with_status(mut self, cb: StatusCallback) -> Self {
         self.status = Some(cb);
+        self
+    }
+
+    /// Set approval request callback.
+    pub fn with_approval(mut self, cb: ApprovalCallback) -> Self {
+        self.request_approval = Some(cb);
         self
     }
 
