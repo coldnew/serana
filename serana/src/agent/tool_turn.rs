@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serana_core::{
     AgentCallbacks, AgentStatus, Message, MetaCognition, ModificationKind, ModificationRecord,
-    ToolCall, ToolCallData,
+    ToolCall, ToolCallData, ToolApproval,
 };
 use crate::tools::ToolRegistry;
 
@@ -19,6 +19,7 @@ pub async fn handle_tool_turn(
     tools: &ToolRegistry,
     callbacks: &AgentCallbacks,
     meta_cognition: &Arc<MetaCognition>,
+    approval: Option<&ToolApproval>,
 ) -> ToolTurnOutput {
     let mut enriched_tool_calls = Vec::with_capacity(tool_calls.len());
     for tool_call in tool_calls {
