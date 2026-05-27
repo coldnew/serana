@@ -73,6 +73,11 @@ pub struct WgpuBackend {
     shared: Rc<RefCell<SharedState>>,
 
     needs_render: bool,
+    needs_text_reshape: bool,
+    dirty_cells: Vec<bool>,
+    rect_vertices: Vec<RectVertex>,
+    rect_vertex_buffer: Option<wgpu::Buffer>,
+    text_hash: u64,
 }
 
 fn color_to_linear(c: MoraColor) -> [f32; 4] {
@@ -98,6 +103,24 @@ fn resolve_colors(style: MoraStyle) -> (Option<MoraColor>, Option<MoraColor>) {
     } else {
         (style.fg, style.bg)
     }
+}
+
+fn hash_cells(cells: &[Vec<CellData>]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for row in cells {
+        for cell in row {
+            cell.ch.hash(&mut hasher);
+            cell.style.fg.map(|c| (c.r, c.g, c.b)).hash(&mut hasher);
+            cell.style.bg.map(|c| (c.r, c.g, c.b)).hash(&mut hasher);
+            cell.style.bold.hash(&mut hasher);
+            cell.style.italic.hash(&mut hasher);
+            cell.style.underline.hash(&mut hasher);
+            cell.style.reverse.hash(&mut hasher);
+            cell.style.dim.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }
 
 impl WgpuBackend {
@@ -134,10 +157,16 @@ impl WgpuBackend {
                 modifiers: ModifiersState::empty(),
             })),
             needs_render: true,
+            needs_text_reshape: true,
+            dirty_cells: Vec::new(),
+            rect_vertices: Vec::new(),
+            rect_vertex_buffer: None,
+            text_hash: 0,
         }
     }
 
     fn init_cells(&mut self) {
+        let total = self.rows as usize * self.cols as usize;
         self.cells = (0..self.rows as usize)
             .map(|_| {
                 (0..self.cols as usize)
@@ -148,6 +177,15 @@ impl WgpuBackend {
                     .collect()
             })
             .collect();
+        self.dirty_cells = vec![true; total];
+        self.rect_vertices = vec![
+            RectVertex {
+                position: [0.0, 0.0],
+                color: [0.0, 0.0, 0.0, 1.0]
+            };
+            total * 6
+        ];
+        self.needs_text_reshape = true;
     }
 
     fn build_rect_pipeline(
@@ -302,11 +340,17 @@ impl WgpuBackend {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        // Build rect vertices for all cells
-        let mut rect_vertices: Vec<RectVertex> = Vec::new();
-
+        // Update only dirty cells in the persistent vertex buffer
+        let mut any_dirty = false;
         for row in 0..self.rows as usize {
             for col in 0..self.cols as usize {
+                let idx = row * self.cols as usize + col;
+                if !self.dirty_cells[idx] {
+                    continue;
+                }
+                any_dirty = true;
+                self.dirty_cells[idx] = false;
+
                 let cell = &self.cells[row][col];
                 let x = col as f32 * self.cell_width;
                 let y = row as f32 * self.cell_height;
@@ -316,37 +360,69 @@ impl WgpuBackend {
                 let x2 = x + self.cell_width;
                 let y2 = y + self.cell_height;
 
-                rect_vertices.push(RectVertex { position: [x, y], color: c });
-                rect_vertices.push(RectVertex { position: [x2, y], color: c });
-                rect_vertices.push(RectVertex { position: [x, y2], color: c });
-                rect_vertices.push(RectVertex { position: [x2, y], color: c });
-                rect_vertices.push(RectVertex { position: [x2, y2], color: c });
-                rect_vertices.push(RectVertex { position: [x, y2], color: c });
+                let vi = idx * 6;
+                self.rect_vertices[vi] = RectVertex { position: [x, y], color: c };
+                self.rect_vertices[vi + 1] = RectVertex { position: [x2, y], color: c };
+                self.rect_vertices[vi + 2] = RectVertex { position: [x, y2], color: c };
+                self.rect_vertices[vi + 3] = RectVertex { position: [x2, y], color: c };
+                self.rect_vertices[vi + 4] = RectVertex { position: [x2, y2], color: c };
+                self.rect_vertices[vi + 5] = RectVertex { position: [x, y2], color: c };
             }
         }
 
-        // Draw cursor background
-        if self.cursor_visible {
-            let cx = self.cursor_x as f32 * self.cell_width;
-            let cy = self.cursor_y as f32 * self.cell_height;
-            let cx2 = cx + self.cell_width;
-            let cy2 = cy + self.cell_height;
-            let cc = color_to_linear(MoraColor::new(200, 200, 200));
-            rect_vertices.push(RectVertex { position: [cx, cy], color: cc });
-            rect_vertices.push(RectVertex { position: [cx2, cy], color: cc });
-            rect_vertices.push(RectVertex { position: [cx, cy2], color: cc });
-            rect_vertices.push(RectVertex { position: [cx2, cy], color: cc });
-            rect_vertices.push(RectVertex { position: [cx2, cy2], color: cc });
-            rect_vertices.push(RectVertex { position: [cx, cy2], color: cc });
+        // Upload dirty region or full buffer
+        let vertex_data = bytemuck::cast_slice(&self.rect_vertices);
+        if any_dirty {
+            match &self.rect_vertex_buffer {
+                Some(buf) => queue.write_buffer(buf, 0, vertex_data),
+                None => {
+                    self.rect_vertex_buffer = Some(device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Rect Vertices"),
+                            contents: vertex_data,
+                            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        },
+                    ));
+                }
+            }
         }
 
         // Render rect pass
-        if !rect_vertices.is_empty() {
-            let buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Rect Vertices"),
-                contents: bytemuck::cast_slice(&rect_vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        if let Some(vbuf) = &self.rect_vertex_buffer {
+            let total_verts = (self.rows as usize * self.cols as usize * 6) as u32;
+            let cursor_verts = if self.cursor_visible { 6 } else { 0 };
+
+            // Append cursor vertices
+            let mut cursor_data = [RectVertex {
+                position: [0.0, 0.0],
+                color: [0.0, 0.0, 0.0, 1.0],
+            }; 6];
+            if self.cursor_visible {
+                let cx = self.cursor_x as f32 * self.cell_width;
+                let cy = self.cursor_y as f32 * self.cell_height;
+                let cx2 = cx + self.cell_width;
+                let cy2 = cy + self.cell_height;
+                let cc = color_to_linear(MoraColor::new(200, 200, 200));
+                cursor_data = [
+                    RectVertex { position: [cx, cy], color: cc },
+                    RectVertex { position: [cx2, cy], color: cc },
+                    RectVertex { position: [cx, cy2], color: cc },
+                    RectVertex { position: [cx2, cy], color: cc },
+                    RectVertex { position: [cx2, cy2], color: cc },
+                    RectVertex { position: [cx, cy2], color: cc },
+                ];
+            }
+
+            // We need a temp buffer for cursor since it changes every frame
+            let cursor_buf = if self.cursor_visible {
+                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Cursor Vertices"),
+                    contents: bytemuck::cast_slice(&cursor_data),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }))
+            } else {
+                None
+            };
 
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -372,136 +448,176 @@ impl WgpuBackend {
                 });
                 pass.set_pipeline(rect_pipeline);
                 pass.set_bind_group(0, uniform_bg, &[]);
-                pass.set_vertex_buffer(0, buf.slice(..));
-                pass.draw(0..rect_vertices.len() as u32, 0..1);
+                pass.set_vertex_buffer(0, vbuf.slice(..));
+                pass.draw(0..total_verts, 0..1);
+
+                if let Some(cbuf) = &cursor_buf {
+                    pass.set_vertex_buffer(0, cbuf.slice(..));
+                    pass.draw(0..cursor_verts, 0..1);
+                }
             }
         }
 
-        // Render text using glyphon
-        if let (Some(font_system), Some(atlas), Some(text_renderer), Some(swash_cache), Some(viewport)) = (
-            &mut self.font_system,
-            &mut self.atlas,
-            &mut self.text_renderer,
-            &mut self.swash_cache,
-            &mut self.viewport,
-        ) {
-            // Build text from cell buffer
-            let mut spans: Vec<(String, MoraColor)> = Vec::new();
+        // Text rendering — only reshape if content changed
+        let current_hash = hash_cells(&self.cells);
+        if current_hash != self.text_hash {
+            self.text_hash = current_hash;
+            self.needs_text_reshape = true;
+        }
 
-            for row in 0..self.rows as usize {
-                let mut line_text = String::new();
-                let mut line_fg = MoraColor::new(220, 220, 220);
-                let mut started = false;
-
-                for col in 0..self.cols as usize {
-                    let cell = &self.cells[row][col];
-                    let (fg, _bg) = resolve_colors(cell.style);
-                    let fg = fg.unwrap_or(MoraColor::new(220, 220, 220));
-
-                    if !started {
-                        line_fg = fg;
-                        started = true;
-                    }
-
-                    if fg != line_fg && !line_text.is_empty() {
-                        spans.push((std::mem::take(&mut line_text), line_fg));
-                        line_fg = fg;
-                    }
-                    line_text.push(cell.ch);
-                }
-
-                if !line_text.is_empty() {
-                    spans.push((line_text, line_fg));
-                }
-                if row < self.rows as usize - 1 {
-                    if let Some(last) = spans.last_mut() {
-                        last.0.push('\n');
-                    }
-                }
-            }
-
-            let mut buffer = glyphon::Buffer::new(
-                font_system,
-                glyphon::Metrics::new(self.font_size, self.cell_height),
-            );
-            buffer.set_size(
-                font_system,
-                Some(self.cols as f32 * self.cell_width),
-                Some(self.rows as f32 * self.cell_height),
-            );
-
-            let full_text: String = spans.iter().map(|(s, _)| s.as_str()).collect();
-            let attrs_list: Vec<(std::ops::Range<usize>, glyphon::Attrs)> = spans
-                .iter()
-                .scan(0, |offset, (text, fg)| {
-                    let start = *offset;
-                    let end = start + text.len();
-                    *offset = end;
-                    let attrs = glyphon::Attrs::new()
-                        .family(glyphon::Family::Monospace)
-                        .color(glyphon::Color::rgba(fg.r, fg.g, fg.b, 255));
-                    Some((start..end, attrs))
-                })
-                .collect();
-
-            let default_attrs = glyphon::Attrs::new().family(glyphon::Family::Monospace);
-            buffer.set_rich_text(
-                font_system,
-                attrs_list.iter().map(|(range, attrs)| {
-                    (&full_text[range.clone()], attrs.clone())
-                }),
-                &default_attrs,
-                glyphon::Shaping::Advanced,
-                None,
-            );
-            buffer.shape_until_scroll(font_system, false);
-
-            let width = self.cols as f32 * self.cell_width;
-            let height = self.rows as f32 * self.cell_height;
-            let scale = {
-                let shared = self.shared.borrow();
-                shared.window.as_ref().map(|w| w.scale_factor() as f32).unwrap_or(1.0)
-            };
-
-            let text_area = glyphon::TextArea {
-                buffer: &buffer,
-                left: 0.0,
-                top: 0.0,
-                scale,
-                bounds: glyphon::TextBounds {
-                    left: 0,
-                    top: 0,
-                    right: width as i32,
-                    bottom: height as i32,
-                },
-                default_color: glyphon::Color::rgba(220, 220, 220, 255),
-                custom_glyphs: &[],
-            };
-
-            let (win_w, win_h) = {
-                let shared = self.shared.borrow();
-                shared.window.as_ref().map(|w| {
-                    let s = w.inner_size();
-                    (s.width, s.height)
-                }).unwrap_or((800, 600))
-            };
-
-            viewport.update(queue, glyphon::Resolution {
-                width: win_w,
-                height: win_h,
-            });
-
-            if let Err(e) = text_renderer.prepare(
-                device,
-                queue,
-                font_system,
-                atlas,
-                &viewport,
-                [text_area],
-                swash_cache,
+        if self.needs_text_reshape {
+            if let (Some(font_system), Some(atlas), Some(text_renderer), Some(swash_cache), Some(viewport)) = (
+                &mut self.font_system,
+                &mut self.atlas,
+                &mut self.text_renderer,
+                &mut self.swash_cache,
+                &mut self.viewport,
             ) {
-                eprintln!("Text prepare error: {e}");
-            } else {
+                // Build text spans from cells
+                let mut spans: Vec<(String, MoraColor)> = Vec::new();
+
+                for row in 0..self.rows as usize {
+                    let mut line_text = String::new();
+                    let mut line_fg = MoraColor::new(220, 220, 220);
+                    let mut started = false;
+
+                    for col in 0..self.cols as usize {
+                        let cell = &self.cells[row][col];
+                        let (fg, _bg) = resolve_colors(cell.style);
+                        let fg = fg.unwrap_or(MoraColor::new(220, 220, 220));
+
+                        if !started {
+                            line_fg = fg;
+                            started = true;
+                        }
+
+                        if fg != line_fg && !line_text.is_empty() {
+                            spans.push((std::mem::take(&mut line_text), line_fg));
+                            line_fg = fg;
+                        }
+                        line_text.push(cell.ch);
+                    }
+
+                    if !line_text.is_empty() {
+                        spans.push((line_text, line_fg));
+                    }
+                    if row < self.rows as usize - 1 {
+                        if let Some(last) = spans.last_mut() {
+                            last.0.push('\n');
+                        }
+                    }
+                }
+
+                let mut buffer = glyphon::Buffer::new(
+                    font_system,
+                    glyphon::Metrics::new(self.font_size, self.cell_height),
+                );
+                buffer.set_size(
+                    font_system,
+                    Some(self.cols as f32 * self.cell_width),
+                    Some(self.rows as f32 * self.cell_height),
+                );
+
+                let full_text: String = spans.iter().map(|(s, _)| s.as_str()).collect();
+                let attrs_list: Vec<(std::ops::Range<usize>, glyphon::Attrs)> = spans
+                    .iter()
+                    .scan(0, |offset, (text, fg)| {
+                        let start = *offset;
+                        let end = start + text.len();
+                        *offset = end;
+                        let attrs = glyphon::Attrs::new()
+                            .family(glyphon::Family::Monospace)
+                            .color(glyphon::Color::rgba(fg.r, fg.g, fg.b, 255));
+                        Some((start..end, attrs))
+                    })
+                    .collect();
+
+                let default_attrs = glyphon::Attrs::new().family(glyphon::Family::Monospace);
+                buffer.set_rich_text(
+                    font_system,
+                    attrs_list.iter().map(|(range, attrs)| {
+                        (&full_text[range.clone()], attrs.clone())
+                    }),
+                    &default_attrs,
+                    glyphon::Shaping::Advanced,
+                    None,
+                );
+                buffer.shape_until_scroll(font_system, false);
+
+                let width = self.cols as f32 * self.cell_width;
+                let height = self.rows as f32 * self.cell_height;
+                let scale = {
+                    let shared = self.shared.borrow();
+                    shared.window.as_ref().map(|w| w.scale_factor() as f32).unwrap_or(1.0)
+                };
+
+                let text_area = glyphon::TextArea {
+                    buffer: &buffer,
+                    left: 0.0,
+                    top: 0.0,
+                    scale,
+                    bounds: glyphon::TextBounds {
+                        left: 0,
+                        top: 0,
+                        right: width as i32,
+                        bottom: height as i32,
+                    },
+                    default_color: glyphon::Color::rgba(220, 220, 220, 255),
+                    custom_glyphs: &[],
+                };
+
+                let (win_w, win_h) = {
+                    let shared = self.shared.borrow();
+                    shared.window.as_ref().map(|w| {
+                        let s = w.inner_size();
+                        (s.width, s.height)
+                    }).unwrap_or((800, 600))
+                };
+
+                viewport.update(queue, glyphon::Resolution {
+                    width: win_w,
+                    height: win_h,
+                });
+
+                if let Err(e) = text_renderer.prepare(
+                    device,
+                    queue,
+                    font_system,
+                    atlas,
+                    &viewport,
+                    [text_area],
+                    swash_cache,
+                ) {
+                    eprintln!("Text prepare error: {e}");
+                } else {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Text Pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            depth_slice: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    text_renderer.render(atlas, &viewport, &mut pass).ok();
+                }
+
+                self.needs_text_reshape = false;
+            }
+        } else {
+            // Text unchanged — just render the already-prepared text
+            if let (Some(atlas), Some(text_renderer), Some(viewport)) = (
+                &self.atlas,
+                &self.text_renderer,
+                &self.viewport,
+            ) {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Text Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -869,6 +985,7 @@ impl DisplayBackend for WgpuBackend {
     fn clear(&mut self) {
         self.init_cells();
         self.needs_render = true;
+        self.needs_text_reshape = true;
     }
 
     fn flush(&mut self) -> Result<(), String> {
@@ -891,8 +1008,13 @@ impl DisplayBackend for WgpuBackend {
 
     fn set_cell(&mut self, x: u16, y: u16, ch: char, style: MoraStyle) {
         if (x as usize) < self.cols as usize && (y as usize) < self.rows as usize {
-            self.cells[y as usize][x as usize] = CellData { ch, style };
-            self.needs_render = true;
+            let cell = &mut self.cells[y as usize][x as usize];
+            if cell.ch != ch || cell.style != style {
+                *cell = CellData { ch, style };
+                let idx = y as usize * self.cols as usize + x as usize;
+                self.dirty_cells[idx] = true;
+                self.needs_render = true;
+            }
         }
     }
 
@@ -949,6 +1071,7 @@ impl DisplayBackend for WgpuBackend {
     }
 
     fn render_buffer(&mut self, buf: &CellBuffer) -> Result<(), String> {
+        let size_changed = self.cols != buf.width || self.rows != buf.height;
         self.cols = buf.width;
         self.rows = buf.height;
         self.cells = (0..buf.height)
@@ -961,7 +1084,23 @@ impl DisplayBackend for WgpuBackend {
                     .collect()
             })
             .collect();
+
+        if size_changed {
+            let total = self.rows as usize * self.cols as usize;
+            self.dirty_cells = vec![true; total];
+            self.rect_vertices = vec![
+                RectVertex {
+                    position: [0.0, 0.0],
+                    color: [0.0, 0.0, 0.0, 1.0]
+                };
+                total * 6
+            ];
+            self.rect_vertex_buffer = None; // force buffer recreate
+        } else {
+            self.dirty_cells.iter_mut().for_each(|d| *d = true);
+        }
         self.needs_render = true;
+        self.needs_text_reshape = true;
         self.flush()
     }
 }
