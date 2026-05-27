@@ -4,6 +4,7 @@
 //! and syntax highlighting via tree-sitter queries.
 
 pub mod highlight;
+pub mod summary;
 
 use std::path::Path;
 
@@ -220,6 +221,16 @@ impl Default for ParserManager {
 pub struct SyntaxTree {
     tree: Tree,
     language: Language,
+}
+
+impl SyntaxTree {
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    pub fn language(&self) -> &Language {
+        &self.language
+    }
 }
 
 /// Function definition.

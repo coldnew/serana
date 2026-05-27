@@ -12,6 +12,7 @@ workspace = true
 serana-core = { path = "../serana-core" }
 serana-lsp = { path = "../serana-lsp" }
 serana-tree-sitter = { path = "../serana-tree-sitter" }
+tree-sitter.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true

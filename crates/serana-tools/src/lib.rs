@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serana_core::{FunctionDefinition, Tool, ToolDefinition};
 
+pub mod ast_edit;
 pub mod browser;
 pub mod checkpoint;
 pub mod clipboard;
@@ -86,6 +87,7 @@ impl ToolRegistry {
         self.register(Box::new(code_intel::AstOutlineTool));
         self.register(Box::new(code_intel::AstFunctionsTool));
         self.register(Box::new(code_intel::AstImportsTool));
+        self.register(Box::new(ast_edit::AstEditTool));
         self.register(Box::new(search_native::FindTool));
         self.register(Box::new(search_native::SearchTool));
         self.register(Box::new(rules::RulesInfoTool));
@@ -246,6 +248,7 @@ mod tests {
         assert!(registry.get("ast_outline").is_some());
         assert!(registry.get("ast_functions").is_some());
         assert!(registry.get("ast_imports").is_some());
+        assert!(registry.get("ast_edit").is_some());
     }
 
     #[test]

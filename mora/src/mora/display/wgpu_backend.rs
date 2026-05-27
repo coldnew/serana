@@ -76,9 +76,11 @@ pub struct WgpuBackend {
 
     needs_render: bool,
     needs_text_reshape: bool,
+    cells_changed: bool,
     dirty_cells: Vec<bool>,
     rect_vertices: Vec<RectVertex>,
     rect_vertex_buffer: Option<wgpu::Buffer>,
+    cursor_vertex_buffer: Option<wgpu::Buffer>,
     text_hash: u64,
 }
 
@@ -169,9 +171,11 @@ impl WgpuBackend {
             })),
             needs_render: true,
             needs_text_reshape: true,
+            cells_changed: true,
             dirty_cells: Vec::new(),
             rect_vertices: Vec::new(),
             rect_vertex_buffer: None,
+            cursor_vertex_buffer: None,
             text_hash: 0,
         }
     }
@@ -352,13 +356,11 @@ impl WgpuBackend {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         // Update dirty cells in the persistent vertex buffer
-        // Use rayon for bulk rebuild (many dirty cells), sequential for sparse updates
+        // Always use rayon — parallel row processing for both bulk and sparse cases
         let dirty_count = self.dirty_cells.iter().filter(|&&d| d).count();
-        let total = self.rows as usize * self.cols as usize;
         let any_dirty = dirty_count > 0;
 
-        if dirty_count > total / 2 {
-            // Bulk rebuild: regenerate ALL vertices in parallel using row chunks
+        if any_dirty {
             let cell_width = self.cell_width;
             let cell_height = self.cell_height;
             let cols = self.cols as usize;
@@ -366,13 +368,20 @@ impl WgpuBackend {
             self.rect_vertices
                 .par_chunks_mut(cols * 6)
                 .zip(self.cells.par_iter())
+                .zip(self.dirty_cells.par_chunks(cols))
                 .enumerate()
-                .for_each(|(row, (vert_row, cell_row))| {
+                .for_each(|(row, ((vert_row, cell_row), dirty_row))| {
                     let y = row as f32 * cell_height;
                     let y2 = y + cell_height;
+                    let mut any_row_dirty = false;
+                    for &d in dirty_row {
+                        if d { any_row_dirty = true; break; }
+                    }
+                    if !any_row_dirty { return; }
                     for (col, (vert_group, cell)) in
                         vert_row.chunks_exact_mut(6).zip(cell_row.iter()).enumerate()
                     {
+                        if !dirty_row[col] { continue; }
                         let x = col as f32 * cell_width;
                         let x2 = x + cell_width;
                         let (_fg, bg) = resolve_colors(cell.style);
@@ -387,34 +396,6 @@ impl WgpuBackend {
                     }
                 });
             self.dirty_cells.iter_mut().for_each(|d| *d = false);
-        } else {
-            // Sparse update: only touch dirty cells
-            for row in 0..self.rows as usize {
-                for col in 0..self.cols as usize {
-                    let idx = row * self.cols as usize + col;
-                    if !self.dirty_cells[idx] {
-                        continue;
-                    }
-                    self.dirty_cells[idx] = false;
-
-                    let cell = &self.cells[row][col];
-                    let x = col as f32 * self.cell_width;
-                    let y = row as f32 * self.cell_height;
-                    let (_fg, bg) = resolve_colors(cell.style);
-                    let bg_color = bg.unwrap_or(MoraColor::new(30, 30, 30));
-                    let c = color_to_linear(bg_color);
-                    let x2 = x + self.cell_width;
-                    let y2 = y + self.cell_height;
-
-                    let vi = idx * 6;
-                    self.rect_vertices[vi] = RectVertex { position: [x, y], color: c };
-                    self.rect_vertices[vi + 1] = RectVertex { position: [x2, y], color: c };
-                    self.rect_vertices[vi + 2] = RectVertex { position: [x, y2], color: c };
-                    self.rect_vertices[vi + 3] = RectVertex { position: [x2, y], color: c };
-                    self.rect_vertices[vi + 4] = RectVertex { position: [x2, y2], color: c };
-                    self.rect_vertices[vi + 5] = RectVertex { position: [x, y2], color: c };
-                }
-            }
         }
 
         // Upload dirty region or full buffer
@@ -439,18 +420,15 @@ impl WgpuBackend {
             let total_verts = (self.rows as usize * self.cols as usize * 6) as u32;
             let cursor_verts = if self.cursor_visible { 6 } else { 0 };
 
-            // Append cursor vertices
-            let mut cursor_data = [RectVertex {
-                position: [0.0, 0.0],
-                color: [0.0, 0.0, 0.0, 1.0],
-            }; 6];
+            // Append cursor vertices via persistent buffer
+            let cursor_verts = if self.cursor_visible { 6 } else { 0 };
             if self.cursor_visible {
                 let cx = self.cursor_x as f32 * self.cell_width;
                 let cy = self.cursor_y as f32 * self.cell_height;
                 let cx2 = cx + self.cell_width;
                 let cy2 = cy + self.cell_height;
                 let cc = color_to_linear(MoraColor::new(200, 200, 200));
-                cursor_data = [
+                let cursor_data: [RectVertex; 6] = [
                     RectVertex { position: [cx, cy], color: cc },
                     RectVertex { position: [cx2, cy], color: cc },
                     RectVertex { position: [cx, cy2], color: cc },
@@ -458,18 +436,20 @@ impl WgpuBackend {
                     RectVertex { position: [cx2, cy2], color: cc },
                     RectVertex { position: [cx, cy2], color: cc },
                 ];
+                let cursor_bytes: &[u8] = bytemuck::cast_slice(&cursor_data);
+                match &self.cursor_vertex_buffer {
+                    Some(buf) => queue.write_buffer(buf, 0, cursor_bytes),
+                    None => {
+                        self.cursor_vertex_buffer = Some(device.create_buffer_init(
+                            &wgpu::util::BufferInitDescriptor {
+                                label: Some("Cursor Vertices"),
+                                contents: cursor_bytes,
+                                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                            },
+                        ));
+                    }
+                }
             }
-
-            // We need a temp buffer for cursor since it changes every frame
-            let cursor_buf = if self.cursor_visible {
-                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Cursor Vertices"),
-                    contents: bytemuck::cast_slice(&cursor_data),
-                    usage: wgpu::BufferUsages::VERTEX,
-                }))
-            } else {
-                None
-            };
 
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -498,18 +478,23 @@ impl WgpuBackend {
                 pass.set_vertex_buffer(0, vbuf.slice(..));
                 pass.draw(0..total_verts, 0..1);
 
-                if let Some(cbuf) = &cursor_buf {
-                    pass.set_vertex_buffer(0, cbuf.slice(..));
-                    pass.draw(0..cursor_verts, 0..1);
+                if self.cursor_visible {
+                    if let Some(cbuf) = &self.cursor_vertex_buffer {
+                        pass.set_vertex_buffer(0, cbuf.slice(..));
+                        pass.draw(0..cursor_verts, 0..1);
+                    }
                 }
             }
         }
 
         // Text rendering — only reshape if content changed
-        let current_hash = hash_cells(&self.cells);
-        if current_hash != self.text_hash {
-            self.text_hash = current_hash;
-            self.needs_text_reshape = true;
+        if self.cells_changed {
+            let current_hash = hash_cells(&self.cells);
+            if current_hash != self.text_hash {
+                self.text_hash = current_hash;
+                self.needs_text_reshape = true;
+            }
+            self.cells_changed = false;
         }
 
         if self.needs_text_reshape {
@@ -1031,6 +1016,7 @@ impl DisplayBackend for WgpuBackend {
 
     fn clear(&mut self) {
         self.init_cells();
+        self.cells_changed = true;
         self.needs_render = true;
         self.needs_text_reshape = true;
     }
@@ -1060,6 +1046,7 @@ impl DisplayBackend for WgpuBackend {
                 *cell = CellData { ch, style };
                 let idx = y as usize * self.cols as usize + x as usize;
                 self.dirty_cells[idx] = true;
+                self.cells_changed = true;
                 self.needs_render = true;
             }
         }
@@ -1121,31 +1108,44 @@ impl DisplayBackend for WgpuBackend {
         let size_changed = self.cols != buf.width || self.rows != buf.height;
         self.cols = buf.width;
         self.rows = buf.height;
-        self.cells = (0..buf.height)
-            .map(|y| {
-                (0..buf.width)
-                    .map(|x| {
-                        let cell = buf.get(x, y);
-                        CellData { ch: cell.ch, style: cell.style }
-                    })
-                    .collect()
-            })
-            .collect();
 
         if size_changed {
+            self.cells = (0..buf.height)
+                .map(|y| {
+                    (0..buf.width)
+                        .map(|x| {
+                            let cell = buf.get(x, y);
+                            CellData { ch: cell.ch, style: cell.style }
+                        })
+                        .collect()
+                })
+                .collect();
             let total = self.rows as usize * self.cols as usize;
             self.dirty_cells = vec![true; total];
             self.rect_vertices = vec![
-                RectVertex {
-                    position: [0.0, 0.0],
-                    color: [0.0, 0.0, 0.0, 1.0]
-                };
+                RectVertex { position: [0.0, 0.0], color: [0.0, 0.0, 0.0, 1.0] };
                 total * 6
             ];
-            self.rect_vertex_buffer = None; // force buffer recreate
+            self.rect_vertex_buffer = None;
         } else {
-            self.dirty_cells.iter_mut().for_each(|d| *d = true);
+            let cols = self.cols as usize;
+            self.dirty_cells.par_chunks_mut(cols)
+                .zip(self.cells.par_iter_mut())
+                .enumerate()
+                .for_each(|(row, (dirty_row, cell_row))| {
+                    for col in 0..cols {
+                        let buf_cell = buf.get(col as u16, row as u16);
+                        let old = &cell_row[col];
+                        if old.ch != buf_cell.ch || old.style != buf_cell.style {
+                            cell_row[col] = CellData { ch: buf_cell.ch, style: buf_cell.style };
+                            dirty_row[col] = true;
+                        } else {
+                            dirty_row[col] = false;
+                        }
+                    }
+                });
         }
+        self.cells_changed = true;
         self.needs_render = true;
         self.needs_text_reshape = true;
         self.flush()
