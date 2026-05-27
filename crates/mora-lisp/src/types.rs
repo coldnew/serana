@@ -1,6 +1,8 @@
 use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -39,7 +41,7 @@ pub enum Value {
     Symbol(Symbol),
     List(Arc<Vec<Value>>),
     Vector(Arc<Vec<Value>>),
-    Map(Arc<Vec<(Value, Value)>>),
+    Map(Arc<HashMap<Value, Value>>),
     Set(Arc<Vec<Value>>),
     Fn(FnValue),
     Native(fn(&[Value]) -> Result<Value, String>),
@@ -233,7 +235,7 @@ impl Value {
     }
 
     pub fn map(pairs: Vec<(Value, Value)>) -> Self {
-        Value::Map(Arc::new(pairs))
+        Value::Map(Arc::new(pairs.into_iter().collect()))
     }
 
     pub fn set(values: Vec<Value>) -> Self {
@@ -425,6 +427,17 @@ impl std::hash::Hash for Value {
             Value::Symbol(s) => s.hash(state),
             Value::List(v) => v.hash(state),
             Value::Vector(v) => v.hash(state),
+            Value::Map(m) => {
+                // HashMap doesn't preserve order, so XOR pair hashes
+                let mut combined: u64 = 0;
+                for (k, v) in m.iter() {
+                    let mut h = DefaultHasher::new();
+                    k.hash(&mut h);
+                    v.hash(&mut h);
+                    combined ^= h.finish();
+                }
+                combined.hash(state);
+            }
             Value::Atom(a) => Arc::as_ptr(a).hash(state),
             Value::Agent(a) => a.id.hash(state),
             Value::Future(a) => a.id.hash(state),

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
 
 use crate::ns::Namespace;
 use crate::types::{Symbol, Value};
@@ -206,6 +207,16 @@ pub fn call_native(name: &str, args: &[Value]) -> Result<Value, String> {
     let registry = get_registry().lock();
     registry.get(name).map(|f| f(args)).unwrap_or_else(|| {
         Err(format!("unknown native function: {}", name))
+    })
+}
+
+pub fn invoke_fn(func: &Value, args: &[Value]) -> Result<Value, String> {
+    crate::eval::with_evaluator(|eval| {
+        match func {
+            Value::Fn(f) => eval.call_fn(f.clone(), args.to_vec()).map_err(|e| e.to_string()),
+            Value::Native(f) => f(args),
+            _ => Err("not a function".to_string()),
+        }
     })
 }
 
@@ -878,12 +889,7 @@ fn native_get(args: &[Value]) -> Result<Value, String> {
     let default = args.get(2).cloned().unwrap_or(Value::Nil);
     match &args[0] {
         Value::Map(m) => {
-            for (k, v) in m.iter() {
-                if k == &args[1] {
-                    return Ok(v.clone());
-                }
-            }
-            Ok(default)
+            Ok(m.get(&args[1]).cloned().unwrap_or(default))
         }
         Value::Set(s) => {
             if s.contains(&args[1]) {
@@ -938,11 +944,10 @@ fn native_assoc(args: &[Value]) -> Result<Value, String> {
             let mut new_m = m.as_ref().clone();
             let mut i = 1;
             while i < args.len() {
-                new_m.retain(|(k, _)| k != &args[i]);
-                new_m.push((args[i].clone(), args[i + 1].clone()));
+                new_m.insert(args[i].clone(), args[i + 1].clone());
                 i += 2;
             }
-            Ok(Value::map(new_m))
+            Ok(Value::Map(Arc::new(new_m)))
         }
         Value::Vector(v) => {
             let mut new_v = v.as_ref().clone();
@@ -981,9 +986,9 @@ fn native_dissoc(args: &[Value]) -> Result<Value, String> {
         Value::Map(m) => {
             let mut new_m = m.as_ref().clone();
             for key in &args[1..] {
-                new_m.retain(|(k, _)| k != key);
+                new_m.remove(key);
             }
-            Ok(Value::map(new_m))
+            Ok(Value::Map(Arc::new(new_m)))
         }
         _ => Err(format!("dissoc not supported on {}", args[0].type_name())),
     }
@@ -1003,29 +1008,21 @@ fn native_assoc_in(args: &[Value]) -> Result<Value, String> {
     let last_key = keys.last().unwrap().clone();
     let path_keys = &keys[..keys.len() - 1];
     
-    // Navigate to the parent
     let mut current = args[0].clone();
     for key in path_keys {
         current = match current {
             Value::Map(m) => {
-                m.iter()
-                    .find(|(k, _)| k == key)
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or(Value::map(vec![]))
+                m.get(key).cloned().unwrap_or(Value::Map(Arc::new(HashMap::new())))
             }
-            _ => Value::map(vec![]),
+            _ => Value::Map(Arc::new(HashMap::new())),
         };
     }
     
-    // Set the value
     match current {
         Value::Map(m) => {
             let mut new_m = m.as_ref().clone();
-            new_m.retain(|(k, _)| k != &last_key);
-            new_m.push((last_key, args[2].clone()));
-            // Now rebuild the path
-            // This is simplified - full implementation would rebuild the entire path
-            Ok(Value::map(new_m))
+            new_m.insert(last_key, args[2].clone());
+            Ok(Value::Map(Arc::new(new_m)))
         }
         _ => Err("assoc-in path traversal failed".to_string()),
     }
@@ -1036,24 +1033,55 @@ fn native_update(args: &[Value]) -> Result<Value, String> {
         return Err("update requires at least 3 arguments".to_string());
     }
     let key = args[1].clone();
-    let _func = &args[2];
-    let _current_val = match &args[0] {
-        Value::Map(m) => {
-            m.iter()
-                .find(|(k, _)| k == &key)
-                .map(|(_, v)| v.clone())
-                .unwrap_or(Value::Nil)
-        }
+    let func = &args[2];
+    let current_val = match &args[0] {
+        Value::Map(m) => m.get(&key).cloned().unwrap_or(Value::Nil),
         _ => return Err(format!("update not supported on {}", args[0].type_name())),
     };
-    // Apply function to current value
-    // This is simplified - full implementation would call the function
-    Ok(args[0].clone())
+    let new_val = invoke_fn(func, &[current_val])?;
+    match &args[0] {
+        Value::Map(m) => {
+            let mut new_m = m.as_ref().clone();
+            new_m.insert(key, new_val.clone());
+            Ok(Value::Map(Arc::new(new_m)))
+        }
+        _ => unreachable!(),
+    }
 }
 
 fn native_update_in(args: &[Value]) -> Result<Value, String> {
-    // Simplified implementation
-    Ok(args[0].clone())
+    if args.len() != 3 {
+        return Err("update-in requires exactly 3 arguments".to_string());
+    }
+    let keys = match &args[1] {
+        Value::List(v) | Value::Vector(v) => v.as_ref().clone(),
+        _ => return Err("update-in second arg must be a sequence of keys".to_string()),
+    };
+    if keys.is_empty() {
+        return invoke_fn(&args[2], &[args[0].clone()]);
+    }
+    let last_key = keys.last().unwrap().clone();
+    let path_keys = &keys[..keys.len() - 1];
+    let mut current = args[0].clone();
+    for key in path_keys {
+        current = match current {
+            Value::Map(m) => m.get(key).cloned().unwrap_or(Value::Map(Arc::new(HashMap::new()))),
+            _ => Value::Map(Arc::new(HashMap::new())),
+        };
+    }
+    let old_val = match &current {
+        Value::Map(m) => m.get(&last_key).cloned().unwrap_or(Value::Nil),
+        _ => Value::Nil,
+    };
+    let new_val = invoke_fn(&args[2], &[old_val])?;
+    match current {
+        Value::Map(m) => {
+            let mut new_m = m.as_ref().clone();
+            new_m.insert(last_key, new_val);
+            Ok(Value::Map(Arc::new(new_m)))
+        }
+        _ => Err("update-in path traversal failed".to_string()),
+    }
 }
 
 fn native_contains(args: &[Value]) -> Result<Value, String> {
@@ -1062,7 +1090,7 @@ fn native_contains(args: &[Value]) -> Result<Value, String> {
     }
     match &args[0] {
         Value::Map(m) => {
-            Ok(Value::Bool(m.iter().any(|(k, _)| k == &args[1])))
+            Ok(Value::Bool(m.contains_key(&args[1])))
         }
         Value::Set(s) => {
             Ok(Value::Bool(s.contains(&args[1])))
@@ -1105,15 +1133,19 @@ fn native_vals(args: &[Value]) -> Result<Value, String> {
 }
 
 fn native_merge(args: &[Value]) -> Result<Value, String> {
-    let mut result = Vec::new();
+    let mut result = HashMap::new();
     for arg in args {
         match arg {
-            Value::Map(m) => result.extend(m.iter().cloned()),
+            Value::Map(m) => {
+                for (k, v) in m.iter() {
+                    result.insert(k.clone(), v.clone());
+                }
+            }
             Value::Nil => {}
             _ => return Err("merge requires maps".to_string()),
         }
     }
-    Ok(Value::map(result))
+    Ok(Value::Map(Arc::new(result)))
 }
 
 fn native_select_keys(args: &[Value]) -> Result<Value, String> {
@@ -1126,12 +1158,12 @@ fn native_select_keys(args: &[Value]) -> Result<Value, String> {
     };
     match &args[0] {
         Value::Map(m) => {
-            let result: Vec<(Value, Value)> = m
+            let result: HashMap<Value, Value> = m
                 .iter()
                 .filter(|(k, _)| keys.contains(k))
-                .cloned()
+                .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
-            Ok(Value::map(result))
+            Ok(Value::Map(Arc::new(result)))
         }
         _ => Err("select-keys first arg must be a map".to_string()),
     }

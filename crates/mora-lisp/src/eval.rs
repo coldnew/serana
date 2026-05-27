@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -78,6 +79,19 @@ pub struct Evaluator {
     pub ns: NamespaceRegistry,
     pub thread_pool: ThreadPool,
     macroexpand_cache: HashMap<Symbol, Value>,
+}
+
+thread_local! {
+    static EVALUATOR_PTR: Cell<*mut Evaluator> = Cell::new(std::ptr::null_mut());
+}
+
+pub fn with_evaluator<R>(f: impl FnOnce(&mut Evaluator) -> R) -> R {
+    EVALUATOR_PTR.with(|cell| {
+        let ptr = cell.get();
+        assert!(!ptr.is_null(), "with_evaluator called outside native function context");
+        let eval = unsafe { &mut *ptr };
+        f(eval)
+    })
 }
 
 impl Evaluator {
@@ -225,7 +239,12 @@ impl Evaluator {
         
         match func {
             Value::Fn(f) => self.call_fn(f, args),
-            Value::Native(f) => f(&args).map_err(|e| EvalError::Custom(e)),
+            Value::Native(f) => {
+                EVALUATOR_PTR.with(|cell| cell.set(self as *mut Evaluator));
+                let result = f(&args).map_err(|e| EvalError::Custom(e));
+                EVALUATOR_PTR.with(|cell| cell.set(std::ptr::null_mut()));
+                result
+            }
             Value::Macro(m) => {
                 let expanded = self.expand_macro_value(&m, &list[1..])?;
                 self.eval_in(env, &expanded)
