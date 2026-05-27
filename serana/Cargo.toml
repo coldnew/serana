@@ -13,11 +13,36 @@ workspace = true
 mora-bin = { path = "../mora" }
 serana-core = { path = "../crates/serana-core" }
 serana-llm = { path = "../crates/serana-llm" }
-serana-agent = { path = "../crates/serana-agent" }
-serana-tui = { path = "../crates/serana-tui" }
+serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
+tree-sitter.workspace = true
 clap.workspace = true
 tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing-subscriber.workspace = true
+tracing.workspace = true
 anyhow.workspace = true
+thiserror.workspace = true
+reqwest.workspace = true
+tokio-tungstenite.workspace = true
+futures.workspace = true
+rusqlite.workspace = true
+dirs.workspace = true
+regex.workspace = true
+glob.workspace = true
+ignore.workspace = true
+toml.workspace = true
+chrono.workspace = true
+uuid.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
+strip-ansi-escapes.workspace = true
+pulldown-cmark.workspace = true
+syntect.workspace = true
+parking_lot.workspace = true
+bytes.workspace = true
+async-stream.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use serana_agent::HermesAgent;
+use serana::agent::HermesAgent;
 use serana_core::{Agent, Config, LlmClient};
 use serana_llm::OpenAiClient;
 use std::io::IsTerminal;
@@ -92,7 +92,7 @@ async fn run_interactive(config: Config) -> anyhow::Result<()> {
     if std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
         let model = config.model().to_string();
         let provider = config.provider.name.clone();
-        serana_tui::run(config.workspace.clone(), model, provider, config.clone())?;
+        serana::tui::run(config.workspace.clone(), model, provider, config.clone())?;
     } else {
         println!("Serana interactive mode (Ctrl+C to exit)");
         println!("(No TTY detected - using simple REPL)");
