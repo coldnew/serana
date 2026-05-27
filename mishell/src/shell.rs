@@ -347,6 +347,8 @@ impl Shell {
             "test" | "[" => return self.builtin_test(&cmd.words[1..]),
             "eval" => return self.builtin_eval(&cmd.words[1..]),
             "realpath" => return self.builtin_realpath(&cmd.words[1..]),
+            "complete" => return self.builtin_complete(&cmd.words[1..]),
+            "commandline" => return self.builtin_commandline(&cmd.words[1..]),
             "begin" => {
                 // begin ... end is handled at parser level as Group,
                 // but treat bare 'begin' as echo (no-op if no args)
@@ -3010,6 +3012,84 @@ pub fn detect_file_type(buf: &[u8], path: &str) -> Option<String> {
         _ => None,
     }
 }
+
+    fn builtin_complete(&mut self, args: &[Word]) -> Result<()> {
+        if args.is_empty() {
+            // List all completions
+            for (cmd, entries) in &self.completions {
+                for entry in entries {
+                    if entry.condition.is_empty() {
+                        println!("complete -c {} -a '{}'", cmd, entry.arguments.join(" "));
+                    } else {
+                        println!("complete -c {} -a '{}' -d '{}'", cmd, entry.arguments.join(" "), entry.description);
+                    }
+                }
+            }
+            return Ok(());
+        }
+        let mut cmd_name = String::new();
+        let mut arguments = Vec::new();
+        let mut condition = String::new();
+        let mut description = String::new();
+        let mut erase = false;
+        let mut i = 0;
+        let expanded: Vec<String> = args.iter().map(|a| self.expand_word(a)).collect();
+        while i < expanded.len() {
+            match expanded[i].as_str() {
+                "-c" | "--command" => {
+                    if i + 1 < expanded.len() { cmd_name = expanded[i + 1].clone(); i += 2; } else { i += 1; }
+                }
+                "-a" | "--arguments" => {
+                    if i + 1 < expanded.len() { arguments = expanded[i + 1].split_whitespace().map(String::from).collect(); i += 2; } else { i += 1; }
+                }
+                "-d" | "--description" => {
+                    if i + 1 < expanded.len() { description = expanded[i + 1].clone(); i += 2; } else { i += 1; }
+                }
+                "-e" | "--erase" => { erase = true; i += 1; }
+                _ => { i += 1; }
+            }
+        }
+        if cmd_name.is_empty() {
+            eprintln!("complete: expected -c COMMAND");
+            self.last_exit_code = 1;
+            return Ok(());
+        }
+        if erase {
+            self.completions.remove(&cmd_name);
+        } else {
+            self.completions.entry(cmd_name).or_default().push(CompletionEntry {
+                condition,
+                description,
+                arguments,
+            });
+        }
+        Ok(())
+    }
+
+    fn builtin_commandline(&self, args: &[Word]) -> Result<()> {
+        // In non-interactive mode, this is a no-op
+        if !self.is_interactive {
+            return Ok(());
+        }
+        // Minimal implementation: print info about current commandline
+        let mut mode = "BUFFER";
+        let expanded: Vec<String> = args.iter().map(|a| self.expand_word(a)).collect();
+        for arg in &expanded {
+            match arg.as_str() {
+                "-c" | "--current-token" => { mode = "TOKEN"; }
+                "-b" | "--current-buffer" => { mode = "BUFFER"; }
+                "-o" | "--current-token" => { mode = "TOKEN"; }
+                "-p" | "--current-process" => { mode = "PROCESS"; }
+                _ => {}
+            }
+        }
+        // In a real implementation this would read from the readline buffer
+        // For now just print empty
+        if mode == "BUFFER" || mode == "TOKEN" {
+            // no-op, handled by interactive loop
+        }
+        Ok(())
+    }
 
 pub fn is_builtin(name: &str) -> bool {
     matches!(
