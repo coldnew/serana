@@ -1588,24 +1588,80 @@ fn native_apply(args: &[Value]) -> Result<Value, String> {
     invoke_fn(func, &call_args)
 }
 
-fn native_some(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::Nil)
+fn native_some(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("some requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => {}
+                    other => return Ok(other),
+                }
+            }
+            Ok(Value::Nil)
+        }
+        _ => Err("some second arg must be a sequence".to_string()),
+    }
 }
 
-fn native_every(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::Bool(true))
+fn native_every(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("every? requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => return Ok(Value::Bool(false)),
+                    _ => {}
+                }
+            }
+            Ok(Value::Bool(true))
+        }
+        _ => Err("every? second arg must be a sequence".to_string()),
+    }
 }
 
-fn native_not_every(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::Bool(false))
+fn native_not_every(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("not-every? requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => return Ok(Value::Bool(true)),
+                    _ => {}
+                }
+            }
+            Ok(Value::Bool(false))
+        }
+        _ => Err("not-every? second arg must be a sequence".to_string()),
+    }
 }
 
-fn native_not_any(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::Bool(true))
+fn native_not_any(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("not-any? requires exactly 2 arguments".to_string());
+    }
+    let pred = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            for item in v.iter() {
+                match invoke_fn(pred, &[item.clone()])? {
+                    Value::Bool(false) | Value::Nil => {}
+                    _ => return Ok(Value::Bool(false)),
+                }
+            }
+            Ok(Value::Bool(true))
+        }
+        _ => Err("not-any? second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_zipmap(args: &[Value]) -> Result<Value, String> {
