@@ -251,6 +251,7 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
 
                         if !input.trim().is_empty() {
                             hist.add(&input)?;
+                            shell.set_commandline(input.clone(), cursor_pos);
                             shell.execute(&input)?;
                         }
                         input.clear();

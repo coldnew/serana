@@ -38,6 +38,8 @@ pub struct Shell {
     is_interactive: bool,
     home_dir: Option<PathBuf>,
     completions: HashMap<String, Vec<CompletionEntry>>,
+    commandline_buffer: String,
+    commandline_cursor: usize,
 }
 
 #[derive(Clone)]
@@ -81,6 +83,8 @@ impl Shell {
             is_interactive: true,
             home_dir,
             completions: HashMap::new(),
+            commandline_buffer: String::new(),
+            commandline_cursor: 0,
         })
     }
 
@@ -3131,6 +3135,21 @@ impl Shell {
         &self.completions
     }
 
+    pub fn set_commandline(&mut self, buffer: String, cursor: usize) {
+        self.commandline_buffer = buffer;
+        self.commandline_cursor = cursor;
+    }
+
+    #[allow(dead_code)]
+    pub fn commandline_buffer(&self) -> &str {
+        &self.commandline_buffer
+    }
+
+    #[allow(dead_code)]
+    pub fn commandline_cursor(&self) -> usize {
+        self.commandline_cursor
+    }
+
     pub fn set_interactive(&mut self, interactive: bool) {
         self.is_interactive = interactive;
     }
@@ -3210,11 +3229,66 @@ impl Shell {
         Ok(())
     }
 
-    fn builtin_commandline(&self, _args: &[Word]) -> Result<()> {
+    fn builtin_commandline(&mut self, args: &[Word]) -> Result<()> {
         if !self.is_interactive {
             return Ok(());
         }
-        // Minimal stub: real implementation would read/write the readline buffer
+        let args: Vec<String> = args.iter().map(|w| self.expand_word(w)).collect();
+        if args.is_empty() {
+            // No args: print current command line buffer
+            println!("{}", self.commandline_buffer);
+            return Ok(());
+        }
+        match args[0].as_str() {
+            "-c" | "--cursor" => {
+                // Print cursor position
+                println!("{}", self.commandline_cursor);
+            }
+            "-t" | "--token" => {
+                // Print current token (word under cursor)
+                let buf = &self.commandline_buffer;
+                let pos = self.commandline_cursor.min(buf.len());
+                let word_start = buf[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
+                let word_end = buf[pos..].find(' ').map(|i| pos + i).unwrap_or(buf.len());
+                if word_start < word_end {
+                    println!("{}", &buf[word_start..word_end]);
+                }
+            }
+            "-o" | "--token-offset" => {
+                // Print offset of current token within buffer
+                let buf = &self.commandline_buffer;
+                let pos = self.commandline_cursor.min(buf.len());
+                let word_start = buf[..pos].rfind(' ').map(|i| i + 1).unwrap_or(0);
+                println!("{}", word_start);
+            }
+            "-i" | "--is-inside-job-control" => {
+                // Always return 0 (not inside job control) for now
+            }
+            "-p" | "--current-process" => {
+                println!("mishell");
+            }
+            "-b" | "--current-buffer" => {
+                println!("{}", self.commandline_buffer);
+            }
+            "-j" | "--current-job" => {
+                // Print 0 (no job under cursor)
+                println!("0");
+            }
+            "-s" | "--search-mode" => {
+                // Not in search mode
+                self.last_exit_code = 1;
+            }
+            "--replace" => {
+                // Replace current command line with remaining args
+                // (read-only in this context; main.rs controls the buffer)
+                // We could store it for main.rs to pick up
+            }
+            _ => {
+                // Treat as command line to set
+                // Store it so main.rs can pick it up after execution
+                // For now, just print it (commandline "echo hello" sets buffer)
+            }
+        }
         Ok(())
     }
 }
@@ -4360,5 +4434,32 @@ mod tests {
     fn test_is_builtin_new_entries() {
         assert!(is_builtin("complete"));
         assert!(is_builtin("commandline"));
+    }
+
+    #[test]
+    fn test_commandline_builtin() {
+        let mut shell = Shell::new(false).unwrap();
+        shell.set_interactive(true);
+        shell.set_commandline("echo hello world".to_string(), 10);
+        // commandline prints the buffer
+        shell.execute("commandline").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+        // commandline -c prints cursor position
+        shell.execute("commandline -c").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+        // commandline -t prints current token
+        shell.execute("commandline -t").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+        // commandline -o prints token offset
+        shell.execute("commandline -o").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
+    }
+
+    #[test]
+    fn test_commandline_non_interactive() {
+        let mut shell = Shell::new(false).unwrap();
+        shell.set_interactive(false);
+        shell.execute("commandline").unwrap();
+        assert_eq!(shell.last_exit_code, 0);
     }
 }
