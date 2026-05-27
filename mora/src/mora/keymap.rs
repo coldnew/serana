@@ -252,6 +252,18 @@ pub fn insert_key(key: MoraKeyEvent) -> KeyAction {
         (MoraKeyModifiers::CTRL, MoraKeyCode::Char('c')) => KeyAction::SetMode(EditorMode::Normal),
         (MoraKeyModifiers::CTRL, MoraKeyCode::Char('s')) => KeyAction::Save,
         (MoraKeyModifiers::CTRL, MoraKeyCode::Char('w')) => KeyAction::MoveWordForward,
+        // Emacs-style navigation in insert mode
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('p')) => KeyAction::MoveUp,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('n')) => KeyAction::MoveDown,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('b')) => KeyAction::MoveLeft,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('f')) => KeyAction::MoveRight,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('a')) => KeyAction::MoveLineStart,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('e')) => KeyAction::MoveLineEnd,
+        // Emacs-style editing in insert mode
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('d')) => KeyAction::DeleteForward,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('k')) => KeyAction::KillLine,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('y')) => KeyAction::Yank,
+        (MoraKeyModifiers::CTRL, MoraKeyCode::Char('/')) => KeyAction::Undo,
         (_, MoraKeyCode::Enter) => KeyAction::InsertNewline,
         (_, MoraKeyCode::Tab) => KeyAction::InsertChar('\t'),
         (_, MoraKeyCode::Backspace) => KeyAction::DeleteBackward,

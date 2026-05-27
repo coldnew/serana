@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
 use mora_bin::mora::MoraEditor;
 use mora_bin::mora::display::backend::{DisplayBackend, InputEvent};
-use mora_bin::mora::display::event::MoraKeyEvent;
 use mora_bin::mora::display::tui::TuiBackend;
 use mora_compile::{CompileOptions, CompileTarget};
+use ratatui::widgets::Widget;
 use std::io::{self, Read};
 use std::path::Path;
 
@@ -155,30 +155,31 @@ fn run_editor(file: Option<String>) -> anyhow::Result<()> {
         MoraEditor::new(editor_height)
     };
 
+    // Initialize Lisp editor context before loading init file
+    {
+        let mut state = mora_bin::mora::lisp_ext::EditorState::new();
+        state.lines = editor.buffer.lines.clone();
+        state.cursor_row = editor.buffer.cursor.row;
+        state.cursor_col = editor.buffer.cursor.col;
+        state.modified = editor.buffer.modified;
+        state.file_path = editor.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
+        state.mode = format!("{:?}", editor.mode()).to_lowercase();
+        state.window_count = editor.windows.len().max(1);
+        mora_bin::mora::lisp_ext::set_editor_state(state);
+    }
+
     editor.lisp_bridge.load_init_file();
 
     let result = (|| -> anyhow::Result<()> {
         loop {
             // Render
-            backend.clear();
-            {
-                use ratatui::layout::Rect;
-                use ratatui::widgets::Widget;
-                let area = Rect::new(0, 0, w, h);
-                let mut buf = ratatui::buffer::Buffer::empty(area);
-                let widget = mora_bin::mora::ui::EditorWidget::new(&editor);
-                widget.render(area, &mut buf);
-                for y in 0..area.height {
-                    for x in 0..area.width {
-                        let cell = &buf[(x, y)];
-                        let ch = cell.symbol().chars().next().unwrap_or(' ');
-                        let mora_style: mora_bin::mora::display::style::MoraStyle =
-                            cell.style().into();
-                        backend.set_cell(x, y, ch, mora_style);
-                    }
-                }
-            }
-            backend.flush().map_err(|e| anyhow::anyhow!(e))?;
+            let editor_ref = &editor;
+            backend
+                .draw(|buf, area| {
+                    let widget = mora_bin::mora::ui::EditorWidget::new(editor_ref);
+                    widget.render(area, buf);
+                })
+                .map_err(|e| anyhow::anyhow!(e))?;
 
             // Input
             match backend.poll_event(50) {

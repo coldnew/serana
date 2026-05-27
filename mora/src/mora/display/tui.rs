@@ -28,6 +28,19 @@ impl TuiBackend {
         let terminal = Terminal::new(backend).expect("Failed to create terminal");
         Self { terminal }
     }
+
+    pub fn draw<F>(&mut self, render_fn: F) -> Result<(), String>
+    where
+        F: FnOnce(&mut RatatuiBuffer, Rect),
+    {
+        self.terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_fn(frame.buffer_mut(), area);
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
 }
 
 impl DisplayBackend for TuiBackend {
