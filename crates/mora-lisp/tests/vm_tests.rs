@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use mora_lisp::types::Value;
     use mora_lisp::reader;
+    use mora_lisp::types::Value;
     use mora_lisp::MoraLisp;
 
     #[test]
@@ -204,7 +204,10 @@ mod tests {
         assert_eq!(lisp.eval("(count '(1 2))").unwrap(), Value::Int(2));
         assert_eq!(lisp.eval("(first [1 2 3])").unwrap(), Value::Int(1));
         assert_eq!(lisp.eval("(last [1 2 3])").unwrap(), Value::Int(3));
-        assert_eq!(lisp.eval("(rest [1 2 3])").unwrap(), Value::list(vec![Value::Int(2), Value::Int(3)]));
+        assert_eq!(
+            lisp.eval("(rest [1 2 3])").unwrap(),
+            Value::list(vec![Value::Int(2), Value::Int(3)])
+        );
     }
 
     #[test]
@@ -272,25 +275,21 @@ mod tests {
     #[test]
     fn test_eval_loop() {
         let mut lisp = MoraLisp::new();
-        let result = lisp.eval("(loop [i 0 acc 0] (if (= i 5) acc (recur (+ i 1) (+ acc i))))").unwrap();
+        let result = lisp
+            .eval("(loop [i 0 acc 0] (if (= i 5) acc (recur (+ i 1) (+ acc i))))")
+            .unwrap();
         assert_eq!(result, Value::Int(10));
     }
 
     #[test]
     fn test_map_ops() {
         let mut lisp = MoraLisp::new();
-        assert_eq!(
-            lisp.eval("(get {:a 1 :b 2} :a)").unwrap(),
-            Value::Int(1)
-        );
+        assert_eq!(lisp.eval("(get {:a 1 :b 2} :a)").unwrap(), Value::Int(1));
         assert_eq!(
             lisp.eval("(contains? {:a 1} :a)").unwrap(),
             Value::Bool(true)
         );
-        assert_eq!(
-            lisp.eval("(count {:a 1 :b 2})").unwrap(),
-            Value::Int(2)
-        );
+        assert_eq!(lisp.eval("(count {:a 1 :b 2})").unwrap(), Value::Int(2));
     }
 
     #[test]
@@ -330,5 +329,81 @@ mod tests {
         lisp.eval("(def add5 (make-adder 5))").unwrap();
         let result = lisp.eval("(add5 10)").unwrap();
         assert_eq!(result, Value::Int(15));
+    }
+
+    #[test]
+    fn test_thread_first() {
+        let mut lisp = MoraLisp::new();
+
+        // Basic: (-> 5 inc) => (inc 5) => 6
+        let result = lisp.eval("(-> 5 inc)").unwrap();
+        assert_eq!(result, Value::Int(6));
+
+        // Chained: (-> 5 inc inc) => (inc (inc 5)) => 7
+        let result = lisp.eval("(-> 5 inc inc)").unwrap();
+        assert_eq!(result, Value::Int(7));
+
+        // With multi-arg fn: (-> 5 (+ 3)) => (+ 5 3) => 8
+        let result = lisp.eval("(-> 5 (+ 3))").unwrap();
+        assert_eq!(result, Value::Int(8));
+
+        // Complex: (-> 5 (+ 3) (* 2)) => (* (+ 5 3) 2) => 16
+        let result = lisp.eval("(-> 5 (+ 3) (* 2))").unwrap();
+        assert_eq!(result, Value::Int(16));
+    }
+
+    #[test]
+    fn test_thread_last() {
+        let mut lisp = MoraLisp::new();
+
+        // Basic: (->> 5 inc) => (inc 5) => 6
+        let result = lisp.eval("(->> 5 inc)").unwrap();
+        assert_eq!(result, Value::Int(6));
+
+        // With multi-arg fn: (->> 5 (+ 3)) => (+ 3 5) => 8
+        let result = lisp.eval("(->> 5 (+ 3))").unwrap();
+        assert_eq!(result, Value::Int(8));
+
+        // Complex: (->> 5 (+ 3) (* 2)) => (* 2 (+ 3 5)) => 16
+        let result = lisp.eval("(->> 5 (+ 3) (* 2))").unwrap();
+        assert_eq!(result, Value::Int(16));
+    }
+
+    #[test]
+    fn test_thread_first_single_value() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval("(-> 42)").unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_thread_last_single_value() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval("(->> 42)").unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+
+    #[test]
+    fn test_thread_first_with_custom_fn() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn double [x] (* x 2))").unwrap();
+        lisp.eval("(defn add1 [x] (+ x 1))").unwrap();
+
+        // (-> 3 double add1) => (add1 (double 3)) => 7
+        let result = lisp.eval("(-> 3 double add1)").unwrap();
+        assert_eq!(result, Value::Int(7));
+    }
+
+    #[test]
+    fn test_thread_last_with_custom_fn() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn wrap [x] (vector x))").unwrap();
+
+        // (->> 42 wrap) => (wrap 42) => [42]
+        let result = lisp.eval("(->> 42 wrap)").unwrap();
+        match result {
+            Value::Vector(v) => assert_eq!(v.len(), 1),
+            _ => panic!("expected vector"),
+        }
     }
 }

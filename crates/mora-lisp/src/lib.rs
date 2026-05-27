@@ -1,10 +1,11 @@
 pub mod eval;
+pub mod gc;
+pub mod host;
 pub mod ns;
 pub mod reader;
 pub mod thread;
 pub mod types;
 pub mod wasm;
-pub mod host;
 
 use eval::EvalError;
 use reader::ReadError;

@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
+use crate::gc::{CollectorHandle, GcHeap};
 use crate::ns::NamespaceRegistry;
-use crate::types::{FnValue, MacroValue, Param, Symbol, Value};
 use crate::thread::ThreadPool;
+use crate::types::{FnValue, MacroValue, Param, Symbol, Value};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum EvalError {
@@ -54,9 +55,9 @@ impl Env {
     }
 
     pub fn get(&self, sym: &Symbol) -> Option<&Value> {
-        self.bindings.get(sym).or_else(|| {
-            self.parent.as_ref().and_then(|p| p.get(sym))
-        })
+        self.bindings
+            .get(sym)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.get(sym)))
     }
 
     pub fn set(&mut self, sym: Symbol, val: Value) {
@@ -78,6 +79,8 @@ impl Env {
 pub struct Evaluator {
     pub ns: NamespaceRegistry,
     pub thread_pool: ThreadPool,
+    pub gc_heap: Arc<GcHeap>,
+    collector: Option<CollectorHandle>,
     macroexpand_cache: HashMap<Symbol, Value>,
     in_tail_position: bool,
     pending_tail_call: Option<(FnValue, Vec<Value>)>,
@@ -91,7 +94,10 @@ thread_local! {
 pub fn with_evaluator<R>(f: impl FnOnce(&mut Evaluator) -> R) -> R {
     EVALUATOR_PTR.with(|cell| {
         let ptr = cell.get();
-        assert!(!ptr.is_null(), "with_evaluator called outside native function context");
+        assert!(
+            !ptr.is_null(),
+            "with_evaluator called outside native function context"
+        );
         let eval = unsafe { &mut *ptr };
         f(eval)
     })
@@ -99,9 +105,14 @@ pub fn with_evaluator<R>(f: impl FnOnce(&mut Evaluator) -> R) -> R {
 
 impl Evaluator {
     pub fn new() -> Self {
+        let gc_heap = GcHeap::new();
+        let collector =
+            GcHeap::start_collector(Arc::clone(&gc_heap), std::time::Duration::from_millis(100));
         let mut eval = Self {
             ns: NamespaceRegistry::new(),
             thread_pool: ThreadPool::new(4),
+            gc_heap,
+            collector: Some(collector),
             macroexpand_cache: HashMap::new(),
             in_tail_position: false,
             pending_tail_call: None,
@@ -123,9 +134,7 @@ impl Evaluator {
             Value::String(s) => Ok(Value::String(s.clone())),
             Value::Keyword(_) => Ok(form.clone()),
             Value::Symbol(sym) => self.resolve_symbol(env, sym),
-            Value::List(list) if !list.is_empty() => {
-                self.eval_list(env, list)
-            }
+            Value::List(list) if !list.is_empty() => self.eval_list(env, list),
             Value::List(_) => Ok(Value::list(vec![])),
             Value::Vector(v) => {
                 let mut result = Vec::with_capacity(v.len());
@@ -137,10 +146,7 @@ impl Evaluator {
             Value::Map(m) => {
                 let mut result = Vec::with_capacity(m.len());
                 for (k, v) in m.iter() {
-                    result.push((
-                        self.eval_in(env.clone(), k)?,
-                        self.eval_in(env.clone(), v)?,
-                    ));
+                    result.push((self.eval_in(env.clone(), k)?, self.eval_in(env.clone(), v)?));
                 }
                 Ok(Value::map(result))
             }
@@ -166,15 +172,18 @@ impl Evaluator {
         }
         // Check if it's a namespace-qualified symbol
         if sym.ns.is_some() {
-            return Err(EvalError::Undefined(format!("{}/{}", 
-                sym.ns.as_ref().unwrap(), sym.name)));
+            return Err(EvalError::Undefined(format!(
+                "{}/{}",
+                sym.ns.as_ref().unwrap(),
+                sym.name
+            )));
         }
         Err(EvalError::Undefined(sym.name.to_string()))
     }
 
     fn eval_list(&mut self, env: Env, list: &[Value]) -> Result<Value, EvalError> {
         let first = &list[0];
-        
+
         // Check for special forms
         if let Value::Symbol(sym) = first {
             match sym.name.as_str() {
@@ -224,6 +233,8 @@ impl Evaluator {
                 "when-not" => return self.eval_when_not(env, &list[1..]),
                 "and" => return self.eval_and(env, &list[1..]),
                 "or" => return self.eval_or(env, &list[1..]),
+                "->" => return self.eval_thread_first(env, &list[1..]),
+                "->>" => return self.eval_thread_last(env, &list[1..]),
                 "loop*" => return self.eval_loop_star(env, &list[1..]),
                 "recur*" => return self.eval_recur_star(env, &list[1..]),
                 _ => {}
@@ -241,7 +252,7 @@ impl Evaluator {
         // Function call
         let func = self.eval_in(env.clone(), first)?;
         let args = self.eval_args(env.clone(), &list[1..])?;
-        
+
         match func {
             Value::Fn(f) => {
                 if self.in_tail_position {
@@ -330,7 +341,12 @@ impl Evaluator {
         }
     }
 
-    fn bind_params(&self, env: &mut Env, params: &[Param], args: Vec<Value>) -> Result<(), EvalError> {
+    fn bind_params(
+        &self,
+        env: &mut Env,
+        params: &[Param],
+        args: Vec<Value>,
+    ) -> Result<(), EvalError> {
         let mut arg_idx = 0;
         for param in params {
             match param {
@@ -359,11 +375,10 @@ impl Evaluator {
                     let map = &args[arg_idx];
                     for (kw, param) in bindings {
                         let val = match map {
-                            Value::Map(m) => {
-                                m.get(&Value::Keyword(kw.clone()))
-                                    .cloned()
-                                    .unwrap_or(Value::Nil)
-                            }
+                            Value::Map(m) => m
+                                .get(&Value::Keyword(kw.clone()))
+                                .cloned()
+                                .unwrap_or(Value::Nil),
                             _ => Value::Nil,
                         };
                         if let Param::Named(sym) = param {
@@ -395,13 +410,19 @@ impl Evaluator {
 
     fn eval_def(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() || args.len() > 3 {
-            return Err(EvalError::SpecialForm("def requires 1-3 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "def requires 1-3 arguments".to_string(),
+            ));
         }
         let sym = match &args[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("def first arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "def first arg must be a symbol".to_string(),
+                ))
+            }
         };
-        
+
         let value = if args.len() >= 2 {
             self.eval_in(env, &args[1])?
         } else {
@@ -416,7 +437,9 @@ impl Evaluator {
 
     fn eval_if(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 || args.len() > 3 {
-            return Err(EvalError::SpecialForm("if requires 2-3 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "if requires 2-3 arguments".to_string(),
+            ));
         }
         let was_tail = self.in_tail_position;
         self.in_tail_position = false;
@@ -449,15 +472,23 @@ impl Evaluator {
 
     fn eval_let(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("let requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "let requires at least 2 arguments".to_string(),
+            ));
         }
         let bindings = match &args[0] {
             Value::Vector(v) => v.as_ref(),
             Value::List(l) => l.as_ref(),
-            _ => return Err(EvalError::SpecialForm("let bindings must be a vector".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "let bindings must be a vector".to_string(),
+                ))
+            }
         };
         if bindings.len() % 2 != 0 {
-            return Err(EvalError::SpecialForm("let bindings must have even number of forms".to_string()));
+            return Err(EvalError::SpecialForm(
+                "let bindings must have even number of forms".to_string(),
+            ));
         }
 
         let was_tail = self.in_tail_position;
@@ -467,7 +498,11 @@ impl Evaluator {
         while i < bindings.len() {
             let sym = match &bindings[i] {
                 Value::Symbol(s) => s.clone(),
-                _ => return Err(EvalError::SpecialForm("let binding name must be a symbol".to_string())),
+                _ => {
+                    return Err(EvalError::SpecialForm(
+                        "let binding name must be a symbol".to_string(),
+                    ))
+                }
             };
             let val = self.eval_in(let_env.clone(), &bindings[i + 1])?;
             let_env.set(sym, val);
@@ -490,7 +525,9 @@ impl Evaluator {
 
     fn eval_fn(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
-            return Err(EvalError::SpecialForm("fn requires at least 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "fn requires at least 1 argument".to_string(),
+            ));
         }
 
         let mut name = None;
@@ -503,7 +540,9 @@ impl Evaluator {
         }
 
         if arg_start >= args.len() {
-            return Err(EvalError::SpecialForm("fn requires parameter vector".to_string()));
+            return Err(EvalError::SpecialForm(
+                "fn requires parameter vector".to_string(),
+            ));
         }
 
         let params = self.parse_params(&args[arg_start])?;
@@ -524,11 +563,17 @@ impl Evaluator {
 
     fn eval_defn(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 3 {
-            return Err(EvalError::SpecialForm("defn requires at least 3 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "defn requires at least 3 arguments".to_string(),
+            ));
         }
         let sym = match &args[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("defn first arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "defn first arg must be a symbol".to_string(),
+                ))
+            }
         };
 
         let fn_args = std::iter::once(Value::symbol(sym.name.to_string()))
@@ -544,14 +589,18 @@ impl Evaluator {
 
     fn eval_quote(&self, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("quote requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "quote requires exactly 1 argument".to_string(),
+            ));
         }
         Ok(args[0].clone())
     }
 
     fn eval_quasiquote(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("quasiquote requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "quasiquote requires exactly 1 argument".to_string(),
+            ));
         }
         self.expand_quasiquote(env, &args[0])
     }
@@ -563,12 +612,16 @@ impl Evaluator {
                     match sym.name.as_str() {
                         "unquote" => {
                             if list.len() != 2 {
-                                return Err(EvalError::SpecialForm("unquote requires exactly 1 argument".to_string()));
+                                return Err(EvalError::SpecialForm(
+                                    "unquote requires exactly 1 argument".to_string(),
+                                ));
                             }
                             return self.eval_in(env, &list[1]);
                         }
                         "unquote-splicing" => {
-                            return Err(EvalError::SpecialForm("unquote-splicing not valid outside list".to_string()));
+                            return Err(EvalError::SpecialForm(
+                                "unquote-splicing not valid outside list".to_string(),
+                            ));
                         }
                         _ => {}
                     }
@@ -580,14 +633,21 @@ impl Evaluator {
                             if let Value::Symbol(sym) = &inner[0] {
                                 if *sym.name == *"unquote-splicing" {
                                     if inner.len() != 2 {
-                                        return Err(EvalError::SpecialForm("unquote-splicing requires exactly 1 argument".to_string()));
+                                        return Err(EvalError::SpecialForm(
+                                            "unquote-splicing requires exactly 1 argument"
+                                                .to_string(),
+                                        ));
                                     }
                                     let val = self.eval_in(env.clone(), &inner[1])?;
                                     match val {
                                         Value::List(v) | Value::Vector(v) => {
                                             result.extend(v.iter().cloned());
                                         }
-                                        _ => return Err(EvalError::Type("unquote-splicing requires a sequence".to_string())),
+                                        _ => {
+                                            return Err(EvalError::Type(
+                                                "unquote-splicing requires a sequence".to_string(),
+                                            ))
+                                        }
                                     }
                                     continue;
                                 }
@@ -604,11 +664,17 @@ impl Evaluator {
 
     fn eval_defmacro(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 3 {
-            return Err(EvalError::SpecialForm("defmacro requires at least 3 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "defmacro requires at least 3 arguments".to_string(),
+            ));
         }
         let sym = match &args[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("defmacro first arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "defmacro first arg must be a symbol".to_string(),
+                ))
+            }
         };
 
         let params = self.parse_params(&args[1])?;
@@ -629,7 +695,9 @@ impl Evaluator {
 
     fn eval_macroexpand(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("macroexpand requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "macroexpand requires exactly 1 argument".to_string(),
+            ));
         }
         let form = self.eval_in(env.clone(), &args[0])?;
         match &form {
@@ -686,7 +754,11 @@ impl Evaluator {
                 if catch.len() >= 3 {
                     let sym = match &catch[1] {
                         Value::Symbol(s) => s.clone(),
-                        _ => return Err(EvalError::SpecialForm("catch binding must be a symbol".to_string())),
+                        _ => {
+                            return Err(EvalError::SpecialForm(
+                                "catch binding must be a symbol".to_string(),
+                            ))
+                        }
                     };
                     let err_val = Value::string(format!("{}", err));
                     let mut catch_env = Env::new();
@@ -712,7 +784,9 @@ impl Evaluator {
 
     fn eval_throw(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("throw requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "throw requires exactly 1 argument".to_string(),
+            ));
         }
         let val = self.eval_in(env.clone(), &args[0])?;
         Err(EvalError::Throw(val))
@@ -720,25 +794,35 @@ impl Evaluator {
 
     fn eval_var(&self, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("var requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "var requires exactly 1 argument".to_string(),
+            ));
         }
         // Return the var itself, not its value
         match &args[0] {
             Value::Symbol(_) => Ok(args[0].clone()),
-            _ => Err(EvalError::SpecialForm("var arg must be a symbol".to_string())),
+            _ => Err(EvalError::SpecialForm(
+                "var arg must be a symbol".to_string(),
+            )),
         }
     }
 
     fn eval_set(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 2 {
-            return Err(EvalError::SpecialForm("set! requires exactly 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "set! requires exactly 2 arguments".to_string(),
+            ));
         }
         let sym = match &args[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("set! first arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "set! first arg must be a symbol".to_string(),
+                ))
+            }
         };
         let val = self.eval_in(env.clone(), &args[1])?;
-        
+
         // Try to update in current namespace
         let ns = self.ns.current();
         let ns = ns.lock();
@@ -746,13 +830,15 @@ impl Evaluator {
             var.set(val.clone());
             return Ok(val);
         }
-        
+
         Err(EvalError::Undefined(sym.name.to_string()))
     }
 
     fn eval_apply(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("apply requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "apply requires at least 2 arguments".to_string(),
+            ));
         }
         let func = self.eval_in(env.clone(), &args[0])?;
         let mut all_args = Vec::new();
@@ -772,7 +858,9 @@ impl Evaluator {
     fn eval_dot(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         // Interop: (. object method args...)
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm(". requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                ". requires at least 2 arguments".to_string(),
+            ));
         }
         // For now, just return Nil - full interop would need reflection
         Ok(Value::Nil)
@@ -780,14 +868,21 @@ impl Evaluator {
 
     fn eval_ns(&mut self, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
-            return Err(EvalError::SpecialForm("ns requires at least 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "ns requires at least 1 argument".to_string(),
+            ));
         }
         let sym = match &args[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("ns first arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "ns first arg must be a symbol".to_string(),
+                ))
+            }
         };
         self.ns.find_or_create(&sym.name);
-        self.ns.set_current(&sym.name)
+        self.ns
+            .set_current(&sym.name)
             .map_err(|e| EvalError::SpecialForm(e))?;
         Ok(Value::Nil)
     }
@@ -796,7 +891,8 @@ impl Evaluator {
         for arg in args {
             match arg {
                 Value::Symbol(sym) => {
-                    self.ns.require(&sym.name, None)
+                    self.ns
+                        .require(&sym.name, None)
                         .map_err(|e| EvalError::SpecialForm(e))?;
                 }
                 Value::List(list) if list.len() >= 2 => {
@@ -811,7 +907,8 @@ impl Evaluator {
                                 alias = Some(a.name.to_string());
                             }
                         }
-                        self.ns.require(&sym.name, alias.as_deref())
+                        self.ns
+                            .require(&sym.name, alias.as_deref())
                             .map_err(|e| EvalError::SpecialForm(e))?;
                     }
                 }
@@ -823,7 +920,9 @@ impl Evaluator {
 
     fn eval_refer(&mut self, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 1 {
-            return Err(EvalError::SpecialForm("refer requires at least 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "refer requires at least 1 argument".to_string(),
+            ));
         }
         // Implementation: (refer 'namespace :only [names] :exclude [names])
         Ok(Value::Nil)
@@ -831,15 +930,25 @@ impl Evaluator {
 
     fn eval_alias(&mut self, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 2 {
-            return Err(EvalError::SpecialForm("alias requires exactly 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "alias requires exactly 2 arguments".to_string(),
+            ));
         }
         let alias_sym = match &args[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("alias first arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "alias first arg must be a symbol".to_string(),
+                ))
+            }
         };
         let ns_sym = match &args[1] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("alias second arg must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "alias second arg must be a symbol".to_string(),
+                ))
+            }
         };
         let current = self.ns.current();
         let mut current = current.lock();
@@ -849,7 +958,9 @@ impl Evaluator {
 
     fn eval_doall(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
-            return Err(EvalError::SpecialForm("doall requires at least 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "doall requires at least 1 argument".to_string(),
+            ));
         }
         let val = self.eval_in(env.clone(), &args[0])?;
         Ok(val)
@@ -857,18 +968,30 @@ impl Evaluator {
 
     fn eval_doseq(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("doseq requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "doseq requires at least 2 arguments".to_string(),
+            ));
         }
         let bindings = match &args[0] {
             Value::Vector(v) => v.as_ref(),
-            _ => return Err(EvalError::SpecialForm("doseq bindings must be a vector".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "doseq bindings must be a vector".to_string(),
+                ))
+            }
         };
         if bindings.len() != 2 {
-            return Err(EvalError::SpecialForm("doseq requires exactly 2 binding forms".to_string()));
+            return Err(EvalError::SpecialForm(
+                "doseq requires exactly 2 binding forms".to_string(),
+            ));
         }
         let sym = match &bindings[0] {
             Value::Symbol(s) => s.clone(),
-            _ => return Err(EvalError::SpecialForm("doseq binding must be a symbol".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "doseq binding must be a symbol".to_string(),
+                ))
+            }
         };
         let seq = self.eval_in(env.clone(), &bindings[1])?;
         let items = match seq {
@@ -889,21 +1012,31 @@ impl Evaluator {
     fn eval_loop(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         // (loop [bindings] body)
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("loop requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "loop requires at least 2 arguments".to_string(),
+            ));
         }
         self.eval_loop_star(env, args)
     }
 
     fn eval_loop_star(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("loop* requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "loop* requires at least 2 arguments".to_string(),
+            ));
         }
         let bindings = match &args[0] {
             Value::Vector(v) => v.as_ref(),
-            _ => return Err(EvalError::SpecialForm("loop bindings must be a vector".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "loop bindings must be a vector".to_string(),
+                ))
+            }
         };
         if bindings.len() % 2 != 0 {
-            return Err(EvalError::SpecialForm("loop bindings must have even number of forms".to_string()));
+            return Err(EvalError::SpecialForm(
+                "loop bindings must have even number of forms".to_string(),
+            ));
         }
 
         let mut loop_env = Env::extend(env.clone());
@@ -911,7 +1044,11 @@ impl Evaluator {
         while i < bindings.len() {
             let sym = match &bindings[i] {
                 Value::Symbol(s) => s.clone(),
-                _ => return Err(EvalError::SpecialForm("loop binding name must be a symbol".to_string())),
+                _ => {
+                    return Err(EvalError::SpecialForm(
+                        "loop binding name must be a symbol".to_string(),
+                    ))
+                }
             };
             let val = self.eval_in(loop_env.clone(), &bindings[i + 1])?;
             loop_env.set(sym, val);
@@ -972,7 +1109,9 @@ impl Evaluator {
 
     fn eval_cond(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() % 2 != 0 {
-            return Err(EvalError::SpecialForm("cond requires even number of arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "cond requires even number of arguments".to_string(),
+            ));
         }
         let was_tail = self.in_tail_position;
         let mut i = 0;
@@ -991,7 +1130,9 @@ impl Evaluator {
 
     fn eval_case(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 || args.len() % 2 != 0 {
-            return Err(EvalError::SpecialForm("case requires test-expr and pairs".to_string()));
+            return Err(EvalError::SpecialForm(
+                "case requires test-expr and pairs".to_string(),
+            ));
         }
         let was_tail = self.in_tail_position;
         self.in_tail_position = false;
@@ -1016,7 +1157,9 @@ impl Evaluator {
 
     fn eval_when(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("when requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "when requires at least 2 arguments".to_string(),
+            ));
         }
         let was_tail = self.in_tail_position;
         self.in_tail_position = false;
@@ -1042,7 +1185,9 @@ impl Evaluator {
 
     fn eval_when_not(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("when-not requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "when-not requires at least 2 arguments".to_string(),
+            ));
         }
         let was_tail = self.in_tail_position;
         self.in_tail_position = false;
@@ -1108,7 +1253,9 @@ impl Evaluator {
 
     fn eval_atom(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("atom requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "atom requires exactly 1 argument".to_string(),
+            ));
         }
         let val = self.eval_in(env.clone(), &args[0])?;
         Ok(Value::atom(val))
@@ -1116,7 +1263,9 @@ impl Evaluator {
 
     fn eval_deref(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("deref requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "deref requires exactly 1 argument".to_string(),
+            ));
         }
         let val = self.eval_in(env.clone(), &args[0])?;
         match val {
@@ -1156,7 +1305,9 @@ impl Evaluator {
 
     fn eval_swap(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("swap! requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "swap! requires at least 2 arguments".to_string(),
+            ));
         }
         let atom = self.eval_in(env.clone(), &args[0])?;
         let func = self.eval_in(env.clone(), &args[1])?;
@@ -1169,18 +1320,26 @@ impl Evaluator {
                 all_args.extend(extra_args);
                 let new_val = match func {
                     Value::Fn(f) => self.call_fn(f, all_args)?,
-                    _ => return Err(EvalError::NotAFunction("swap! second arg must be a function".to_string())),
+                    _ => {
+                        return Err(EvalError::NotAFunction(
+                            "swap! second arg must be a function".to_string(),
+                        ))
+                    }
                 };
                 *a.lock() = new_val.clone();
                 Ok(new_val)
             }
-            _ => Err(EvalError::Type("swap! first arg must be an atom".to_string())),
+            _ => Err(EvalError::Type(
+                "swap! first arg must be an atom".to_string(),
+            )),
         }
     }
 
     fn eval_reset(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 2 {
-            return Err(EvalError::SpecialForm("reset! requires exactly 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "reset! requires exactly 2 arguments".to_string(),
+            ));
         }
         let atom = self.eval_in(env.clone(), &args[0])?;
         let val = self.eval_in(env.clone(), &args[1])?;
@@ -1189,13 +1348,17 @@ impl Evaluator {
                 *a.lock() = val.clone();
                 Ok(val)
             }
-            _ => Err(EvalError::Type("reset! first arg must be an atom".to_string())),
+            _ => Err(EvalError::Type(
+                "reset! first arg must be an atom".to_string(),
+            )),
         }
     }
 
     fn eval_future(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
-            return Err(EvalError::SpecialForm("future requires at least 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "future requires at least 1 argument".to_string(),
+            ));
         }
         let body: Vec<Value> = args.to_vec();
         let future = Value::future();
@@ -1211,13 +1374,17 @@ impl Evaluator {
                         Ok(val) => result = val,
                         Err(e) => {
                             *f_clone.result.lock() = Some(Err(e));
-                            f_clone.done.store(true, std::sync::atomic::Ordering::SeqCst);
+                            f_clone
+                                .done
+                                .store(true, std::sync::atomic::Ordering::SeqCst);
                             return;
                         }
                     }
                 }
                 *f_clone.result.lock() = Some(Ok(result));
-                f_clone.done.store(true, std::sync::atomic::Ordering::SeqCst);
+                f_clone
+                    .done
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
             });
         }
         Ok(future)
@@ -1225,7 +1392,9 @@ impl Evaluator {
 
     fn eval_agent(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("agent requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "agent requires exactly 1 argument".to_string(),
+            ));
         }
         let val = self.eval_in(env.clone(), &args[0])?;
         Ok(Value::agent(val))
@@ -1233,7 +1402,9 @@ impl Evaluator {
 
     fn eval_send(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("send requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "send requires at least 2 arguments".to_string(),
+            ));
         }
         let agent = self.eval_in(env.clone(), &args[0])?;
         let func = self.eval_in(env.clone(), &args[1])?;
@@ -1246,12 +1417,18 @@ impl Evaluator {
                 all_args.extend(extra_args);
                 let new_val = match func {
                     Value::Fn(f) => self.call_fn(f, all_args)?,
-                    _ => return Err(EvalError::NotAFunction("send second arg must be a function".to_string())),
+                    _ => {
+                        return Err(EvalError::NotAFunction(
+                            "send second arg must be a function".to_string(),
+                        ))
+                    }
                 };
                 *a.state.lock() = new_val;
                 Ok(Value::Agent(a))
             }
-            _ => Err(EvalError::Type("send first arg must be an agent".to_string())),
+            _ => Err(EvalError::Type(
+                "send first arg must be an agent".to_string(),
+            )),
         }
     }
 
@@ -1262,7 +1439,9 @@ impl Evaluator {
 
     fn eval_await(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("await requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "await requires exactly 1 argument".to_string(),
+            ));
         }
         let agent = self.eval_in(env.clone(), &args[0])?;
         match agent {
@@ -1273,7 +1452,9 @@ impl Evaluator {
 
     fn eval_ref(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
-            return Err(EvalError::SpecialForm("ref requires exactly 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "ref requires exactly 1 argument".to_string(),
+            ));
         }
         let val = self.eval_in(env.clone(), &args[0])?;
         Ok(Value::ref_value(val))
@@ -1281,7 +1462,9 @@ impl Evaluator {
 
     fn eval_alter(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("alter requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "alter requires at least 2 arguments".to_string(),
+            ));
         }
         let ref_val = self.eval_in(env.clone(), &args[0])?;
         let func = self.eval_in(env.clone(), &args[1])?;
@@ -1294,7 +1477,11 @@ impl Evaluator {
                 all_args.extend(extra_args);
                 let new_val = match func {
                     Value::Fn(f) => self.call_fn(f, all_args)?,
-                    _ => return Err(EvalError::NotAFunction("alter second arg must be a function".to_string())),
+                    _ => {
+                        return Err(EvalError::NotAFunction(
+                            "alter second arg must be a function".to_string(),
+                        ))
+                    }
                 };
                 *r.state.lock() = new_val.clone();
                 Ok(new_val)
@@ -1314,12 +1501,14 @@ impl Evaluator {
 
     fn eval_thread(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
-            return Err(EvalError::SpecialForm("thread requires at least 1 argument".to_string()));
+            return Err(EvalError::SpecialForm(
+                "thread requires at least 1 argument".to_string(),
+            ));
         }
         let body: Vec<Value> = args.to_vec();
         let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let done_clone = done.clone();
-        
+
         let handle = std::thread::spawn(move || {
             let mut eval = Evaluator::new();
             for form in &body {
@@ -1327,7 +1516,7 @@ impl Evaluator {
             }
             done_clone.store(true, std::sync::atomic::Ordering::SeqCst);
         });
-        
+
         Ok(Value::Thread(crate::types::ThreadValue {
             id: crate::types::next_id(),
             handle: Arc::new(Mutex::new(Some(handle))),
@@ -1341,7 +1530,9 @@ impl Evaluator {
 
     fn eval_deliver(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 2 {
-            return Err(EvalError::SpecialForm("deliver requires exactly 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "deliver requires exactly 2 arguments".to_string(),
+            ));
         }
         let promise = self.eval_in(env.clone(), &args[0])?;
         let val = self.eval_in(env.clone(), &args[1])?;
@@ -1355,13 +1546,17 @@ impl Evaluator {
                 }
                 Ok(val)
             }
-            _ => Err(EvalError::Type("deliver first arg must be a promise".to_string())),
+            _ => Err(EvalError::Type(
+                "deliver first arg must be a promise".to_string(),
+            )),
         }
     }
 
     fn eval_locking(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 2 {
-            return Err(EvalError::SpecialForm("locking requires at least 2 arguments".to_string()));
+            return Err(EvalError::SpecialForm(
+                "locking requires at least 2 arguments".to_string(),
+            ));
         }
         let lock_obj = self.eval_in(env.clone(), &args[0])?;
         match lock_obj {
@@ -1373,7 +1568,9 @@ impl Evaluator {
                 }
                 Ok(result)
             }
-            _ => Err(EvalError::Type("locking first arg must be lockable".to_string())),
+            _ => Err(EvalError::Type(
+                "locking first arg must be lockable".to_string(),
+            )),
         }
     }
 
@@ -1383,7 +1580,11 @@ impl Evaluator {
         let params = match form {
             Value::Vector(v) => v.as_ref(),
             Value::List(l) => l.as_ref(),
-            _ => return Err(EvalError::SpecialForm("parameter list must be a vector".to_string())),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "parameter list must be a vector".to_string(),
+                ))
+            }
         };
 
         let mut result = Vec::new();
@@ -1395,11 +1596,17 @@ impl Evaluator {
                         // Rest parameter
                         i += 1;
                         if i >= params.len() {
-                            return Err(EvalError::SpecialForm("& must be followed by a symbol".to_string()));
+                            return Err(EvalError::SpecialForm(
+                                "& must be followed by a symbol".to_string(),
+                            ));
                         }
                         let rest_sym = match &params[i] {
                             Value::Symbol(s) => s.clone(),
-                            _ => return Err(EvalError::SpecialForm("& must be followed by a symbol".to_string())),
+                            _ => {
+                                return Err(EvalError::SpecialForm(
+                                    "& must be followed by a symbol".to_string(),
+                                ))
+                            }
                         };
                         result.push(Param::Rest(rest_sym));
                     } else {
@@ -1421,10 +1628,78 @@ impl Evaluator {
                     }
                     result.push(Param::DestructMap(bindings));
                 }
-                _ => return Err(EvalError::SpecialForm("parameter must be a symbol or destructuring form".to_string())),
+                _ => {
+                    return Err(EvalError::SpecialForm(
+                        "parameter must be a symbol or destructuring form".to_string(),
+                    ))
+                }
             }
             i += 1;
         }
+        Ok(result)
+    }
+
+    fn eval_thread_first(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        if args.is_empty() {
+            return Err(EvalError::SpecialForm(
+                "-> requires at least 1 argument".to_string(),
+            ));
+        }
+
+        let mut result = self.eval_in(env.clone(), &args[0])?;
+
+        for form in &args[1..] {
+            match form {
+                Value::List(list) if !list.is_empty() => {
+                    let mut new_list = Vec::with_capacity(list.len() + 1);
+                    new_list.push(list[0].clone());
+                    new_list.push(result);
+                    new_list.extend_from_slice(&list[1..]);
+                    result = self.eval_in(env.clone(), &Value::list(new_list))?;
+                }
+                Value::Symbol(_) => {
+                    result = self.eval_in(env.clone(), &Value::list(vec![form.clone(), result]))?;
+                }
+                _ => {
+                    return Err(EvalError::SpecialForm(
+                        "-> expects a list or symbol".to_string(),
+                    ))
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn eval_thread_last(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        if args.is_empty() {
+            return Err(EvalError::SpecialForm(
+                "->> requires at least 1 argument".to_string(),
+            ));
+        }
+
+        let mut result = self.eval_in(env.clone(), &args[0])?;
+
+        for form in &args[1..] {
+            match form {
+                Value::List(list) if !list.is_empty() => {
+                    let mut new_list = Vec::with_capacity(list.len() + 1);
+                    new_list.push(list[0].clone());
+                    new_list.extend_from_slice(&list[1..]);
+                    new_list.push(result);
+                    result = self.eval_in(env.clone(), &Value::list(new_list))?;
+                }
+                Value::Symbol(_) => {
+                    result = self.eval_in(env.clone(), &Value::list(vec![form.clone(), result]))?;
+                }
+                _ => {
+                    return Err(EvalError::SpecialForm(
+                        "->> expects a list or symbol".to_string(),
+                    ))
+                }
+            }
+        }
+
         Ok(result)
     }
 

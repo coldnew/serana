@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::ns::Namespace;
 use crate::types::{Symbol, Value};
@@ -10,14 +10,17 @@ macro_rules! builtin_fn {
             ns: Some(Arc::new("mora.core".to_string())),
             name: Arc::new($name.to_string()),
         };
-        Var::new(sym, Value::Fn(crate::types::FnValue {
-            name: Some($name.to_string()),
-            params: vec![],
-            body: Arc::new(vec![]),
-            closure: Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new())),
-            is_macro: false,
-            meta: None,
-        }))
+        Var::new(
+            sym,
+            Value::Fn(crate::types::FnValue {
+                name: Some($name.to_string()),
+                params: vec![],
+                body: Arc::new(vec![]),
+                closure: Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new())),
+                is_macro: false,
+                meta: None,
+            }),
+        )
     }};
 }
 
@@ -180,6 +183,12 @@ pub fn register_builtins(ns: &mut Namespace) {
     register_native(ns, "nil", native_nil_val);
     register_native(ns, "type", native_type);
     register_native(ns, "hash", native_hash);
+
+    // --- GC ---
+    register_native(ns, "gc-collect", native_gc_collect);
+    register_native(ns, "gc-count", native_gc_count);
+    register_native(ns, "gc-alloc", native_gc_alloc);
+    register_native(ns, "gc-deref", native_gc_deref);
 }
 
 fn register_native(ns: &mut Namespace, name: &str, func: fn(&[Value]) -> Result<Value, String>) {
@@ -203,18 +212,19 @@ fn register_native_global(name: &str, func: NativeFn) {
 
 pub fn call_native(name: &str, args: &[Value]) -> Result<Value, String> {
     let registry = get_registry().lock();
-    registry.get(name).map(|f| f(args)).unwrap_or_else(|| {
-        Err(format!("unknown native function: {}", name))
-    })
+    registry
+        .get(name)
+        .map(|f| f(args))
+        .unwrap_or_else(|| Err(format!("unknown native function: {}", name)))
 }
 
 pub fn invoke_fn(func: &Value, args: &[Value]) -> Result<Value, String> {
-    crate::eval::with_evaluator(|eval| {
-        match func {
-            Value::Fn(f) => eval.call_fn(f.clone(), args.to_vec()).map_err(|e| e.to_string()),
-            Value::Native(f) => f(args),
-            _ => Err("not a function".to_string()),
-        }
+    crate::eval::with_evaluator(|eval| match func {
+        Value::Fn(f) => eval
+            .call_fn(f.clone(), args.to_vec())
+            .map_err(|e| e.to_string()),
+        Value::Native(f) => f(args),
+        _ => Err("not a function".to_string()),
     })
 }
 
@@ -442,15 +452,33 @@ fn compare_values(a: &Value, b: &Value) -> i64 {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => a - b,
         (Value::Float(a), Value::Float(b)) => {
-            if a < b { -1 } else if a > b { 1 } else { 0 }
+            if a < b {
+                -1
+            } else if a > b {
+                1
+            } else {
+                0
+            }
         }
         (Value::Int(a), Value::Float(b)) => {
             let a_f = *a as f64;
-            if a_f < *b { -1 } else if a_f > *b { 1 } else { 0 }
+            if a_f < *b {
+                -1
+            } else if a_f > *b {
+                1
+            } else {
+                0
+            }
         }
         (Value::Float(a), Value::Int(b)) => {
             let b_f = *b as f64;
-            if a < &b_f { -1 } else if a > &b_f { 1 } else { 0 }
+            if a < &b_f {
+                -1
+            } else if a > &b_f {
+                1
+            } else {
+                0
+            }
         }
         (Value::String(a), Value::String(b)) => a.cmp(b) as i64,
         _ => 0,
@@ -569,7 +597,10 @@ fn native_is_float(args: &[Value]) -> Result<Value, String> {
 }
 
 fn native_is_number(args: &[Value]) -> Result<Value, String> {
-    Ok(Value::Bool(matches!(args.get(0), Some(Value::Int(_) | Value::Float(_)))))
+    Ok(Value::Bool(matches!(
+        args.get(0),
+        Some(Value::Int(_) | Value::Float(_))
+    )))
 }
 
 fn native_is_string(args: &[Value]) -> Result<Value, String> {
@@ -783,9 +814,7 @@ fn native_first(args: &[Value]) -> Result<Value, String> {
         return Err("first requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::List(v) | Value::Vector(v) => {
-            Ok(v.first().cloned().unwrap_or(Value::Nil))
-        }
+        Value::List(v) | Value::Vector(v) => Ok(v.first().cloned().unwrap_or(Value::Nil)),
         Value::Nil => Ok(Value::Nil),
         _ => Err(format!("first not supported on {}", args[0].type_name())),
     }
@@ -796,9 +825,7 @@ fn native_second(args: &[Value]) -> Result<Value, String> {
         return Err("second requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::List(v) | Value::Vector(v) => {
-            Ok(v.get(1).cloned().unwrap_or(Value::Nil))
-        }
+        Value::List(v) | Value::Vector(v) => Ok(v.get(1).cloned().unwrap_or(Value::Nil)),
         Value::Nil => Ok(Value::Nil),
         _ => Err(format!("second not supported on {}", args[0].type_name())),
     }
@@ -809,9 +836,7 @@ fn native_last(args: &[Value]) -> Result<Value, String> {
         return Err("last requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::List(v) | Value::Vector(v) => {
-            Ok(v.last().cloned().unwrap_or(Value::Nil))
-        }
+        Value::List(v) | Value::Vector(v) => Ok(v.last().cloned().unwrap_or(Value::Nil)),
         Value::Nil => Ok(Value::Nil),
         _ => Err(format!("last not supported on {}", args[0].type_name())),
     }
@@ -888,9 +913,7 @@ fn native_get(args: &[Value]) -> Result<Value, String> {
     }
     let default = args.get(2).cloned().unwrap_or(Value::Nil);
     match &args[0] {
-        Value::Map(m) => {
-            Ok(m.get(&args[1]).cloned().unwrap_or(default))
-        }
+        Value::Map(m) => Ok(m.get(&args[1]).cloned().unwrap_or(default)),
         Value::Set(s) => {
             if s.contains(&args[1]) {
                 Ok(args[1].clone())
@@ -1007,17 +1030,18 @@ fn native_assoc_in(args: &[Value]) -> Result<Value, String> {
     }
     let last_key = keys.last().unwrap().clone();
     let path_keys = &keys[..keys.len() - 1];
-    
+
     let mut current = args[0].clone();
     for key in path_keys {
         current = match current {
-            Value::Map(m) => {
-                m.get(key).cloned().unwrap_or(Value::Map(Arc::new(HashMap::new())))
-            }
+            Value::Map(m) => m
+                .get(key)
+                .cloned()
+                .unwrap_or(Value::Map(Arc::new(HashMap::new()))),
             _ => Value::Map(Arc::new(HashMap::new())),
         };
     }
-    
+
     match current {
         Value::Map(m) => {
             let mut new_m = m.as_ref().clone();
@@ -1065,7 +1089,10 @@ fn native_update_in(args: &[Value]) -> Result<Value, String> {
     let mut current = args[0].clone();
     for key in path_keys {
         current = match current {
-            Value::Map(m) => m.get(key).cloned().unwrap_or(Value::Map(Arc::new(HashMap::new()))),
+            Value::Map(m) => m
+                .get(key)
+                .cloned()
+                .unwrap_or(Value::Map(Arc::new(HashMap::new()))),
             _ => Value::Map(Arc::new(HashMap::new())),
         };
     }
@@ -1089,12 +1116,8 @@ fn native_contains(args: &[Value]) -> Result<Value, String> {
         return Err("contains? requires exactly 2 arguments".to_string());
     }
     match &args[0] {
-        Value::Map(m) => {
-            Ok(Value::Bool(m.contains_key(&args[1])))
-        }
-        Value::Set(s) => {
-            Ok(Value::Bool(s.contains(&args[1])))
-        }
+        Value::Map(m) => Ok(Value::Bool(m.contains_key(&args[1]))),
+        Value::Set(s) => Ok(Value::Bool(s.contains(&args[1]))),
         Value::Vector(v) => {
             if let Value::Int(idx) = &args[1] {
                 Ok(Value::Bool(*idx >= 0 && (*idx as usize) < v.len()))
@@ -1102,7 +1125,10 @@ fn native_contains(args: &[Value]) -> Result<Value, String> {
                 Ok(Value::Bool(false))
             }
         }
-        _ => Err(format!("contains? not supported on {}", args[0].type_name())),
+        _ => Err(format!(
+            "contains? not supported on {}",
+            args[0].type_name()
+        )),
     }
 }
 
@@ -1324,9 +1350,13 @@ fn native_sort_by(args: &[Value]) -> Result<Value, String> {
             let mut indices: Vec<usize> = (0..items.len()).collect();
             indices.sort_by(|&a, &b| {
                 let cmp = compare_values(&keys[a], &keys[b]);
-                if cmp < 0 { std::cmp::Ordering::Less }
-                else if cmp > 0 { std::cmp::Ordering::Greater }
-                else { std::cmp::Ordering::Equal }
+                if cmp < 0 {
+                    std::cmp::Ordering::Less
+                } else if cmp > 0 {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Equal
+                }
             });
             let sorted: Vec<Value> = indices.into_iter().map(|i| items[i].clone()).collect();
             Ok(Value::list(sorted))
@@ -1524,9 +1554,7 @@ fn native_reduce(args: &[Value]) -> Result<Value, String> {
         (args[1].clone(), &args[2])
     } else {
         match &args[1] {
-            Value::List(v) | Value::Vector(v) if !v.is_empty() => {
-                (v[0].clone(), &args[1])
-            }
+            Value::List(v) | Value::Vector(v) if !v.is_empty() => (v[0].clone(), &args[1]),
             Value::List(_) | Value::Vector(_) => return Ok(Value::Nil),
             _ => return Err("reduce second arg must be a sequence".to_string()),
         }
@@ -1686,10 +1714,13 @@ fn native_interleave(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 {
         return Err("interleave requires at least 2 arguments".to_string());
     }
-    let seqs: Vec<&[Value]> = args.iter().map(|a| match a {
-        Value::List(v) | Value::Vector(v) => v.as_ref() as &[Value],
-        _ => &[] as &[Value],
-    }).collect();
+    let seqs: Vec<&[Value]> = args
+        .iter()
+        .map(|a| match a {
+            Value::List(v) | Value::Vector(v) => v.as_ref() as &[Value],
+            _ => &[] as &[Value],
+        })
+        .collect();
     let min_len = seqs.iter().map(|s| s.len()).min().unwrap_or(0);
     let mut result = Vec::with_capacity(min_len * args.len());
     for i in 0..min_len {
@@ -2003,7 +2034,9 @@ fn native_starts_with(args: &[Value]) -> Result<Value, String> {
         return Err("starts-with? requires exactly 2 arguments".to_string());
     }
     match (&args[0], &args[1]) {
-        (Value::String(s), Value::String(prefix)) => Ok(Value::Bool(s.starts_with(prefix.as_str()))),
+        (Value::String(s), Value::String(prefix)) => {
+            Ok(Value::Bool(s.starts_with(prefix.as_str())))
+        }
         _ => Err("starts-with? requires strings".to_string()),
     }
 }
@@ -2190,9 +2223,7 @@ fn native_read_string(args: &[Value]) -> Result<Value, String> {
         return Err("read-string requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::String(s) => {
-            crate::reader::read_str(s).map_err(|e| format!("read error: {}", e))
-        }
+        Value::String(s) => crate::reader::read_str(s).map_err(|e| format!("read error: {}", e)),
         _ => Err("read-string requires a string".to_string()),
     }
 }
@@ -2237,8 +2268,16 @@ fn native_namespace(args: &[Value]) -> Result<Value, String> {
         return Err("namespace requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::Keyword(k) => Ok(k.ns.as_ref().map(|ns| Value::string(ns.as_str())).unwrap_or(Value::Nil)),
-        Value::Symbol(s) => Ok(s.ns.as_ref().map(|ns| Value::string(ns.as_str())).unwrap_or(Value::Nil)),
+        Value::Keyword(k) => Ok(k
+            .ns
+            .as_ref()
+            .map(|ns| Value::string(ns.as_str()))
+            .unwrap_or(Value::Nil)),
+        Value::Symbol(s) => Ok(s
+            .ns
+            .as_ref()
+            .map(|ns| Value::string(ns.as_str()))
+            .unwrap_or(Value::Nil)),
         _ => Err("namespace requires a keyword or symbol".to_string()),
     }
 }
@@ -2303,4 +2342,39 @@ fn native_hash(args: &[Value]) -> Result<Value, String> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     args[0].hash(&mut hasher);
     Ok(Value::Int(hasher.finish() as i64))
+}
+
+fn native_gc_collect(_args: &[Value]) -> Result<Value, String> {
+    crate::eval::with_evaluator(|eval| {
+        let freed = eval.gc_heap.collect();
+        Ok(Value::Int(freed as i64))
+    })
+}
+
+fn native_gc_count(_args: &[Value]) -> Result<Value, String> {
+    crate::eval::with_evaluator(|eval| Ok(Value::Int(eval.gc_heap.object_count() as i64)))
+}
+
+fn native_gc_alloc(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("gc-alloc requires exactly 1 argument".to_string());
+    }
+    crate::eval::with_evaluator(|eval| {
+        let value = args[0].clone();
+        let gc = crate::gc::Gc::new(&eval.gc_heap, value);
+        Ok(Value::Gc(gc))
+    })
+}
+
+fn native_gc_deref(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("gc-deref requires exactly 1 argument".to_string());
+    }
+    match &args[0] {
+        Value::Gc(gc) => gc.with(|v| Ok(v.clone())),
+        other => Err(format!(
+            "gc-deref expects a gc value, got {}",
+            other.type_name()
+        )),
+    }
 }

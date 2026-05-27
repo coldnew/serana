@@ -1,12 +1,13 @@
 use parking_lot::Mutex;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::eval::EvalError;
+use crate::gc::{Gc, Traceable};
 use crate::ns::Namespace;
 
 pub mod builtin;
@@ -53,6 +54,7 @@ pub enum Value {
     Namespace(Arc<Mutex<Namespace>>),
     Promise(PromiseValue),
     Thread(ThreadValue),
+    Gc(Gc<Value>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -163,6 +165,7 @@ impl Value {
             Value::Namespace(_) => "namespace",
             Value::Promise(_) => "promise",
             Value::Thread(_) => "thread",
+            Value::Gc(_) => "gc",
         }
     }
 
@@ -203,7 +206,10 @@ impl Value {
                 // "/" alone or starts/ends with "/" - treat as regular symbol
                 (None, Arc::new(s))
             } else {
-                (Some(Arc::new(s[..pos].to_string())), Arc::new(s[pos + 1..].to_string()))
+                (
+                    Some(Arc::new(s[..pos].to_string())),
+                    Arc::new(s[pos + 1..].to_string()),
+                )
             }
         } else {
             (None, Arc::new(s))
@@ -218,7 +224,10 @@ impl Value {
             if pos == 0 || pos == s.len() - 1 {
                 (None, Arc::new(s.to_string()))
             } else {
-                (Some(Arc::new(s[..pos].to_string())), Arc::new(s[pos + 1..].to_string()))
+                (
+                    Some(Arc::new(s[..pos].to_string())),
+                    Arc::new(s[pos + 1..].to_string()),
+                )
             }
         } else {
             (None, Arc::new(s.to_string()))
@@ -372,6 +381,7 @@ impl fmt::Debug for Value {
             }
             Value::Promise(_) => write!(f, "#<promise>"),
             Value::Thread(_) => write!(f, "#<thread>"),
+            Value::Gc(gc) => gc.with(|v| write!(f, "#<gc:{:?}>", v)),
         }
     }
 }
@@ -404,9 +414,8 @@ impl PartialEq for Value {
             (Value::Agent(a), Value::Agent(b)) => a.id == b.id,
             (Value::Future(a), Value::Future(b)) => a.id == b.id,
             (Value::Ref(a), Value::Ref(b)) => a.id == b.id,
-            (Value::Fn(a), Value::Fn(b)) => {
-                a.name == b.name && Arc::ptr_eq(&a.body, &b.body)
-            }
+            (Value::Fn(a), Value::Fn(b)) => a.name == b.name && Arc::ptr_eq(&a.body, &b.body),
+            (Value::Gc(a), Value::Gc(b)) => a == b,
             _ => false,
         }
     }
@@ -442,7 +451,128 @@ impl std::hash::Hash for Value {
             Value::Agent(a) => a.id.hash(state),
             Value::Future(a) => a.id.hash(state),
             Value::Ref(a) => a.id.hash(state),
+            Value::Gc(gc) => gc.id().hash(state),
             _ => std::ptr::hash(self, state),
         }
     }
 }
+
+// --- Gc<Value> trait implementations ---
+
+impl fmt::Debug for Gc<Value> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.with(|v| write!(f, "#<gc:{:?}>", v))
+    }
+}
+
+impl PartialEq for Gc<Value> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl Eq for Gc<Value> {}
+
+impl Hash for Gc<Value> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
+// --- Traceable implementations for GC ---
+
+impl Traceable for Value {
+    fn trace(&self, children: &mut Vec<usize>) {
+        match self {
+            Value::List(v) | Value::Vector(v) | Value::Set(v) => {
+                for item in v.iter() {
+                    item.trace(children);
+                }
+            }
+            Value::Map(m) => {
+                for (k, v) in m.iter() {
+                    k.trace(children);
+                    v.trace(children);
+                }
+            }
+            Value::Fn(f) => {
+                let closure = f.closure.lock();
+                for val in closure.values() {
+                    val.trace(children);
+                }
+                for form in f.body.iter() {
+                    form.trace(children);
+                }
+            }
+            Value::Macro(m) => {
+                let closure = m.closure.lock();
+                for val in closure.values() {
+                    val.trace(children);
+                }
+                for form in m.body.iter() {
+                    form.trace(children);
+                }
+            }
+            Value::Atom(a) => {
+                a.lock().trace(children);
+            }
+            Value::Agent(a) => {
+                a.state.lock().trace(children);
+                let queue = a.queue.lock();
+                for val in queue.iter() {
+                    val.trace(children);
+                }
+            }
+            Value::Ref(r) => {
+                r.state.lock().trace(children);
+            }
+            Value::Gc(gc) => {
+                gc.with(|v| v.trace(children));
+            }
+            _ => {}
+        }
+    }
+}
+
+impl Traceable for Keyword {}
+impl Traceable for Symbol {}
+impl Traceable for FnValue {
+    fn trace(&self, children: &mut Vec<usize>) {
+        let closure = self.closure.lock();
+        for val in closure.values() {
+            val.trace(children);
+        }
+        for form in self.body.iter() {
+            form.trace(children);
+        }
+    }
+}
+impl Traceable for MacroValue {
+    fn trace(&self, children: &mut Vec<usize>) {
+        let closure = self.closure.lock();
+        for val in closure.values() {
+            val.trace(children);
+        }
+        for form in self.body.iter() {
+            form.trace(children);
+        }
+    }
+}
+impl Traceable for AgentValue {
+    fn trace(&self, children: &mut Vec<usize>) {
+        self.state.lock().trace(children);
+        let queue = self.queue.lock();
+        for val in queue.iter() {
+            val.trace(children);
+        }
+    }
+}
+impl Traceable for FutureValue {}
+impl Traceable for RefValue {
+    fn trace(&self, children: &mut Vec<usize>) {
+        self.state.lock().trace(children);
+    }
+}
+impl Traceable for PromiseValue {}
+impl Traceable for ThreadValue {}
+impl Traceable for Param {}
