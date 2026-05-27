@@ -2,6 +2,7 @@
 //!
 //! Maintains a long-running bash process that can receive commands
 //! via stdin, avoiding fork/exec overhead for each command.
+//! Output is automatically minimized to reduce token usage.
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -10,6 +11,8 @@ use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 use serana_core::{Result, Tool};
+
+use crate::minimizer;
 
 /// A persistent shell session.
 pub struct ShellSession {
@@ -193,6 +196,26 @@ impl Tool for ShellTool {
         }
 
         let session = guard.as_ref().unwrap();
-        session.execute(command, timeout).await
+        let result = session.execute(command, timeout).await?;
+
+        // Apply minimizer to reduce output tokens
+        if let (Some(stdout), Some(exit_code)) = (
+            result.get("stdout").and_then(|v| v.as_str()),
+            result.get("exit_code").and_then(|v| v.as_i64()),
+        ) {
+            let minimized = minimizer::minimize(command, stdout, exit_code as i32);
+            if minimized.filter.is_some() {
+                return Ok(json!({
+                    "stdout": minimized.text,
+                    "stderr": result.get("stderr").and_then(|v| v.as_str()).unwrap_or(""),
+                    "exit_code": exit_code,
+                    "minimized": true,
+                    "filter": minimized.filter.unwrap_or(""),
+                    "original_bytes": minimized.original_text.len(),
+                }));
+            }
+        }
+
+        Ok(result)
     }
 }

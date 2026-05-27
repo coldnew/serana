@@ -65,6 +65,7 @@ cosmic-text = "0.12"
 glyphon = "0.11"
 pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
+rayon = "1.10"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

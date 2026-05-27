@@ -2044,6 +2044,7 @@ dependencies = [
  "mora-lisp",
  "pollster",
  "ratatui",
+ "rayon",
  "serana-tree-sitter",
  "serde",
  "serde_json",

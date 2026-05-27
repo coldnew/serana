@@ -3,6 +3,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use rayon::prelude::*;
+
 use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -107,18 +109,27 @@ fn resolve_colors(style: MoraStyle) -> (Option<MoraColor>, Option<MoraColor>) {
 
 fn hash_cells(cells: &[Vec<CellData>]) -> u64 {
     use std::hash::{Hash, Hasher};
+    // Parallel: hash each row independently, then combine
+    let row_hashes: Vec<u64> = cells
+        .par_iter()
+        .map(|row| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            for cell in row {
+                cell.ch.hash(&mut hasher);
+                cell.style.fg.map(|c| (c.r, c.g, c.b)).hash(&mut hasher);
+                cell.style.bg.map(|c| (c.r, c.g, c.b)).hash(&mut hasher);
+                cell.style.bold.hash(&mut hasher);
+                cell.style.italic.hash(&mut hasher);
+                cell.style.underline.hash(&mut hasher);
+                cell.style.reverse.hash(&mut hasher);
+                cell.style.dim.hash(&mut hasher);
+            }
+            hasher.finish()
+        })
+        .collect();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for row in cells {
-        for cell in row {
-            cell.ch.hash(&mut hasher);
-            cell.style.fg.map(|c| (c.r, c.g, c.b)).hash(&mut hasher);
-            cell.style.bg.map(|c| (c.r, c.g, c.b)).hash(&mut hasher);
-            cell.style.bold.hash(&mut hasher);
-            cell.style.italic.hash(&mut hasher);
-            cell.style.underline.hash(&mut hasher);
-            cell.style.reverse.hash(&mut hasher);
-            cell.style.dim.hash(&mut hasher);
-        }
+    for h in row_hashes {
+        h.hash(&mut hasher);
     }
     hasher.finish()
 }
@@ -340,33 +351,69 @@ impl WgpuBackend {
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        // Update only dirty cells in the persistent vertex buffer
-        let mut any_dirty = false;
-        for row in 0..self.rows as usize {
-            for col in 0..self.cols as usize {
-                let idx = row * self.cols as usize + col;
-                if !self.dirty_cells[idx] {
-                    continue;
+        // Update dirty cells in the persistent vertex buffer
+        // Use rayon for bulk rebuild (many dirty cells), sequential for sparse updates
+        let dirty_count = self.dirty_cells.iter().filter(|&&d| d).count();
+        let total = self.rows as usize * self.cols as usize;
+        let any_dirty = dirty_count > 0;
+
+        if dirty_count > total / 2 {
+            // Bulk rebuild: regenerate ALL vertices in parallel using row chunks
+            let cell_width = self.cell_width;
+            let cell_height = self.cell_height;
+            let cols = self.cols as usize;
+
+            self.rect_vertices
+                .par_chunks_mut(cols * 6)
+                .zip(self.cells.par_iter())
+                .enumerate()
+                .for_each(|(row, (vert_row, cell_row))| {
+                    let y = row as f32 * cell_height;
+                    let y2 = y + cell_height;
+                    for (col, (vert_group, cell)) in
+                        vert_row.chunks_exact_mut(6).zip(cell_row.iter()).enumerate()
+                    {
+                        let x = col as f32 * cell_width;
+                        let x2 = x + cell_width;
+                        let (_fg, bg) = resolve_colors(cell.style);
+                        let bg_color = bg.unwrap_or(MoraColor::new(30, 30, 30));
+                        let c = color_to_linear(bg_color);
+                        vert_group[0] = RectVertex { position: [x, y], color: c };
+                        vert_group[1] = RectVertex { position: [x2, y], color: c };
+                        vert_group[2] = RectVertex { position: [x, y2], color: c };
+                        vert_group[3] = RectVertex { position: [x2, y], color: c };
+                        vert_group[4] = RectVertex { position: [x2, y2], color: c };
+                        vert_group[5] = RectVertex { position: [x, y2], color: c };
+                    }
+                });
+            self.dirty_cells.iter_mut().for_each(|d| *d = false);
+        } else {
+            // Sparse update: only touch dirty cells
+            for row in 0..self.rows as usize {
+                for col in 0..self.cols as usize {
+                    let idx = row * self.cols as usize + col;
+                    if !self.dirty_cells[idx] {
+                        continue;
+                    }
+                    self.dirty_cells[idx] = false;
+
+                    let cell = &self.cells[row][col];
+                    let x = col as f32 * self.cell_width;
+                    let y = row as f32 * self.cell_height;
+                    let (_fg, bg) = resolve_colors(cell.style);
+                    let bg_color = bg.unwrap_or(MoraColor::new(30, 30, 30));
+                    let c = color_to_linear(bg_color);
+                    let x2 = x + self.cell_width;
+                    let y2 = y + self.cell_height;
+
+                    let vi = idx * 6;
+                    self.rect_vertices[vi] = RectVertex { position: [x, y], color: c };
+                    self.rect_vertices[vi + 1] = RectVertex { position: [x2, y], color: c };
+                    self.rect_vertices[vi + 2] = RectVertex { position: [x, y2], color: c };
+                    self.rect_vertices[vi + 3] = RectVertex { position: [x2, y], color: c };
+                    self.rect_vertices[vi + 4] = RectVertex { position: [x2, y2], color: c };
+                    self.rect_vertices[vi + 5] = RectVertex { position: [x, y2], color: c };
                 }
-                any_dirty = true;
-                self.dirty_cells[idx] = false;
-
-                let cell = &self.cells[row][col];
-                let x = col as f32 * self.cell_width;
-                let y = row as f32 * self.cell_height;
-                let (_fg, bg) = resolve_colors(cell.style);
-                let bg_color = bg.unwrap_or(MoraColor::new(30, 30, 30));
-                let c = color_to_linear(bg_color);
-                let x2 = x + self.cell_width;
-                let y2 = y + self.cell_height;
-
-                let vi = idx * 6;
-                self.rect_vertices[vi] = RectVertex { position: [x, y], color: c };
-                self.rect_vertices[vi + 1] = RectVertex { position: [x2, y], color: c };
-                self.rect_vertices[vi + 2] = RectVertex { position: [x, y2], color: c };
-                self.rect_vertices[vi + 3] = RectVertex { position: [x2, y], color: c };
-                self.rect_vertices[vi + 4] = RectVertex { position: [x2, y2], color: c };
-                self.rect_vertices[vi + 5] = RectVertex { position: [x, y2], color: c };
             }
         }
 
