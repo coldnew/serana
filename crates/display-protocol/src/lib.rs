@@ -9,15 +9,41 @@
 //!                  ──[DisplayCmd]──►
 //! ```
 //!
-//! - `FrameUpdate`: Core → Frontend. Contains the rendered grid, cursor, chrome.
-//! - `InputEvent`: Frontend → Core. Keyboard, mouse, resize events.
-//! - `DisplayCmd`: Core → Frontend. Imperative commands (window title, bell, etc.)
+//! ## Declarative UI System
+//!
+//! In addition to the grid-based protocol, this crate provides a declarative
+//! UI system inspired by React/storm-rs:
+//!
+//! ```ignore
+//! use display_protocol::*;
+//!
+//! let tree = rsx! {
+//!     Column(gap = 1) {
+//!         Text(bold) { "Hello, World!" }
+//!         Divider()
+//!         Row(gap = 2) {
+//!             Text(color = Color::new(255, 0, 0)) { "Red" }
+//!             Text(color = Color::new(0, 255, 0)) { "Green" }
+//!         }
+//!     }
+//! };
+//!
+//! let buf = paint(&tree, 80, 24);
+//! ```
 
 mod types;
 mod frame;
 mod input;
 mod command;
 pub mod wire;
+
+// Declarative UI system
+pub mod ui;
+pub mod rsx;
+pub mod buffer;
+pub mod layout;
+pub mod paint;
+pub mod renderer;
 
 #[cfg(feature = "tui")]
 mod conversions;
@@ -27,3 +53,14 @@ pub use frame::{Cell, Grid, CursorState, CursorStyle, StatusLine, FrameUpdate};
 pub use input::{KeyEvent, KeyCode, KeyModifiers, InputEvent, MouseEventKind};
 pub use command::{DisplayCmd, PopupItem, PopupItemKind};
 pub use wire::{WireMessage, PROTOCOL_VERSION};
+
+// Declarative UI re-exports
+pub use ui::{
+    UiNode, TextNode, BoxNode, FlexNode, SpanNode, ListNode, DividerNode,
+    ProgressNode, TableNode, ScrollNode,
+    Padding, Border, Wrap, Align, Justify, ListMarker,
+};
+pub use buffer::{ScreenBuffer, ScreenCell};
+pub use layout::{LayoutResult, compute_layout};
+pub use paint::{paint, paint_into};
+pub use renderer::{Renderer, AnsiRenderer};
