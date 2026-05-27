@@ -15,6 +15,13 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use crate::types::{Location, Position};
 use serana_core::Result;
 
+/// Document version tracking for didChange notifications.
+#[derive(Debug, Clone)]
+struct DocumentState {
+    version: i32,
+    content: String,
+}
+
 /// Language identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LanguageId {
@@ -125,6 +132,17 @@ impl LspManager {
             .await
     }
 
+    /// Notify the language server that a file's content has changed.
+    pub async fn change_file(&mut self, path: &Path, new_text: &str) -> Result<()> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .did_change(path, new_text)
+            .await
+    }
+
     async fn ensure_server(&mut self, lang: LanguageId) -> Result<()> {
         if !self.servers.contains_key(&lang) {
             self.start_server(lang).await?;
@@ -171,6 +189,8 @@ pub struct LspClient {
     stdout: BufReader<ChildStdout>,
     workspace_root: PathBuf,
     next_id: AtomicU64,
+    /// Track open documents and their versions.
+    documents: HashMap<String, DocumentState>,
 }
 
 impl LspClient {
@@ -198,6 +218,7 @@ impl LspClient {
             stdout: BufReader::new(stdout),
             workspace_root: workspace_root.to_path_buf(),
             next_id: AtomicU64::new(1),
+            documents: HashMap::new(),
         };
 
         client.initialize().await?;
@@ -245,15 +266,58 @@ impl LspClient {
     }
 
     pub async fn did_open(&mut self, path: &Path, language_id: &str, text: &str) -> Result<()> {
+        let uri = file_uri(path)?;
+        self.documents.insert(
+            uri.clone(),
+            DocumentState {
+                version: 1,
+                content: text.to_string(),
+            },
+        );
         self.notify(
             "textDocument/didOpen",
             json!({
                 "textDocument": {
-                    "uri": file_uri(path)?,
+                    "uri": uri,
                     "languageId": language_id,
                     "version": 1,
                     "text": text,
                 }
+            }),
+        )
+        .await
+    }
+
+    /// Notify the language server that a document's content has changed.
+    /// Uses full document sync (sends the entire text on each change).
+    pub async fn did_change(&mut self, path: &Path, new_text: &str) -> Result<()> {
+        let uri = file_uri(path)?;
+        let version = if let Some(state) = self.documents.get_mut(&uri) {
+            state.version += 1;
+            state.content = new_text.to_string();
+            state.version
+        } else {
+            // Auto-open if not yet tracked
+            self.documents.insert(
+                uri.clone(),
+                DocumentState {
+                    version: 1,
+                    content: new_text.to_string(),
+                },
+            );
+            1
+        };
+
+        self.notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "version": version,
+                },
+                "contentChanges": [{
+                    "text": new_text,
+                }]
             }),
         )
         .await
