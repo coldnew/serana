@@ -1818,23 +1818,15 @@ fn native_frequencies(args: &[Value]) -> Result<Value, String> {
     }
     match &args[0] {
         Value::List(v) | Value::Vector(v) => {
-            let mut counts = Vec::new();
+            let mut counts: HashMap<Value, i64> = HashMap::new();
             for item in v.iter() {
-                let mut found = false;
-                for (k, count) in counts.iter_mut() {
-                    if k == item {
-                        if let Value::Int(n) = count {
-                            *count = Value::Int(*n + 1);
-                        }
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    counts.push((item.clone(), Value::Int(1)));
-                }
+                *counts.entry(item.clone()).or_insert(0) += 1;
             }
-            Ok(Value::map(counts))
+            let result: HashMap<Value, Value> = counts
+                .into_iter()
+                .map(|(k, v)| (k, Value::Int(v)))
+                .collect();
+            Ok(Value::Map(Arc::new(result)))
         }
         _ => Err("frequencies requires a sequence".to_string()),
     }
@@ -2309,6 +2301,8 @@ fn native_hash(args: &[Value]) -> Result<Value, String> {
     if args.len() != 1 {
         return Err("hash requires exactly 1 argument".to_string());
     }
-    // Simple hash implementation
-    Ok(Value::Int(0))
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    args[0].hash(&mut hasher);
+    Ok(Value::Int(hasher.finish() as i64))
 }
