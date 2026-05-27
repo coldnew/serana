@@ -59,7 +59,7 @@ impl MoraCore {
         let mut grid = Grid::new(self.width, self.height);
         for y in 0..self.height {
             for x in 0..self.width {
-                let cell = ratatui_buf.get(x, y);
+                let cell = &ratatui_buf[(x, y)];
                 let fg: Color = MoraColor::from(cell.fg).into();
                 let bg: Color = MoraColor::from(cell.bg).into();
                 let style = Style {
@@ -95,10 +95,6 @@ impl MoraCore {
             status_line: StatusLine::default(),
             command_line: None,
             help_bar: None,
-            full_redraw: true,
-        }
-    }
-
             full_redraw: true,
         }
     }

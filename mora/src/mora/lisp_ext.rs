@@ -20,6 +20,7 @@ pub struct EditorState {
     pub hooks: std::collections::HashMap<String, Vec<Value>>,
     pub keybindings: std::collections::HashMap<String, Value>,
     pub overlays: OverlayStore,
+    pub ui_builders: Vec<Value>,
 }
 
 impl EditorState {
@@ -38,6 +39,7 @@ impl EditorState {
             hooks: std::collections::HashMap::new(),
             keybindings: std::collections::HashMap::new(),
             overlays: OverlayStore::new(),
+            ui_builders: Vec::new(),
         }
     }
 }
@@ -147,6 +149,10 @@ impl MoraLispBridge {
         ns.intern("*mora-version*", Value::string(env!("CARGO_PKG_VERSION")));
         ns.intern("*newline*", Value::string("\n"));
         ns.intern("*tab*", Value::string("\t"));
+
+        // UI DSL
+        ns.intern("register-ui-builder", Value::Native(prim_register_ui_builder));
+        ns.intern("ui-builders", Value::Native(prim_ui_builders));
     }
 
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
@@ -618,6 +624,348 @@ fn prim_shell_capture(args: &[Value]) -> Result<Value, String> {
         .map_err(|e| format!("failed to run command: {}", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(Value::string(stdout.trim_end_matches('\n').to_string()))
+}
+
+// --- UI DSL primitives ---
+
+fn prim_register_ui_builder(args: &[Value]) -> Result<Value, String> {
+    if args.is_empty() {
+        return Err("register-ui-builder requires 1 argument (a function)".to_string());
+    }
+    let builder = args[0].clone();
+    with_editor_state_mut(|state| {
+        state.ui_builders.push(builder);
+        Ok(Value::Nil)
+    })
+}
+
+fn prim_ui_builders(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        Ok(Value::Int(state.ui_builders.len() as i64))
+    })
+}
+
+// --- Lisp Value → UiNode converter ---
+
+fn map_get_kw<'a>(map: &'a std::collections::HashMap<Value, Value>, key: &str) -> Option<&'a Value> {
+    map.get(&Value::keyword(key))
+}
+
+fn map_get_str_kw(map: &std::collections::HashMap<Value, Value>, key: &str) -> Option<String> {
+    map_get_kw(map, key).and_then(|v| match v {
+        Value::String(s) => Some(s.to_string()),
+        Value::Keyword(k) => Some(k.name.to_string()),
+        _ => None,
+    })
+}
+
+fn map_get_bool_kw(map: &std::collections::HashMap<Value, Value>, key: &str) -> Option<bool> {
+    map_get_kw(map, key).and_then(|v| match v {
+        Value::Bool(b) => Some(*b),
+        _ => None,
+    })
+}
+
+fn map_get_u16_kw(map: &std::collections::HashMap<Value, Value>, key: &str) -> Option<u16> {
+    map_get_kw(map, key).and_then(|v| match v {
+        Value::Int(i) => Some(*i as u16),
+        _ => None,
+    })
+}
+
+fn map_get_f64_kw(map: &std::collections::HashMap<Value, Value>, key: &str) -> Option<f64> {
+    map_get_kw(map, key).and_then(|v| match v {
+        Value::Float(f) => Some(*f),
+        Value::Int(i) => Some(*i as f64),
+        _ => None,
+    })
+}
+
+fn parse_color_str(s: &str) -> display_protocol::Color {
+    match parse_color(s) {
+        Some(c) => display_protocol::Color::new(c.r, c.g, c.b),
+        None => display_protocol::Color::WHITE,
+    }
+}
+
+fn lisp_value_to_style(val: &Value) -> display_protocol::Style {
+    let mut style = display_protocol::Style::default();
+    if let Value::Map(map) = val {
+        if let Some(fg) = map_get_str_kw(map, "fg") {
+            style.fg = Some(parse_color_str(&fg));
+        }
+        if let Some(color) = map_get_str_kw(map, "color") {
+            style.fg = Some(parse_color_str(&color));
+        }
+        if let Some(bg) = map_get_str_kw(map, "bg") {
+            style.bg = Some(parse_color_str(&bg));
+        }
+        if let Some(b) = map_get_bool_kw(map, "bold") {
+            style.bold = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "italic") {
+            style.italic = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "underline") {
+            style.underline = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "dim") {
+            style.dim = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "strikethrough") {
+            style.strikethrough = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "reverse") {
+            style.reverse = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "blink") {
+            style.blink = b;
+        }
+    }
+    style
+}
+
+fn apply_style_to_text(mut node: display_protocol::UiNode, style: &display_protocol::Style) -> display_protocol::UiNode {
+    if *style != display_protocol::Style::default() {
+        node = node.bold().dim(); // reset
+        if style.bold { node = node.bold(); }
+        if style.dim { node = node.dim(); }
+        if style.italic { node = node.italic(); }
+        if style.underline { node = node.underline(); }
+        if let Some(fg) = style.fg { node = node.color(fg); }
+        if let Some(bg) = style.bg { node = node.bg(bg); }
+    }
+    node
+}
+
+pub fn lisp_value_to_uinode(val: &Value) -> display_protocol::UiNode {
+    match val {
+        Value::Nil => display_protocol::UiNode::None,
+        Value::Bool(b) => display_protocol::UiNode::text(b.to_string()),
+        Value::Int(i) => display_protocol::UiNode::text(i.to_string()),
+        Value::Float(f) => display_protocol::UiNode::text(f.to_string()),
+        Value::String(s) => display_protocol::UiNode::text(s.to_string()),
+        Value::Vector(v) => {
+            let children: Vec<display_protocol::UiNode> = v.iter().map(lisp_value_to_uinode).collect();
+            display_protocol::UiNode::column(children)
+        }
+        Value::Map(map) => {
+            let node_type = map_get_str_kw(map, "type").unwrap_or_default();
+            let style = map_get_kw(map, "style").map(lisp_value_to_style).unwrap_or_default();
+
+            match node_type.as_str() {
+                "text" => {
+                    let content = map_get_str_kw(map, "content").unwrap_or_default();
+                    let mut node = display_protocol::UiNode::text(content);
+                    node = apply_style_to_text(node, &style);
+                    node
+                }
+                "span" => {
+                    let content = map_get_str_kw(map, "content").unwrap_or_default();
+                    display_protocol::UiNode::span(content, style)
+                }
+                "column" => {
+                    let children = extract_children(map);
+                    let mut node = display_protocol::UiNode::column(children);
+                    node = apply_flex_props(node, map);
+                    node
+                }
+                "row" => {
+                    let children = extract_children(map);
+                    let mut node = display_protocol::UiNode::row(children);
+                    node = apply_flex_props(node, map);
+                    node
+                }
+                "box" => {
+                    let children = extract_children(map);
+                    let mut node = display_protocol::UiNode::boxed(children);
+                    node = apply_box_props(node, map);
+                    node
+                }
+                "divider" => {
+                    let node = display_protocol::UiNode::divider();
+                    if let Some(ch) = map_get_str_kw(map, "char").and_then(|s| s.chars().next()) {
+                        match node {
+                            display_protocol::UiNode::Divider(d) => {
+                                display_protocol::UiNode::Divider(d.char(ch))
+                            }
+                            other => other,
+                        }
+                    } else {
+                        node
+                    }
+                }
+                "progress" => {
+                    let value = map_get_f64_kw(map, "value").unwrap_or(0.0) as f32;
+                    let max = map_get_f64_kw(map, "max").unwrap_or(100.0) as f32;
+                    display_protocol::UiNode::progress(value, max)
+                }
+                "list" => {
+                    let children = extract_children(map);
+                    display_protocol::UiNode::list(children)
+                }
+                "show" => {
+                    let when = map_get_bool_kw(map, "when").unwrap_or(false);
+                    let child = map_get_kw(map, "child")
+                        .map(lisp_value_to_uinode)
+                        .unwrap_or(display_protocol::UiNode::None);
+                    display_protocol::UiNode::show(when, child)
+                }
+                "for" => {
+                    let children = if let Some(coll) = map_get_kw(map, "coll") {
+                        let func = map_get_kw(map, "func");
+                        match (func, coll) {
+                            (Some(_f), Value::Vector(v)) | (Some(_f), Value::List(v)) => {
+                                // Simplified: convert items directly (calling fn requires evaluator)
+                                v.iter().map(lisp_value_to_uinode).collect()
+                            }
+                            _ => extract_children(map),
+                        }
+                    } else {
+                        extract_children(map)
+                    };
+                    display_protocol::UiNode::For { children }
+                }
+                "scroll-view" => {
+                    let child = map_get_kw(map, "child")
+                        .map(lisp_value_to_uinode)
+                        .unwrap_or(display_protocol::UiNode::None);
+                    let mut scroll_top = 0u16;
+                    let mut height = 10u16;
+                    if let Some(props) = map_get_kw(map, "props").and_then(|v| match v {
+                        Value::Map(m) => Some(m.as_ref()),
+                        _ => None,
+                    }) {
+                        scroll_top = map_get_u16_kw(props, "scroll-top").unwrap_or(0);
+                        height = map_get_u16_kw(props, "height").unwrap_or(10);
+                    }
+                    display_protocol::UiNode::ScrollView(display_protocol::ScrollNode {
+                        child: Box::new(child),
+                        scroll_top,
+                        height,
+                    })
+                }
+                "button" => {
+                    let content = map_get_str_kw(map, "content").unwrap_or_default();
+                    let mut node = display_protocol::UiNode::text(content);
+                    node = apply_style_to_text(node, &style);
+                    node
+                }
+                _ => display_protocol::UiNode::None,
+            }
+        }
+        _ => display_protocol::UiNode::text(format!("{:?}", val)),
+    }
+}
+
+fn extract_children(map: &std::collections::HashMap<Value, Value>) -> Vec<display_protocol::UiNode> {
+    match map_get_kw(map, "children") {
+        Some(Value::Vector(v)) => v.iter().map(lisp_value_to_uinode).collect(),
+        Some(Value::List(v)) => v.iter().map(lisp_value_to_uinode).collect(),
+        _ => vec![],
+    }
+}
+
+fn apply_flex_props(
+    node: display_protocol::UiNode,
+    map: &std::collections::HashMap<Value, Value>,
+) -> display_protocol::UiNode {
+    let mut node = node;
+    if let Some(props) = map_get_kw(map, "props").and_then(|v| match v {
+        Value::Map(m) => Some(m.as_ref()),
+        _ => None,
+    }) {
+        if let Some(gap) = map_get_u16_kw(props, "gap") {
+            node = node.gap(gap);
+        }
+        if let Some(align) = map_get_str_kw(props, "align") {
+            node = node.align(match align.as_str() {
+                "center" => display_protocol::Align::Center,
+                "end" => display_protocol::Align::End,
+                "stretch" => display_protocol::Align::Stretch,
+                _ => display_protocol::Align::Start,
+            });
+        }
+        if let Some(justify) = map_get_str_kw(props, "justify") {
+            node = node.justify(match justify.as_str() {
+                "center" => display_protocol::Justify::Center,
+                "end" => display_protocol::Justify::End,
+                "space-between" => display_protocol::Justify::SpaceBetween,
+                "space-around" => display_protocol::Justify::SpaceAround,
+                _ => display_protocol::Justify::Start,
+            });
+        }
+        if let Some(w) = map_get_u16_kw(props, "width") {
+            node = node.width(w);
+        }
+        if let Some(h) = map_get_u16_kw(props, "height") {
+            node = node.height(h);
+        }
+        if let Some(fg) = map_get_f64_kw(props, "flex-grow") {
+            node = node.flex_grow(fg as f32);
+        }
+    }
+    node
+}
+
+fn apply_box_props(
+    node: display_protocol::UiNode,
+    map: &std::collections::HashMap<Value, Value>,
+) -> display_protocol::UiNode {
+    let mut node = node;
+    if let Some(props) = map_get_kw(map, "props").and_then(|v| match v {
+        Value::Map(m) => Some(m.as_ref()),
+        _ => None,
+    }) {
+        if let Some(title) = map_get_str_kw(props, "title") {
+            node = node.title(title);
+        }
+        if let Some(w) = map_get_u16_kw(props, "width") {
+            node = node.width(w);
+        }
+        if let Some(h) = map_get_u16_kw(props, "height") {
+            node = node.height(h);
+        }
+        if let Some(b) = map_get_bool_kw(props, "border") {
+            if b {
+                node = node.border(display_protocol::Border::all(None));
+            }
+        }
+    }
+    node
+}
+
+/// Build UI with Lisp builder hooks. Returns Lisp-generated UiNode if any builder is registered.
+pub fn build_lisp_ui(width: u16, height: u16) -> Option<display_protocol::UiNode> {
+    let builders: Vec<Value> = with_editor_state(|state| state.ui_builders.clone());
+
+    if builders.is_empty() {
+        return None;
+    }
+
+    let mut nodes = Vec::new();
+    for builder_fn in &builders {
+        let args = vec![Value::Int(width as i64), Value::Int(height as i64)];
+        let result = match builder_fn {
+            Value::Native(f) => f(&args),
+            _ => Err("ui-builder is not a native function".to_string()),
+        };
+
+        match result {
+            Ok(val) => {
+                nodes.push(lisp_value_to_uinode(&val));
+            }
+            Err(_) => {}
+        }
+    }
+
+    if nodes.is_empty() {
+        None
+    } else if nodes.len() == 1 {
+        Some(nodes.into_iter().next().unwrap())
+    } else {
+        Some(display_protocol::UiNode::column(nodes))
+    }
 }
 
 fn parse_color(s: &str) -> Option<super::display::style::MoraColor> {
