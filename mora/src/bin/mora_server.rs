@@ -74,7 +74,7 @@ fn main() -> anyhow::Result<()> {
         stream.flush()?;
 
         // Send initial frame
-        let frame = core.render_frame();
+        let frame = core.render_ui_frame();
         let msg = WireMessage::Frame(frame);
         stream.write_all(&msg.to_json_line().unwrap())?;
         stream.flush()?;
@@ -114,7 +114,7 @@ fn main() -> anyhow::Result<()> {
                             let _ = stream.flush();
 
                             // Send updated frame
-                            let frame = core.render_frame();
+                            let frame = core.render_ui_frame();
                             let msg = WireMessage::Frame(frame);
                             stream.write_all(&msg.to_json_line().unwrap())?;
                             stream.flush()?;
