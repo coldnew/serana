@@ -132,6 +132,119 @@ impl LspManager {
             .await
     }
 
+    pub async fn diagnostics(&mut self, path: &Path) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .diagnostics(path)
+            .await
+    }
+
+    pub async fn code_action(
+        &mut self,
+        path: &Path,
+        range_start: Position,
+        range_end: Position,
+    ) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .code_action(path, range_start, range_end)
+            .await
+    }
+
+    pub async fn rename(
+        &mut self,
+        path: &Path,
+        position: Position,
+        new_name: &str,
+    ) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .rename(path, position, new_name)
+            .await
+    }
+
+    pub async fn formatting(&mut self, path: &Path) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .formatting(path)
+            .await
+    }
+
+    pub async fn document_symbols(&mut self, path: &Path) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .document_symbols(path)
+            .await
+    }
+
+    pub async fn workspace_symbols(&mut self, query: &str) -> Result<Value> {
+        // Workspace symbols can come from any server; try the first available.
+        for (_lang, client) in self.servers.iter_mut() {
+            let result = client.workspace_symbols(query).await;
+            if result.is_ok() {
+                return result;
+            }
+        }
+        anyhow::bail!("No LSP server available for workspace symbol search")
+    }
+
+    pub async fn completion(
+        &mut self,
+        path: &Path,
+        position: Position,
+    ) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .completion(path, position)
+            .await
+    }
+
+    pub async fn signature_help(
+        &mut self,
+        path: &Path,
+        position: Position,
+    ) -> Result<Value> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .signature_help(path, position)
+            .await
+    }
+
+    pub async fn implementation(
+        &mut self,
+        path: &Path,
+        position: Position,
+    ) -> Result<Vec<Location>> {
+        let lang = language_for_path(path)?;
+        self.ensure_server(lang).await?;
+        self.servers
+            .get_mut(&lang)
+            .ok_or_else(|| anyhow::anyhow!("LSP server not available for {:?}", lang))?
+            .implementation(path, position)
+            .await
+    }
+
     /// Notify the language server that a file's content has changed.
     pub async fn change_file(&mut self, path: &Path, new_text: &str) -> Result<()> {
         let lang = language_for_path(path)?;
@@ -263,6 +376,152 @@ impl LspClient {
             )
             .await?;
         Ok(parse_hover(result))
+    }
+
+    pub async fn diagnostics(&mut self, path: &Path) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/diagnostic",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn code_action(
+        &mut self,
+        path: &Path,
+        range_start: Position,
+        range_end: Position,
+    ) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/codeAction",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                    "range": {
+                        "start": range_start,
+                        "end": range_end,
+                    },
+                    "context": {
+                        "diagnostics": [],
+                    },
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn rename(
+        &mut self,
+        path: &Path,
+        position: Position,
+        new_name: &str,
+    ) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/rename",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                    "position": position,
+                    "newName": new_name,
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn formatting(&mut self, path: &Path) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/formatting",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                    "options": {
+                        "tabSize": 4,
+                        "insertSpaces": true,
+                    },
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn document_symbols(&mut self, path: &Path) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/documentSymbol",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn workspace_symbols(&mut self, query: &str) -> Result<Value> {
+        let result = self
+            .request(
+                "workspace/symbol",
+                json!({
+                    "query": query,
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn completion(
+        &mut self,
+        path: &Path,
+        position: Position,
+    ) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/completion",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                    "position": position,
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn signature_help(
+        &mut self,
+        path: &Path,
+        position: Position,
+    ) -> Result<Value> {
+        let result = self
+            .request(
+                "textDocument/signatureHelp",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                    "position": position,
+                }),
+            )
+            .await?;
+        Ok(result)
+    }
+
+    pub async fn implementation(
+        &mut self,
+        path: &Path,
+        position: Position,
+    ) -> Result<Vec<Location>> {
+        let result = self
+            .request(
+                "textDocument/implementation",
+                json!({
+                    "textDocument": { "uri": file_uri(path)? },
+                    "position": position,
+                }),
+            )
+            .await?;
+        parse_locations(result)
     }
 
     pub async fn did_open(&mut self, path: &Path, language_id: &str, text: &str) -> Result<()> {

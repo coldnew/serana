@@ -182,8 +182,41 @@ impl Tool for ReadFileTool {
             return result;
         }
 
+        // Warn if reading a file that likely contains secrets
+        let secret_warning = if super::secrets::is_secret_file(path) {
+            Some("Warning: This file may contain secrets. Content will be redacted.")
+        } else {
+            None
+        };
+
         let content = fs::read_to_string(path).await?;
-        Ok(json!({"content": content, "path": path}))
+
+        // Check for git merge conflict markers
+        let has_conflicts = content.contains("<<<<<<< HEAD")
+            || content.contains("=======");
+        let conflict_warning = if has_conflicts
+            && content.contains(">>>>>>> ")
+        {
+            Some("Warning: This file contains unresolved merge conflicts.")
+        } else {
+            None
+        };
+
+        // Redact secrets if this is a secret file
+        let output_content = if secret_warning.is_some() {
+            super::secrets::redact_secrets(&content)
+        } else {
+            content
+        };
+
+        let mut result = json!({"content": output_content, "path": path});
+        if let Some(w) = secret_warning {
+            result["warning"] = json!(w);
+        }
+        if let Some(w) = conflict_warning {
+            result["conflict_warning"] = json!(w);
+        }
+        Ok(result)
     }
 }
 

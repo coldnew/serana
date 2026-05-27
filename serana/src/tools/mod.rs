@@ -2,30 +2,38 @@ use std::collections::HashMap;
 
 use serana_core::{FunctionDefinition, Tool, ToolDefinition};
 
+pub mod ask;
 pub mod ast_edit;
+pub mod ast_grep;
 pub mod browser;
+pub mod calc;
 pub mod checkpoint;
 pub mod clipboard;
 pub mod code_intel;
 pub mod conflict;
 pub mod dap;
 pub mod eval;
+pub mod export;
 pub mod fs;
 pub mod git_ops;
 pub mod github;
 pub mod hashline;
+pub mod inspect_image;
 pub mod mcp;
 pub mod memory;
 pub mod recipe;
+pub mod render_mermaid;
 pub mod review;
 pub mod rules;
 pub mod search_native;
+pub mod secrets;
 pub mod self_evolve;
 pub mod shell;
 pub mod skill;
 pub mod minimizer;
 pub mod ssh;
 pub mod stats;
+pub mod todo_write;
 pub mod web_search;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +97,7 @@ impl ToolRegistry {
         self.register(Box::new(code_intel::AstFunctionsTool));
         self.register(Box::new(code_intel::AstImportsTool));
         self.register(Box::new(ast_edit::AstEditTool));
+        self.register(Box::new(ast_grep::AstGrepTool));
         self.register(Box::new(search_native::FindTool));
         self.register(Box::new(search_native::SearchTool));
         self.register(Box::new(rules::RulesInfoTool));
@@ -105,6 +114,8 @@ impl ToolRegistry {
         self.register(Box::new(conflict::ConflictResolveTool));
         self.register(Box::new(stats::StatsTool::new()));
         self.register(Box::new(shell::ShellTool::new()));
+        self.register(Box::new(calc::CalcTool));
+        self.register(Box::new(todo_write::TodoWriteTool));
         if let Err(e) = memory::register_memory_tools(self) {
             tracing::warn!("Failed to initialize memory store: {}", e);
         }
@@ -134,6 +145,10 @@ impl ToolRegistry {
         self.register(Box::new(mcp::McpTool::new()));
         self.register(Box::new(clipboard::ClipboardCopyTool));
         self.register(Box::new(clipboard::ClipboardPasteTool));
+        self.register(Box::new(ask::AskTool));
+        self.register(Box::new(render_mermaid::RenderMermaidTool));
+        self.register(Box::new(inspect_image::InspectImageTool));
+        self.register(Box::new(export::ExportTool));
     }
 
     /// Register LSP tools with a shared, persistent LspManager.
@@ -144,7 +159,34 @@ impl ToolRegistry {
         self.register(Box::new(code_intel::LspReferencesTool {
             manager: manager.clone(),
         }));
-        self.register(Box::new(code_intel::LspHoverTool { manager }));
+        self.register(Box::new(code_intel::LspHoverTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspDiagnosticsTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspCodeActionTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspRenameTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspFormatTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspDocumentSymbolsTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspWorkspaceSymbolsTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspCompletionTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspSignatureHelpTool {
+            manager: manager.clone(),
+        }));
+        self.register(Box::new(code_intel::LspImplementationTool { manager }));
     }
     /// Register skill creation tool.
     pub fn register_skill(&mut self, workspace: std::path::PathBuf) {
