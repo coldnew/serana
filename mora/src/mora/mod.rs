@@ -15,6 +15,7 @@ mod register;
 mod status_line;
 pub mod syntax;
 pub mod ui;
+pub mod ui_node;
 mod view;
 pub mod wasm_ext;
 mod window;

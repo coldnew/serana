@@ -1,11 +1,13 @@
 use crate::mora::display::style::{MoraColor, MoraStyle};
 use crate::mora::editor::MoraEditor;
 use crate::mora::ui::EditorWidget;
+use crate::mora::ui_node;
 use crate::mora::display::backend::{InputEvent, MouseKind};
 use crate::mora::display::event::{MoraKeyEvent, MoraKeyCode};
 use display_protocol::{
     Cell, Color, CursorState, CursorStyle, FrameUpdate, Grid, StatusLine, Style,
     DisplayCmd, InputEvent as ProtoInputEvent, KeyEvent, KeyCode,
+    compute_layout, paint,
 };
 use ratatui::layout::Rect;
 use ratatui::widgets::Widget;
@@ -79,6 +81,57 @@ impl MoraCore {
         let cursor_style = match self.editor.mode() {
             crate::mora::keymap::EditorMode::Insert => CursorStyle::Bar,
             crate::mora::keymap::EditorMode::Normal => CursorStyle::Block,
+            _ => CursorStyle::Block,
+        };
+
+        FrameUpdate {
+            grid,
+            cursor: CursorState {
+                x: self.editor.buffer.cursor.col as u16,
+                y: self.editor.buffer.cursor.row as u16,
+                visible: cursor_visible,
+                style: cursor_style,
+            },
+            status_line: StatusLine::default(),
+            command_line: None,
+            help_bar: None,
+            full_redraw: true,
+        }
+    }
+
+            full_redraw: true,
+        }
+    }
+
+    /// Render editor state using the declarative UiNode pipeline.
+    /// Builds a UiNode tree → layout → paint → Grid.
+    pub fn render_ui_frame(&self) -> FrameUpdate {
+        let ui = ui_node::build_ui(&self.editor, self.width, self.height);
+        let layout = compute_layout(&ui, self.width, self.height);
+        let buf = paint(&ui, self.width, self.height);
+
+        let mut grid = Grid::new(self.width, self.height);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let cell = buf.get(x, y);
+                let style = Style {
+                    fg: Some(Color::new(cell.fg.r, cell.fg.g, cell.fg.b)),
+                    bg: Some(Color::new(cell.bg.r, cell.bg.g, cell.bg.b)),
+                    bold: cell.bold,
+                    italic: cell.italic,
+                    underline: cell.underline,
+                    strikethrough: cell.strikethrough,
+                    dim: cell.dim,
+                    reverse: cell.reverse,
+                    ..Style::default()
+                };
+                grid.set(x, y, Cell { ch: cell.ch, style });
+            }
+        }
+
+        let cursor_visible = true;
+        let cursor_style = match self.editor.mode() {
+            crate::mora::keymap::EditorMode::Insert => CursorStyle::Bar,
             _ => CursorStyle::Block,
         };
 
