@@ -4,8 +4,12 @@ use super::{CommentStyle, MajorMode, MajorModeKind};
 pub struct GoMode;
 
 impl MajorMode for GoMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::Go }
-    fn name(&self) -> &'static str { "Go" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::Go
+    }
+    fn name(&self) -> &'static str {
+        "Go"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,8 +19,12 @@ impl MajorMode for GoMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 1 }
-    fn use_tabs(&self) -> bool { true }
+    fn indent_width(&self) -> usize {
+        1
+    }
+    fn use_tabs(&self) -> bool {
+        true
+    }
 
     fn auto_indent(&self, prev_line: &str) -> String {
         let trimmed = prev_line.trim_end();

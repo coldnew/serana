@@ -4,8 +4,12 @@ use super::{BracketPair, CommentStyle, MajorMode, MajorModeKind};
 pub struct LispMode;
 
 impl MajorMode for LispMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::Lisp }
-    fn name(&self) -> &'static str { "Lisp" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::Lisp
+    }
+    fn name(&self) -> &'static str {
+        "Lisp"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,12 +19,20 @@ impl MajorMode for LispMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 2 }
+    fn indent_width(&self) -> usize {
+        2
+    }
 
     fn bracket_pairs(&self) -> Vec<BracketPair> {
         vec![
-            BracketPair { open: '(', close: ')' },
-            BracketPair { open: '[', close: ']' },
+            BracketPair {
+                open: '(',
+                close: ')',
+            },
+            BracketPair {
+                open: '[',
+                close: ']',
+            },
         ]
     }
 

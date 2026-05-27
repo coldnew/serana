@@ -4,8 +4,12 @@ use super::{CommentStyle, MajorMode, MajorModeKind};
 pub struct JavaScriptMode;
 
 impl MajorMode for JavaScriptMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::JavaScript }
-    fn name(&self) -> &'static str { "JavaScript" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::JavaScript
+    }
+    fn name(&self) -> &'static str {
+        "JavaScript"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,7 +19,9 @@ impl MajorMode for JavaScriptMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 2 }
+    fn indent_width(&self) -> usize {
+        2
+    }
 
     fn auto_indent(&self, prev_line: &str) -> String {
         let trimmed = prev_line.trim_end();

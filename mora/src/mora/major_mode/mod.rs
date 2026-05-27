@@ -1,15 +1,15 @@
 use std::path::Path;
 
-mod fundamental;
-mod text;
-mod rust_mode;
-mod python;
-mod javascript;
-mod go;
-mod markdown;
-mod shell;
 mod c;
+mod fundamental;
+mod go;
+mod javascript;
 mod lisp;
+mod markdown;
+mod python;
+mod rust_mode;
+mod shell;
+mod text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MajorModeKind {
@@ -117,9 +117,18 @@ pub trait MajorMode: std::fmt::Debug {
 
     fn bracket_pairs(&self) -> Vec<BracketPair> {
         vec![
-            BracketPair { open: '(', close: ')' },
-            BracketPair { open: '{', close: '}' },
-            BracketPair { open: '[', close: ']' },
+            BracketPair {
+                open: '(',
+                close: ')',
+            },
+            BracketPair {
+                open: '{',
+                close: '}',
+            },
+            BracketPair {
+                open: '[',
+                close: ']',
+            },
         ]
     }
 
@@ -157,8 +166,16 @@ pub fn create_mode(kind: MajorModeKind) -> Box<dyn MajorMode> {
 
 pub fn all_mode_names() -> Vec<&'static str> {
     vec![
-        "Fundamental", "Text", "Rust", "Markdown", "Python",
-        "JavaScript", "Go", "Shell", "C", "Lisp",
+        "Fundamental",
+        "Text",
+        "Rust",
+        "Markdown",
+        "Python",
+        "JavaScript",
+        "Go",
+        "Shell",
+        "C",
+        "Lisp",
     ]
 }
 
@@ -184,28 +201,79 @@ mod tests {
 
     #[test]
     fn test_detect_extensions() {
-        assert_eq!(MajorModeKind::detect(Path::new("foo.rs")), MajorModeKind::Rust);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.py")), MajorModeKind::Python);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.go")), MajorModeKind::Go);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.js")), MajorModeKind::JavaScript);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.ts")), MajorModeKind::JavaScript);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.sh")), MajorModeKind::Shell);
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.rs")),
+            MajorModeKind::Rust
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.py")),
+            MajorModeKind::Python
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.go")),
+            MajorModeKind::Go
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.js")),
+            MajorModeKind::JavaScript
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.ts")),
+            MajorModeKind::JavaScript
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.sh")),
+            MajorModeKind::Shell
+        );
         assert_eq!(MajorModeKind::detect(Path::new("foo.c")), MajorModeKind::C);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.cpp")), MajorModeKind::C);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.md")), MajorModeKind::Markdown);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.el")), MajorModeKind::Lisp);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.clj")), MajorModeKind::Lisp);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.txt")), MajorModeKind::Text);
-        assert_eq!(MajorModeKind::detect(Path::new("foo.xyz")), MajorModeKind::Fundamental);
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.cpp")),
+            MajorModeKind::C
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.md")),
+            MajorModeKind::Markdown
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.el")),
+            MajorModeKind::Lisp
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.clj")),
+            MajorModeKind::Lisp
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.txt")),
+            MajorModeKind::Text
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("foo.xyz")),
+            MajorModeKind::Fundamental
+        );
     }
 
     #[test]
     fn test_detect_filenames() {
-        assert_eq!(MajorModeKind::detect(Path::new("Makefile")), MajorModeKind::Shell);
-        assert_eq!(MajorModeKind::detect(Path::new("CMakeLists.txt")), MajorModeKind::C);
-        assert_eq!(MajorModeKind::detect(Path::new("Cargo.toml")), MajorModeKind::Rust);
-        assert_eq!(MajorModeKind::detect(Path::new("go.mod")), MajorModeKind::Go);
-        assert_eq!(MajorModeKind::detect(Path::new("package.json")), MajorModeKind::JavaScript);
+        assert_eq!(
+            MajorModeKind::detect(Path::new("Makefile")),
+            MajorModeKind::Shell
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("CMakeLists.txt")),
+            MajorModeKind::C
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("Cargo.toml")),
+            MajorModeKind::Rust
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("go.mod")),
+            MajorModeKind::Go
+        );
+        assert_eq!(
+            MajorModeKind::detect(Path::new("package.json")),
+            MajorModeKind::JavaScript
+        );
     }
 
     #[test]

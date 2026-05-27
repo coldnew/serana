@@ -4,8 +4,12 @@ use super::{CommentStyle, MajorMode, MajorModeKind};
 pub struct ShellMode;
 
 impl MajorMode for ShellMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::Shell }
-    fn name(&self) -> &'static str { "Shell" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::Shell
+    }
+    fn name(&self) -> &'static str {
+        "Shell"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,5 +19,7 @@ impl MajorMode for ShellMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 2 }
+    fn indent_width(&self) -> usize {
+        2
+    }
 }

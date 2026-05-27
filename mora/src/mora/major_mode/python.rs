@@ -4,8 +4,12 @@ use super::{BracketPair, CommentStyle, MajorMode, MajorModeKind};
 pub struct PythonMode;
 
 impl MajorMode for PythonMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::Python }
-    fn name(&self) -> &'static str { "Python" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::Python
+    }
+    fn name(&self) -> &'static str {
+        "Python"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,13 +19,24 @@ impl MajorMode for PythonMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 4 }
+    fn indent_width(&self) -> usize {
+        4
+    }
 
     fn bracket_pairs(&self) -> Vec<BracketPair> {
         vec![
-            BracketPair { open: '(', close: ')' },
-            BracketPair { open: '{', close: '}' },
-            BracketPair { open: '[', close: ']' },
+            BracketPair {
+                open: '(',
+                close: ')',
+            },
+            BracketPair {
+                open: '{',
+                close: '}',
+            },
+            BracketPair {
+                open: '[',
+                close: ']',
+            },
         ]
     }
 
@@ -31,7 +46,11 @@ impl MajorMode for PythonMode {
             .chars()
             .take_while(|c| c.is_whitespace())
             .collect();
-        if trimmed.ends_with(':') || trimmed.ends_with('(') || trimmed.ends_with('[') || trimmed.ends_with('{') {
+        if trimmed.ends_with(':')
+            || trimmed.ends_with('(')
+            || trimmed.ends_with('[')
+            || trimmed.ends_with('{')
+        {
             format!("{}    ", base)
         } else {
             base

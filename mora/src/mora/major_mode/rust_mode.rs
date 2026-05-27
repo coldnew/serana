@@ -4,8 +4,12 @@ use super::{BracketPair, CommentStyle, MajorMode, MajorModeKind};
 pub struct RustMode;
 
 impl MajorMode for RustMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::Rust }
-    fn name(&self) -> &'static str { "Rust" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::Rust
+    }
+    fn name(&self) -> &'static str {
+        "Rust"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,14 +19,28 @@ impl MajorMode for RustMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 4 }
+    fn indent_width(&self) -> usize {
+        4
+    }
 
     fn bracket_pairs(&self) -> Vec<BracketPair> {
         vec![
-            BracketPair { open: '(', close: ')' },
-            BracketPair { open: '{', close: '}' },
-            BracketPair { open: '[', close: ']' },
-            BracketPair { open: '<', close: '>' },
+            BracketPair {
+                open: '(',
+                close: ')',
+            },
+            BracketPair {
+                open: '{',
+                close: '}',
+            },
+            BracketPair {
+                open: '[',
+                close: ']',
+            },
+            BracketPair {
+                open: '<',
+                close: '>',
+            },
         ]
     }
 

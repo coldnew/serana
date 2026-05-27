@@ -4,8 +4,12 @@ use super::{CommentStyle, MajorMode, MajorModeKind};
 pub struct CMode;
 
 impl MajorMode for CMode {
-    fn kind(&self) -> MajorModeKind { MajorModeKind::C }
-    fn name(&self) -> &'static str { "C" }
+    fn kind(&self) -> MajorModeKind {
+        MajorModeKind::C
+    }
+    fn name(&self) -> &'static str {
+        "C"
+    }
 
     fn comment_style(&self) -> CommentStyle {
         CommentStyle {
@@ -15,7 +19,9 @@ impl MajorMode for CMode {
         }
     }
 
-    fn indent_width(&self) -> usize { 4 }
+    fn indent_width(&self) -> usize {
+        4
+    }
 
     fn auto_indent(&self, prev_line: &str) -> String {
         let trimmed = prev_line.trim_end();
