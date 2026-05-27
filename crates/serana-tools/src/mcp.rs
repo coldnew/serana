@@ -3,14 +3,14 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::process::Stdio;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 
 use serana_core::{Result, Tool};
 
-/// MCP server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
     pub name: String,
@@ -18,13 +18,16 @@ pub struct McpServerConfig {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
-    pub env: std::collections::HashMap<String, String>,
+    pub env: HashMap<String, String>,
 }
 
-/// Connection to an MCP server over stdio.
+type PendingMap = HashMap<i64, oneshot::Sender<Value>>;
+
 pub struct McpConnection {
     child: Mutex<Child>,
     writer: Mutex<tokio::process::ChildStdin>,
+    pending: Mutex<PendingMap>,
+    notifications: Mutex<Vec<Value>>,
     seq: std::sync::atomic::AtomicI64,
 }
 
@@ -45,10 +48,45 @@ impl McpConnection {
             .stdin
             .take()
             .ok_or_else(|| anyhow::anyhow!("No stdin"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No stdout"))?;
+
+        let pending: PendingMap = HashMap::new();
+        let pending_ref = std::sync::Arc::new(tokio::sync::Mutex::new(pending));
+        let notifications = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+        // Spawn reader task
+        let pending_clone = pending_ref.clone();
+        let notif_clone = notifications.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout);
+            loop {
+                match read_jsonrpc_message(&mut reader).await {
+                    Ok(msg) => {
+                        if let Some(id) = msg.get("id").and_then(|v| v.as_i64()) {
+                            // Response to a request
+                            let mut p = pending_clone.lock().await;
+                            if let Some(tx) = p.remove(&id) {
+                                let _ = tx.send(msg);
+                            }
+                        } else {
+                            // Server notification
+                            let mut n = notif_clone.lock().await;
+                            n.push(msg);
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
 
         Ok(Self {
             child: Mutex::new(child),
             writer: Mutex::new(stdin),
+            pending: Mutex::new(HashMap::new()),
+            notifications: Mutex::new(Vec::new()),
             seq: std::sync::atomic::AtomicI64::new(1),
         })
     }
@@ -67,18 +105,40 @@ impl McpConnection {
         let body = serde_json::to_string(&msg)?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
 
-        let mut writer = self.writer.lock().await;
-        writer.write_all(header.as_bytes()).await?;
-        writer.write_all(body.as_bytes()).await?;
-        writer.flush().await?;
+        // Register pending response handler
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut pending = self.pending.lock().await;
+            pending.insert(seq, tx);
+        }
 
-        // For v1, we don't read responses back (would need a reader task).
-        // This is a stub that demonstrates the protocol structure.
-        Ok(json!({
-            "jsonrpc": "2.0",
-            "id": seq,
-            "result": { "status": "sent" }
-        }))
+        // Send request
+        {
+            let mut writer = self.writer.lock().await;
+            writer.write_all(header.as_bytes()).await?;
+            writer.write_all(body.as_bytes()).await?;
+            writer.flush().await?;
+        }
+
+        // Wait for response with timeout
+        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(_)) => {
+                // Channel closed — remove from pending
+                self.pending.lock().await.remove(&seq);
+                Err(anyhow::anyhow!("Response channel closed"))
+            }
+            Err(_) => {
+                // Timeout — remove from pending
+                self.pending.lock().await.remove(&seq);
+                Err(anyhow::anyhow!("MCP request timed out (30s)"))
+            }
+        }
+    }
+
+    pub async fn take_notifications(&self) -> Vec<Value> {
+        let mut n = self.notifications.lock().await;
+        std::mem::take(&mut *n)
     }
 
     pub async fn close(&self) -> Result<()> {
@@ -88,7 +148,30 @@ impl McpConnection {
     }
 }
 
-/// Tool to manage MCP server connections.
+async fn read_jsonrpc_message(
+    reader: &mut BufReader<tokio::process::ChildStdout>,
+) -> Result<Value> {
+    // Read headers
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).await?;
+        let line = line.trim();
+        if line.is_empty() {
+            break;
+        }
+        if let Some(val) = line.strip_prefix("Content-Length: ") {
+            content_length = val.parse().ok();
+        }
+    }
+
+    let len = content_length.ok_or_else(|| anyhow::anyhow!("Missing Content-Length header"))?;
+    let mut buf = vec![0u8; len];
+    tokio::io::AsyncReadExt::read_exact(reader, &mut buf).await?;
+    let msg: Value = serde_json::from_slice(&buf)?;
+    Ok(msg)
+}
+
 pub struct McpTool {
     connections: Mutex<Vec<(String, McpConnection)>>,
 }
@@ -114,9 +197,7 @@ impl Tool for McpTool {
     }
 
     fn description(&self) -> &'static str {
-        "Connect to and call MCP servers. Input: {\"action\": \"connect\", \"name\": \"my-server\", \"command\": \"npx\", \"args\": [\"-y\", \"@my/mcp\"]} \
-         or {\"action\": \"list\"} \
-         or {\"action\": \"call\", \"server\": \"my-server\", \"method\": \"tool/call\", \"params\": {}}"
+        "Connect to and call MCP servers. Actions: connect, list, call, disconnect, notifications."
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -125,7 +206,7 @@ impl Tool for McpTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["connect", "list", "call", "disconnect"],
+                    "enum": ["connect", "list", "call", "disconnect", "notifications"],
                     "description": "MCP action"
                 },
                 "name": {
@@ -143,7 +224,7 @@ impl Tool for McpTool {
                 },
                 "server": {
                     "type": "string",
-                    "description": "Server name (for call/disconnect)"
+                    "description": "Server name (for call/disconnect/notifications)"
                 },
                 "method": {
                     "type": "string",
@@ -188,14 +269,31 @@ impl Tool for McpTool {
                     name: name.to_string(),
                     command: command.to_string(),
                     args,
-                    env: std::collections::HashMap::new(),
+                    env: HashMap::new(),
                 };
 
                 let conn = McpConnection::connect(&config).await?;
+
+                // Send initialize handshake
+                let init_result = conn
+                    .send_request(
+                        "initialize",
+                        Some(json!({
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                            "clientInfo": { "name": "serana", "version": "0.1.0" }
+                        })),
+                    )
+                    .await?;
+
                 let mut connections = self.connections.lock().await;
                 connections.push((name.to_string(), conn));
 
-                Ok(json!({ "status": "connected", "name": name }))
+                Ok(json!({
+                    "status": "connected",
+                    "name": name,
+                    "server_info": init_result.get("result").and_then(|r| r.get("serverInfo")),
+                }))
             }
             "list" => {
                 let connections = self.connections.lock().await;
@@ -221,6 +319,21 @@ impl Tool for McpTool {
 
                 let result = conn.send_request(method, params).await?;
                 Ok(result)
+            }
+            "notifications" => {
+                let server = input
+                    .get("server")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'server'"))?;
+
+                let connections = self.connections.lock().await;
+                let (_, conn) = connections
+                    .iter()
+                    .find(|(n, _)| n == server)
+                    .ok_or_else(|| anyhow::anyhow!("MCP server '{}' not connected", server))?;
+
+                let notifs = conn.take_notifications().await;
+                Ok(json!({ "notifications": notifs }))
             }
             "disconnect" => {
                 let server = input
