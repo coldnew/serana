@@ -208,7 +208,7 @@ fn run_editor_tui(file: Option<String>) -> anyhow::Result<()> {
 
     let result = (|| -> anyhow::Result<()> {
         loop {
-            let frame = core.render_frame();
+            let frame = core.render_ui_frame();
             tui.render_frame(&frame).map_err(|e| anyhow::anyhow!(e))?;
 
             match tui.poll_input(50) {
@@ -252,7 +252,7 @@ fn run_editor_wgpu(file: Option<String>) -> anyhow::Result<()> {
 
     let result = (|| -> anyhow::Result<()> {
         loop {
-            let frame = core.render_frame();
+            let frame = core.render_ui_frame();
 
             // Convert FrameUpdate grid to CellBuffer for wgpu backend
             let mut cell_buf = CellBuffer::new(frame.grid.width, frame.grid.height);
@@ -332,7 +332,7 @@ fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
         stream.write_all(&hello.to_json_line().unwrap())?;
         stream.flush()?;
 
-        let frame = core.render_frame();
+        let frame = core.render_ui_frame();
         stream.write_all(&WireMessage::Frame(frame).to_json_line().unwrap())?;
         stream.flush()?;
 
@@ -365,7 +365,7 @@ fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
                                 }
                             }
                             let _ = stream.flush();
-                            let frame = core.render_frame();
+                            let frame = core.render_ui_frame();
                             stream.write_all(&WireMessage::Frame(frame).to_json_line().unwrap())?;
                             stream.flush()?;
                         }
