@@ -5,16 +5,13 @@ members = [
     "crates/mora-lisp",
     "crates/mora-compile",
     "crates/mishell-parser",
+    "crates/display-protocol",
     "mishell",
     "mora",
     "serana",
     "crates/serana-core",
     "crates/serana-llm",
-    "crates/serana-lsp",
     "crates/serana-tree-sitter",
-    "crates/serana-tools",
-    "crates/serana-agent",
-    "crates/serana-tui",
 ]
 
 [workspace.package]

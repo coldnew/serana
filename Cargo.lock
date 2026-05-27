@@ -792,6 +792,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-protocol"
+version = "0.1.0"
+dependencies = [
+ "crossterm",
+ "ratatui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2037,6 +2047,7 @@ dependencies = [
  "cosmic-text 0.12.1",
  "crossterm",
  "dirs",
+ "display-protocol",
  "glyphon",
  "hostname",
  "mishell-parser",
@@ -3282,39 +3293,38 @@ name = "serana"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
+ "async-trait",
+ "bytes",
+ "chrono",
  "clap",
  "crossterm",
- "mora-bin",
- "ratatui",
- "serana-agent",
- "serana-core",
- "serana-llm",
- "serana-tui",
- "tokio",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "serana-agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
  "dirs",
  "futures",
+ "glob",
  "ignore",
+ "mora-bin",
+ "parking_lot",
+ "pulldown-cmark",
+ "ratatui",
  "regex",
+ "reqwest",
  "rusqlite",
  "serana-core",
  "serana-llm",
- "serana-tools",
+ "serana-tree-sitter",
  "serde",
  "serde_json",
+ "strip-ansi-escapes",
+ "syntect",
  "tempfile",
+ "thiserror 1.0.69",
  "tokio",
+ "tokio-tungstenite",
  "toml",
  "tracing",
+ "tracing-subscriber",
+ "tree-sitter",
  "uuid",
 ]
 
@@ -3355,44 +3365,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serana-lsp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serana-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "serana-tools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dirs",
- "futures",
- "glob",
- "ignore",
- "regex",
- "reqwest",
- "rusqlite",
- "serana-core",
- "serana-lsp",
- "serana-tree-sitter",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "toml",
- "tracing",
- "tree-sitter",
-]
-
-[[package]]
 name = "serana-tree-sitter"
 version = "0.1.0"
 dependencies = [
@@ -3405,27 +3377,6 @@ dependencies = [
  "tree-sitter-javascript",
  "tree-sitter-python",
  "tree-sitter-rust",
-]
-
-[[package]]
-name = "serana-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossterm",
- "dirs",
- "pulldown-cmark",
- "ratatui",
- "serana-agent",
- "serana-core",
- "serana-llm",
- "serana-tools",
- "serde",
- "serde_json",
- "strip-ansi-escapes",
- "syntect",
- "tokio",
- "tracing",
 ]
 
 [[package]]
