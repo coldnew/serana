@@ -81,7 +81,6 @@ impl std::fmt::Debug for SlashCommandRegistry {
     }
 }
 
-
 /// A custom command loaded from a markdown file.
 #[derive(Debug, Clone)]
 pub struct CustomCommand {
@@ -213,9 +212,7 @@ impl SlashCommandRegistry {
                     },
                     "clear" => SlashResult::TodoClear,
                     "list" | "" => SlashResult::TodoList,
-                    _ => SlashResult::Display(
-                        "Usage: /todo add|done|drop|clear|list".to_string(),
-                    ),
+                    _ => SlashResult::Display("Usage: /todo add|done|drop|clear|list".to_string()),
                 }
             }),
         });
@@ -247,12 +244,8 @@ impl SlashCommandRegistry {
             handler: Box::new(|args| {
                 let level = args.trim().to_lowercase();
                 match level.as_str() {
-                    "off" | "low" | "medium" | "high" => {
-                        SlashResult::SetThinkingLevel(level)
-                    }
-                    "" => SlashResult::Display(
-                        "Usage: /think off|low|medium|high".to_string(),
-                    ),
+                    "off" | "low" | "medium" | "high" => SlashResult::SetThinkingLevel(level),
+                    "" => SlashResult::Display("Usage: /think off|low|medium|high".to_string()),
                     _ => SlashResult::Display(format!(
                         "Unknown level '{}'. Use: off, low, medium, high",
                         level
@@ -386,7 +379,6 @@ impl SlashCommandRegistry {
         cmds.sort_by(|a, b| a.0.cmp(b.0));
         cmds
     }
-
 }
 
 impl Default for SlashCommandRegistry {

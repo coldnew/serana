@@ -106,7 +106,8 @@ impl VerificationSystem {
             .output()?;
 
         let status = String::from_utf8_lossy(&status_output.stdout);
-        let modified_files: Vec<String> = status.lines().map(|line| line[3..].to_string()).collect();
+        let modified_files: Vec<String> =
+            status.lines().map(|line| line[3..].to_string()).collect();
 
         let stashed = if !modified_files.is_empty() {
             let _ = Command::new("git")
@@ -189,7 +190,12 @@ fn chrono_lite_timestamp() -> String {
     let datetime = time_offset::from_unix_timestamp(secs as i64);
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        datetime.year, datetime.month, datetime.day, datetime.hour, datetime.minute, datetime.second
+        datetime.year,
+        datetime.month,
+        datetime.day,
+        datetime.hour,
+        datetime.minute,
+        datetime.second
     )
 }
 

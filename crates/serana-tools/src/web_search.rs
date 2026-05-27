@@ -34,7 +34,9 @@ impl Tool for WebSearchTool {
             .ok_or_else(|| anyhow::anyhow!("Missing 'query' field"))?;
 
         let api_key = std::env::var("BRAVE_API_KEY").map_err(|_| {
-            anyhow::anyhow!("BRAVE_API_KEY environment variable not set. Please set it to use web search.")
+            anyhow::anyhow!(
+                "BRAVE_API_KEY environment variable not set. Please set it to use web search."
+            )
         })?;
 
         let client = reqwest::Client::new();

@@ -33,11 +33,7 @@ impl StreamRuleEngine {
     pub fn new(rules: Vec<StreamRule>) -> Self {
         let compiled: Vec<_> = rules
             .iter()
-            .filter_map(|r| {
-                regex::Regex::new(&r.pattern)
-                    .ok()
-                    .map(|re| (r.clone(), re))
-            })
+            .filter_map(|r| regex::Regex::new(&r.pattern).ok().map(|re| (r.clone(), re)))
             .collect();
 
         Self {
@@ -136,9 +132,11 @@ mod tests {
 
     #[test]
     fn detects_matching_output() {
-        let engine = StreamRuleEngine::new(vec![
-            test_rule("no-unwrap", r"\.unwrap\(\)", "Don't use .unwrap() in library code"),
-        ]);
+        let engine = StreamRuleEngine::new(vec![test_rule(
+            "no-unwrap",
+            r"\.unwrap\(\)",
+            "Don't use .unwrap() in library code",
+        )]);
 
         assert!(engine.check("let x = foo.unwrap();").is_some());
         assert!(engine.check("let x = foo?;").is_none());
@@ -146,9 +144,11 @@ mod tests {
 
     #[test]
     fn skips_already_injected_rules() {
-        let mut engine = StreamRuleEngine::new(vec![
-            test_rule("no-unwrap", r"\.unwrap\(\)", "Don't use .unwrap()"),
-        ]);
+        let mut engine = StreamRuleEngine::new(vec![test_rule(
+            "no-unwrap",
+            r"\.unwrap\(\)",
+            "Don't use .unwrap()",
+        )]);
 
         assert!(engine.check("foo.unwrap()").is_some());
         engine.mark_injected("no-unwrap");
@@ -157,9 +157,11 @@ mod tests {
 
     #[test]
     fn get_injection_text() {
-        let engine = StreamRuleEngine::new(vec![
-            test_rule("no-leak", r"Box::leak", "Use Arc instead of Box::leak"),
-        ]);
+        let engine = StreamRuleEngine::new(vec![test_rule(
+            "no-leak",
+            r"Box::leak",
+            "Use Arc instead of Box::leak",
+        )]);
 
         assert_eq!(
             engine.get_injection("no-leak"),
@@ -170,9 +172,7 @@ mod tests {
 
     #[test]
     fn reset_clears_injected_state() {
-        let mut engine = StreamRuleEngine::new(vec![
-            test_rule("rule1", r"pattern1", "injection1"),
-        ]);
+        let mut engine = StreamRuleEngine::new(vec![test_rule("rule1", r"pattern1", "injection1")]);
 
         engine.mark_injected("rule1");
         assert!(engine.check("pattern1").is_none());

@@ -257,11 +257,7 @@ impl Tool for SkillCreateTool {
             ));
         }
 
-        let skill_dir = self
-            .workspace
-            .join(".serana")
-            .join("skills")
-            .join(name);
+        let skill_dir = self.workspace.join(".serana").join("skills").join(name);
         let skill_file = skill_dir.join("SKILL.md");
 
         tokio::fs::create_dir_all(&skill_dir).await?;

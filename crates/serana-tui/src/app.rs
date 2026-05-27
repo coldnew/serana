@@ -7,8 +7,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use serana_core::Result;
 
-use crate::symbols::{self, Symbols};
 use crate::slash_commands::SlashCommandRegistry;
+use crate::symbols::{self, Symbols};
 
 /// An autocomplete suggestion item.
 #[derive(Debug, Clone)]
@@ -83,7 +83,6 @@ fn fuzzy_score(query: &str, target: &str) -> i32 {
     }
     (40 - gaps * 5).max(1)
 }
-
 
 /// Todo status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,7 +311,11 @@ impl App {
                 }
                 KeyCode::Enter if !key.modifiers.contains(KeyModifiers::SHIFT) => {
                     // For slash commands: apply then submit
-                    if self.autocomplete.as_ref().map_or(false, |ac| ac.prefix.starts_with('/')) {
+                    if self
+                        .autocomplete
+                        .as_ref()
+                        .map_or(false, |ac| ac.prefix.starts_with('/'))
+                    {
                         self.apply_autocomplete_selection(true);
                         return Ok(true);
                     }
@@ -393,11 +396,7 @@ impl App {
 
         let prefix = content.trim();
         // Strip the '/' for matching
-        let query = if prefix.len() > 1 {
-            &prefix[1..]
-        } else {
-            ""
-        };
+        let query = if prefix.len() > 1 { &prefix[1..] } else { "" };
 
         let lower_query = query.to_lowercase();
 
@@ -460,7 +459,11 @@ impl App {
     /// Apply the currently selected autocomplete item.
     /// If `also_submit` is true, also submit the message after applying.
     fn apply_autocomplete_selection(&mut self, also_submit: bool) {
-        let item = match self.autocomplete.as_ref().and_then(|ac| ac.items.get(ac.selected).cloned()) {
+        let item = match self
+            .autocomplete
+            .as_ref()
+            .and_then(|ac| ac.items.get(ac.selected).cloned())
+        {
             Some(item) => item,
             None => return,
         };
@@ -478,7 +481,6 @@ impl App {
     fn cancel_autocomplete(&mut self) {
         self.autocomplete = None;
     }
-
 
     /// Load recent sessions from the store for /session commands.
     pub fn load_recent_sessions(&mut self) {
@@ -614,10 +616,7 @@ impl App {
                 } else {
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: format!(
-                            "Invalid todo number. Use 1-{}.",
-                            self.todo_items.len()
-                        ),
+                        content: format!("Invalid todo number. Use 1-{}.", self.todo_items.len()),
                         tool_calls: Vec::new(),
                         thinking: None,
                     });
@@ -636,10 +635,7 @@ impl App {
                 } else {
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: format!(
-                            "Invalid todo number. Use 1-{}.",
-                            self.todo_items.len()
-                        ),
+                        content: format!("Invalid todo number. Use 1-{}.", self.todo_items.len()),
                         tool_calls: Vec::new(),
                         thinking: None,
                     });
@@ -647,8 +643,9 @@ impl App {
             }
             SlashResult::TodoClear => {
                 let before = self.todo_items.len();
-                self.todo_items
-                    .retain(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress);
+                self.todo_items.retain(|t| {
+                    t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress
+                });
                 let cleared = before - self.todo_items.len();
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
@@ -665,7 +662,9 @@ impl App {
                 let pending: Vec<&TodoItem> = self
                     .todo_items
                     .iter()
-                    .filter(|t| t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress)
+                    .filter(|t| {
+                        t.status == TodoStatus::Pending || t.status == TodoStatus::InProgress
+                    })
                     .collect();
                 if pending.is_empty() {
                     self.messages.push(ChatMessage {
@@ -714,10 +713,7 @@ impl App {
                 };
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: format!(
-                        "Queue: {} pending messages, mode: {}",
-                        pending, status,
-                    ),
+                    content: format!("Queue: {} pending messages, mode: {}", pending, status,),
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
@@ -780,7 +776,10 @@ impl App {
                         let mut sorted: Vec<_> = skills;
                         sorted.sort_by(|a, b| a.name.cmp(&b.name));
                         for s in &sorted {
-                            lines.push(format!("  /skill:{} — {} ({})", s.name, s.description, s.source));
+                            lines.push(format!(
+                                "  /skill:{} — {} ({})",
+                                s.name, s.description, s.source
+                            ));
                         }
                         self.messages.push(ChatMessage {
                             role: MessageRole::System,
@@ -822,8 +821,6 @@ impl App {
             }
         }
     }
-
-
 
     /// Handle keys when a dialog is open.
     fn handle_dialog_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -1021,8 +1018,7 @@ impl App {
             }
         }
     }
-    pub fn handle_resize(&mut self, _width: u16, _height: u16) {
-    }
+    pub fn handle_resize(&mut self, _width: u16, _height: u16) {}
 
     pub fn tick(&mut self) {
         self.tick_count += 1;

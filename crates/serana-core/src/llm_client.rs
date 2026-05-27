@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 
-use crate::Result;
 use crate::message::Message;
+use crate::Result;
 
 /// Tool definition for LLM
 #[derive(Debug, Clone, Serialize, Deserialize)]

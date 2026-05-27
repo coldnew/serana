@@ -95,7 +95,10 @@ impl Tool for StatsTool {
     }
 
     async fn execute(&self, _input: Value) -> Result<Value> {
-        let stats = self.stats.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let stats = self
+            .stats
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
         Ok(json!({
             "tokens_in": stats.tokens_in,
             "tokens_out": stats.tokens_out,

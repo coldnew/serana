@@ -44,10 +44,7 @@ impl Tool for FindTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'pattern' field"))?;
 
-        let limit = input
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+        let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
 
         // Use ignore crate's WalkBuilder for gitignore-aware walking
         let cwd = std::env::current_dir()?;
@@ -128,16 +125,16 @@ impl Tool for SearchTool {
         let paths: Vec<String> = input
             .get("paths")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_else(|| vec![".".to_string()]);
 
-        let limit = input
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50) as usize;
+        let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
 
-        let re = regex::Regex::new(pattern)
-            .map_err(|e| anyhow::anyhow!("Invalid regex: {}", e))?;
+        let re = regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("Invalid regex: {}", e))?;
 
         let cwd = std::env::current_dir()?;
         let mut results = Vec::new();
@@ -166,7 +163,23 @@ impl Tool for SearchTool {
 
                 // Only search text-like files
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "webp" | "exe" | "bin" | "so" | "dylib" | "dll" | "pdf" | "zip" | "tar" | "gz") {
+                    if matches!(
+                        ext,
+                        "png"
+                            | "jpg"
+                            | "jpeg"
+                            | "gif"
+                            | "webp"
+                            | "exe"
+                            | "bin"
+                            | "so"
+                            | "dylib"
+                            | "dll"
+                            | "pdf"
+                            | "zip"
+                            | "tar"
+                            | "gz"
+                    ) {
                         continue;
                     }
                 }

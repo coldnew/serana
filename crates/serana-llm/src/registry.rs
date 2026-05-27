@@ -95,9 +95,16 @@ impl ProviderRegistry {
 
         let mut default_chain = FallbackChain::with_defaults();
         default_chain.add_provider(&config.provider.name, primary.clone());
-        registry.roles.insert(ModelRole::Default, Arc::new(default_chain));
+        registry
+            .roles
+            .insert(ModelRole::Default, Arc::new(default_chain));
 
-        for role in &[ModelRole::Smol, ModelRole::Slow, ModelRole::Plan, ModelRole::Commit] {
+        for role in &[
+            ModelRole::Smol,
+            ModelRole::Slow,
+            ModelRole::Plan,
+            ModelRole::Commit,
+        ] {
             let mut chain = FallbackChain::with_defaults();
             chain.add_provider(&config.provider.name, primary.clone());
             registry.roles.insert(*role, Arc::new(chain));
@@ -112,9 +119,18 @@ impl ProviderRegistry {
     }
 
     /// Add a provider to a specific role's fallback chain.
-    pub fn add_to_role(&mut self, role: ModelRole, provider_name: &str, client: Arc<dyn LlmClient>) {
-        self.providers.insert(provider_name.to_string(), client.clone());
-        let chain = self.roles.entry(role).or_insert_with(|| Arc::new(FallbackChain::with_defaults()));
+    pub fn add_to_role(
+        &mut self,
+        role: ModelRole,
+        provider_name: &str,
+        client: Arc<dyn LlmClient>,
+    ) {
+        self.providers
+            .insert(provider_name.to_string(), client.clone());
+        let chain = self
+            .roles
+            .entry(role)
+            .or_insert_with(|| Arc::new(FallbackChain::with_defaults()));
         // FallbackChain doesn't support mutation through Arc, so we rebuild.
         // For v1 this is acceptable since roles are configured at startup.
         let mut new_chain = FallbackChain::with_defaults();

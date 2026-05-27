@@ -34,7 +34,9 @@ fn parse_repo(input: &Value) -> Result<(&str, &str)> {
         .split_once('/')
         .ok_or_else(|| anyhow::anyhow!("Invalid repo format, expected 'owner/repo'"))?;
     if owner.is_empty() || name.is_empty() {
-        return Err(anyhow::anyhow!("Invalid repo format, expected 'owner/repo'"));
+        return Err(anyhow::anyhow!(
+            "Invalid repo format, expected 'owner/repo'"
+        ));
     }
     Ok((owner, name))
 }

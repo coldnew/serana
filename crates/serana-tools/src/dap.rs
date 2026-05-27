@@ -32,8 +32,14 @@ impl DapSession {
             .spawn()
             .map_err(|e| anyhow::anyhow!("Failed to launch adapter '{}': {}", adapter, e))?;
 
-        let stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("No stdin"))?;
-        let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("No stdout"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No stdin"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No stdout"))?;
 
         let (tx, rx) = mpsc::channel(64);
         let reader_handle = tokio::spawn(async move {
@@ -49,30 +55,37 @@ impl DapSession {
         };
 
         // Initialize the session
-        session.send_request("initialize", Some(json!({
-            "clientID": "serana",
-            "adapterID": adapter,
-            "pathFormat": "path",
-            "linesStartAt1": true,
-            "columnsStartAt1": true,
-        }))).await?;
+        session
+            .send_request(
+                "initialize",
+                Some(json!({
+                    "clientID": "serana",
+                    "adapterID": adapter,
+                    "pathFormat": "path",
+                    "linesStartAt1": true,
+                    "columnsStartAt1": true,
+                })),
+            )
+            .await?;
 
         // Wait for initialized event
         session.wait_for_event("initialized", 5000).await?;
 
         // Launch the program
-        session.send_request("launch", Some(json!({
-            "program": program,
-            "stopOnEntry": false,
-        }))).await?;
+        session
+            .send_request(
+                "launch",
+                Some(json!({
+                    "program": program,
+                    "stopOnEntry": false,
+                })),
+            )
+            .await?;
 
         Ok(session)
     }
 
-    async fn read_messages(
-        stdout: tokio::process::ChildStdout,
-        tx: mpsc::Sender<String>,
-    ) {
+    async fn read_messages(stdout: tokio::process::ChildStdout, tx: mpsc::Sender<String>) {
         let mut reader = BufReader::new(stdout);
         let mut content_length = 0usize;
 
@@ -168,35 +181,43 @@ impl DapSession {
 
     /// Set a breakpoint at a file:line.
     pub async fn set_breakpoint(&self, file: &str, line: u64) -> Result<Value> {
-        self.send_request("setBreakpoints", Some(json!({
-            "source": { "path": file },
-            "breakpoints": [{ "line": line }],
-        }))).await?;
+        self.send_request(
+            "setBreakpoints",
+            Some(json!({
+                "source": { "path": file },
+                "breakpoints": [{ "line": line }],
+            })),
+        )
+        .await?;
         // Read response
         self.read_response(3000).await
     }
 
     /// Continue execution.
     pub async fn cont(&self, thread_id: u64) -> Result<()> {
-        self.send_request("continue", Some(json!({ "threadId": thread_id }))).await?;
+        self.send_request("continue", Some(json!({ "threadId": thread_id })))
+            .await?;
         Ok(())
     }
 
     /// Step over.
     pub async fn step_over(&self, thread_id: u64) -> Result<()> {
-        self.send_request("next", Some(json!({ "threadId": thread_id }))).await?;
+        self.send_request("next", Some(json!({ "threadId": thread_id })))
+            .await?;
         Ok(())
     }
 
     /// Step into.
     pub async fn step_in(&self, thread_id: u64) -> Result<()> {
-        self.send_request("stepIn", Some(json!({ "threadId": thread_id }))).await?;
+        self.send_request("stepIn", Some(json!({ "threadId": thread_id })))
+            .await?;
         Ok(())
     }
 
     /// Step out.
     pub async fn step_out(&self, thread_id: u64) -> Result<()> {
-        self.send_request("stepOut", Some(json!({ "threadId": thread_id }))).await?;
+        self.send_request("stepOut", Some(json!({ "threadId": thread_id })))
+            .await?;
         Ok(())
     }
 
@@ -208,7 +229,8 @@ impl DapSession {
 
     /// Get stack trace.
     pub async fn stack_trace(&self, thread_id: u64) -> Result<Value> {
-        self.send_request("stackTrace", Some(json!({ "threadId": thread_id }))).await?;
+        self.send_request("stackTrace", Some(json!({ "threadId": thread_id })))
+            .await?;
         self.read_response(3000).await
     }
 
@@ -230,7 +252,8 @@ impl DapSession {
 
     /// Disconnect the session.
     pub async fn disconnect(&self) -> Result<()> {
-        self.send_request("disconnect", Some(json!({ "terminateDebuggee": true }))).await?;
+        self.send_request("disconnect", Some(json!({ "terminateDebuggee": true })))
+            .await?;
         Ok(())
     }
 
@@ -360,62 +383,86 @@ impl Tool for DebugTool {
                 Ok(json!({ "status": "launched", "adapter": adapter, "program": program }))
             }
             "set_breakpoint" => {
-                let file = input.get("file").and_then(|v| v.as_str())
+                let file = input
+                    .get("file")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'file'"))?;
-                let line = input.get("line").and_then(|v| v.as_u64())
+                let line = input
+                    .get("line")
+                    .and_then(|v| v.as_u64())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'line'"))?;
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 let result = session.set_breakpoint(file, line).await?;
-                Ok(json!({ "status": "breakpoint_set", "file": file, "line": line, "result": result }))
+                Ok(
+                    json!({ "status": "breakpoint_set", "file": file, "line": line, "result": result }),
+                )
             }
             "continue" => {
                 let thread_id = input.get("thread_id").and_then(|v| v.as_u64()).unwrap_or(1);
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 session.cont(thread_id).await?;
                 Ok(json!({ "status": "continued", "thread_id": thread_id }))
             }
             "step_over" => {
                 let thread_id = input.get("thread_id").and_then(|v| v.as_u64()).unwrap_or(1);
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 session.step_over(thread_id).await?;
                 Ok(json!({ "status": "stepped_over", "thread_id": thread_id }))
             }
             "step_in" => {
                 let thread_id = input.get("thread_id").and_then(|v| v.as_u64()).unwrap_or(1);
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 session.step_in(thread_id).await?;
                 Ok(json!({ "status": "stepped_in", "thread_id": thread_id }))
             }
             "step_out" => {
                 let thread_id = input.get("thread_id").and_then(|v| v.as_u64()).unwrap_or(1);
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 session.step_out(thread_id).await?;
                 Ok(json!({ "status": "stepped_out", "thread_id": thread_id }))
             }
             "threads" => {
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 let result = session.threads().await?;
                 Ok(json!({ "threads": result }))
             }
             "stack_trace" => {
                 let thread_id = input.get("thread_id").and_then(|v| v.as_u64()).unwrap_or(1);
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 let result = session.stack_trace(thread_id).await?;
                 Ok(json!({ "stack_trace": result }))
             }
             "evaluate" => {
-                let expression = input.get("expression").and_then(|v| v.as_str())
+                let expression = input
+                    .get("expression")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'expression'"))?;
                 let frame_id = input.get("frame_id").and_then(|v| v.as_u64());
                 let guard = self.session.lock().await;
-                let session = guard.as_ref().ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
+                let session = guard
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("No active debug session"))?;
                 let result = session.evaluate(expression, frame_id).await?;
                 Ok(json!({ "result": result }))
             }

@@ -244,7 +244,9 @@ impl Editor {
             .unwrap_or(0);
         let word = &before_cursor[word_start..];
 
-        if word.is_empty() || (!word.contains('/') && !word.starts_with('.') && !word.starts_with('~')) {
+        if word.is_empty()
+            || (!word.contains('/') && !word.starts_with('.') && !word.starts_with('~'))
+        {
             return false;
         }
 
@@ -328,7 +330,9 @@ impl Editor {
             .unwrap_or(0);
         let word = &before_cursor[word_start..];
 
-        if word.is_empty() || (!word.contains('/') && !word.starts_with('.') && !word.starts_with('~')) {
+        if word.is_empty()
+            || (!word.contains('/') && !word.starts_with('.') && !word.starts_with('~'))
+        {
             return Vec::new();
         }
 

@@ -304,9 +304,9 @@ impl ThemeConfig {
     pub fn colorblind_mode() -> Self {
         let mut theme = Self::default();
         // Use blue/orange instead of red/green
-        theme.success = RgbColor::new(86, 180, 233);     // Blue
-        theme.error = RgbColor::new(230, 159, 0);        // Orange
-        theme.warning = RgbColor::new(240, 228, 66);     // Yellow
+        theme.success = RgbColor::new(86, 180, 233); // Blue
+        theme.error = RgbColor::new(230, 159, 0); // Orange
+        theme.warning = RgbColor::new(240, 228, 66); // Yellow
         theme.diff_add_fg = RgbColor::new(86, 180, 233); // Blue, not green
         theme.diff_remove_fg = RgbColor::new(230, 159, 0); // Orange, not red
         theme.diff_modify_fg = RgbColor::new(240, 228, 66);
@@ -344,16 +344,26 @@ impl Theme {
     /// Build a Theme from a ThemeConfig.
     pub fn from_config(config: &ThemeConfig) -> Self {
         Self {
-            accent: Style::new().fg(config.accent.to_color()).add_modifier(Modifier::BOLD),
-            success: Style::new().fg(config.success.to_color()).add_modifier(Modifier::BOLD),
-            warning: Style::new().fg(config.warning.to_color()).add_modifier(Modifier::BOLD),
-            error: Style::new().fg(config.error.to_color()).add_modifier(Modifier::BOLD),
+            accent: Style::new()
+                .fg(config.accent.to_color())
+                .add_modifier(Modifier::BOLD),
+            success: Style::new()
+                .fg(config.success.to_color())
+                .add_modifier(Modifier::BOLD),
+            warning: Style::new()
+                .fg(config.warning.to_color())
+                .add_modifier(Modifier::BOLD),
+            error: Style::new()
+                .fg(config.error.to_color())
+                .add_modifier(Modifier::BOLD),
             dim: Style::new().fg(config.text_dim.to_color()),
             muted: Style::new().fg(config.text_muted.to_color()),
             info: Style::new().fg(config.info.to_color()),
             user_fg: Style::new().fg(config.user_fg.to_color()),
             agent_fg: Style::new().fg(config.agent_fg.to_color()),
-            thinking: Style::new().fg(config.thinking_fg.to_color()).add_modifier(Modifier::ITALIC),
+            thinking: Style::new()
+                .fg(config.thinking_fg.to_color())
+                .add_modifier(Modifier::ITALIC),
             border: Style::new().fg(config.border.to_color()),
         }
     }
@@ -385,9 +395,7 @@ impl ThemeManager {
     pub fn load(&mut self, path: &Path) {
         let config = ThemeConfig::load_from_file(path);
         let theme = Theme::from_config(&config);
-        self.last_modified = std::fs::metadata(path)
-            .ok()
-            .and_then(|m| m.modified().ok());
+        self.last_modified = std::fs::metadata(path).ok().and_then(|m| m.modified().ok());
         self.watch_path = Some(path.to_path_buf());
         *self.config.write().unwrap() = config;
         *self.theme.write().unwrap() = theme;
@@ -423,7 +431,11 @@ impl ThemeManager {
     /// Set dark/light mode.
     pub fn set_dark_mode(&mut self, dark: bool) {
         self.dark_mode = dark;
-        let config = if dark { ThemeConfig::default() } else { ThemeConfig::light_mode() };
+        let config = if dark {
+            ThemeConfig::default()
+        } else {
+            ThemeConfig::light_mode()
+        };
         let theme = Theme::from_config(&config);
         *self.config.write().unwrap() = config;
         *self.theme.write().unwrap() = theme;

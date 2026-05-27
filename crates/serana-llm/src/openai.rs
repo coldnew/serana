@@ -5,9 +5,9 @@ use reqwest::Client;
 use serde_json::json;
 use std::pin::Pin;
 
-use serana_core::{Config, FunctionCall, LlmClient, Message, ToolCallData, ToolDefinition};
-use serana_core::Result;
 use crate::SseStream;
+use serana_core::Result;
+use serana_core::{Config, FunctionCall, LlmClient, Message, ToolCallData, ToolDefinition};
 
 pub struct OpenAiClient {
     client: Client,
@@ -136,13 +136,9 @@ fn parse_streaming_tool_response(response_text: &str) -> Result<Message> {
         if let Some(delta_tool_calls) = chunk["choices"][0]["delta"]["tool_calls"].as_array() {
             for call in delta_tool_calls {
                 let index = call["index"].as_u64().unwrap_or(0) as usize;
-                let entry = tool_calls.entry(index).or_insert_with(|| {
-                    (
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    )
-                });
+                let entry = tool_calls
+                    .entry(index)
+                    .or_insert_with(|| (String::new(), String::new(), String::new()));
 
                 if let Some(id) = call["id"].as_str() {
                     entry.0 = id.to_string();
@@ -168,15 +164,13 @@ fn parse_streaming_tool_response(response_text: &str) -> Result<Message> {
     if !tool_calls.is_empty() {
         let tc: Vec<ToolCallData> = tool_calls
             .into_iter()
-            .map(|(_, (id, _t, name))| {
-                ToolCallData {
-                    id,
-                    r#type: "function".to_string(),
-                    function: FunctionCall {
-                        name,
-                        arguments: "{}".to_string(),
-                    },
-                }
+            .map(|(_, (id, _t, name))| ToolCallData {
+                id,
+                r#type: "function".to_string(),
+                function: FunctionCall {
+                    name,
+                    arguments: "{}".to_string(),
+                },
             })
             .collect();
 

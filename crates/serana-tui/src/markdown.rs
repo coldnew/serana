@@ -168,10 +168,8 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Rule => {
                 let n = self.width.min(80);
                 self.flush_line();
-                self.lines.push(Line::from(Span::styled(
-                    "─".repeat(n),
-                    self.theme.hr,
-                )));
+                self.lines
+                    .push(Line::from(Span::styled("─".repeat(n), self.theme.hr)));
             }
             Event::TaskListMarker(checked) => {
                 let marker = if checked { "[x] " } else { "[ ] " };
@@ -182,23 +180,17 @@ impl<'a> MarkdownRenderer<'a> {
                 self.push_text(html.trim());
             }
             Event::FootnoteReference(label) => {
-                self.current_spans.push(Span::styled(
-                    format!("[^{}]", label),
-                    self.theme.link,
-                ));
+                self.current_spans
+                    .push(Span::styled(format!("[^{}]", label), self.theme.link));
             }
             Event::InlineMath(math) => {
-                self.current_spans.push(Span::styled(
-                    format!("${}$", math),
-                    self.theme.code,
-                ));
+                self.current_spans
+                    .push(Span::styled(format!("${}$", math), self.theme.code));
             }
             Event::DisplayMath(math) => {
                 self.flush_line();
-                self.current_spans.push(Span::styled(
-                    format!("$${}$$", math),
-                    self.theme.code_block,
-                ));
+                self.current_spans
+                    .push(Span::styled(format!("$${}$$", math), self.theme.code_block));
                 self.flush_line();
             }
         }
@@ -295,10 +287,8 @@ impl<'a> MarkdownRenderer<'a> {
             }
             Tag::FootnoteDefinition(label) => {
                 self.flush_line();
-                self.current_spans.push(Span::styled(
-                    format!("[^{}]: ", label),
-                    self.theme.link,
-                ));
+                self.current_spans
+                    .push(Span::styled(format!("[^{}]: ", label), self.theme.link));
             }
             Tag::DefinitionList => {
                 self.flush_line();
@@ -340,8 +330,8 @@ impl<'a> MarkdownRenderer<'a> {
                 let has_lang = !self.code_block_lang.is_empty();
                 let mut rendered_lines: Vec<Vec<Span<'static>>> = Vec::new();
                 if has_lang {
-                    let highlighted = SyntaxHighlighter::global()
-                        .highlight_lines(&code, &self.code_block_lang);
+                    let highlighted =
+                        SyntaxHighlighter::global().highlight_lines(&code, &self.code_block_lang);
                     if !highlighted.is_empty() {
                         rendered_lines = highlighted;
                     }
@@ -353,10 +343,7 @@ impl<'a> MarkdownRenderer<'a> {
                         } else {
                             format!("{}{}", indent, line)
                         };
-                        rendered_lines.push(vec![Span::styled(
-                            display,
-                            self.theme.code_block,
-                        )]);
+                        rendered_lines.push(vec![Span::styled(display, self.theme.code_block)]);
                     }
                 } else {
                     for spans in &mut rendered_lines {
@@ -411,7 +398,8 @@ impl<'a> MarkdownRenderer<'a> {
             TagEnd::Table => {
                 self.in_table = false;
                 let table = std::mem::take(&mut self.current_table);
-                self.lines.extend(render_table_lines(table, self.width, self.theme));
+                self.lines
+                    .extend(render_table_lines(table, self.width, self.theme));
                 self.lines.push(Line::from(""));
             }
             TagEnd::TableHead => {
@@ -609,10 +597,7 @@ fn clamp_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
 }
 
 fn spans_width(spans: &[Span<'static>]) -> usize {
-    spans
-        .iter()
-        .map(|span| span.content.chars().count())
-        .sum()
+    spans.iter().map(|span| span.content.chars().count()).sum()
 }
 
 fn split_at_char_width(text: &str, width: usize) -> (String, String) {
@@ -779,7 +764,11 @@ mod tests {
     #[test]
     fn test_highlighted_code_block_wraps_to_width() {
         let theme = MarkdownTheme::default();
-        let lines = render_markdown("```rust\nlet value = abcdefghijabcdefghij;\n```", &theme, 12);
+        let lines = render_markdown(
+            "```rust\nlet value = abcdefghijabcdefghij;\n```",
+            &theme,
+            12,
+        );
         assert!(lines
             .iter()
             .filter(|line| !line.to_string().is_empty())
@@ -884,7 +873,13 @@ mod tests {
         let theme = MarkdownTheme::default();
         let lines = render_markdown("> abcdefghijabcdefghij", &theme, 8);
         let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
-        assert!(rendered.iter().filter(|line| line.starts_with("│ ")).count() >= 2);
+        assert!(
+            rendered
+                .iter()
+                .filter(|line| line.starts_with("│ "))
+                .count()
+                >= 2
+        );
         assert!(rendered.iter().all(|line| line.chars().count() <= 8));
     }
 
@@ -1028,7 +1023,11 @@ mod tests {
     #[test]
     fn test_table_renders_with_borders() {
         let theme = MarkdownTheme::default();
-        let lines = render_markdown("| Name | Value |\n| --- | --- |\n| alpha | beta |", &theme, 40);
+        let lines = render_markdown(
+            "| Name | Value |\n| --- | --- |\n| alpha | beta |",
+            &theme,
+            40,
+        );
         let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
         assert!(rendered.iter().any(|line| line.starts_with("╭")));
         assert!(rendered.iter().any(|line| line.contains("Name")));
@@ -1067,7 +1066,11 @@ mod tests {
     #[test]
     fn test_image_placeholder_fits_requested_width() {
         let theme = MarkdownTheme::default();
-        let lines = render_markdown("![very long alt text](/tmp/a-very-long-image-name.png)", &theme, 18);
+        let lines = render_markdown(
+            "![very long alt text](/tmp/a-very-long-image-name.png)",
+            &theme,
+            18,
+        );
         assert!(lines
             .iter()
             .map(|line| line.to_string())

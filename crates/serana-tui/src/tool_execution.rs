@@ -11,35 +11,21 @@ const PREVIEW_LINES: usize = 10;
 /// Max output lines when expanded.
 
 /// Render a tool call with tool-specific formatting.
-pub fn render_tool_call(
-    tool: &ToolCall,
-    symbols: &Symbols,
-    width: usize,
-) -> Vec<Line<'static>> {
+pub fn render_tool_call(tool: &ToolCall, symbols: &Symbols, width: usize) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let (icon, style) = tool_status_style(tool.status, symbols, &theme);
     let header = tool_header(tool, icon, style, width, symbols);
     let footer = tool_footer(width, symbols, &theme);
 
     let mut lines = match tool.name.as_str() {
-        "read_file" | "read" | "read_self" => {
-            render_read_file(tool, header, width, symbols)
-        }
+        "read_file" | "read" | "read_self" => render_read_file(tool, header, width, symbols),
         "edit_file" | "edit" | "edit_self" | "apply_patch" => {
             render_edit_diff(tool, header, width, symbols)
         }
-        "write_file" | "write" => {
-            render_write_file(tool, header, width, symbols)
-        }
-        "bash" | "cargo" | "git" | "verify_self" => {
-            render_command(tool, header, width, symbols)
-        }
-        n if n.starts_with("lsp_") => {
-            render_lsp(tool, header, symbols)
-        }
-        n if n.starts_with("ast_") => {
-            render_ast(tool, header, symbols)
-        }
+        "write_file" | "write" => render_write_file(tool, header, width, symbols),
+        "bash" | "cargo" | "git" | "verify_self" => render_command(tool, header, width, symbols),
+        n if n.starts_with("lsp_") => render_lsp(tool, header, symbols),
+        n if n.starts_with("ast_") => render_ast(tool, header, symbols),
         _ => render_generic(tool, header, &theme, symbols),
     };
     lines.push(footer);
@@ -55,7 +41,10 @@ pub fn render_tool_call(
                 )));
             } else {
                 lines.push(Line::from(Span::styled(
-                    format!("  {} Image detected: {} (terminal does not support inline images)", symbols.info, image_path),
+                    format!(
+                        "  {} Image detected: {} (terminal does not support inline images)",
+                        symbols.info, image_path
+                    ),
                     theme.dim,
                 )));
             }
@@ -237,7 +226,11 @@ fn render_write_file(
     if !content.is_empty() {
         let h = symbols.box_sharp.horizontal;
         let file_width = width.saturating_sub(6);
-        let title = if path.is_empty() { " written " } else { &format!(" {} ", path) };
+        let title = if path.is_empty() {
+            " written "
+        } else {
+            &format!(" {} ", path)
+        };
         let title_len = title.len() as i32;
         let border_len = (file_width as i32).saturating_sub(title_len).max(2) as usize;
         lines.push(Line::from(Span::styled(
@@ -258,7 +251,11 @@ fn render_write_file(
         }
         if content.lines().count() > PREVIEW_LINES {
             lines.push(Line::from(Span::styled(
-                format!("  {} ... ({} lines)", symbols.box_sharp.vertical, content.lines().count()),
+                format!(
+                    "  {} ... ({} lines)",
+                    symbols.box_sharp.vertical,
+                    content.lines().count()
+                ),
                 theme.dim,
             )));
         }
@@ -324,11 +321,7 @@ fn render_command(
 }
 
 /// Render LSP results.
-fn render_lsp(
-    tool: &ToolCall,
-    header: Line<'static>,
-    symbols: &Symbols,
-) -> Vec<Line<'static>> {
+fn render_lsp(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
@@ -364,10 +357,7 @@ fn render_lsp(
                 }
             }
             _ => {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", val),
-                    theme.dim,
-                )));
+                lines.push(Line::from(Span::styled(format!("  {}", val), theme.dim)));
             }
         }
     } else {
@@ -382,11 +372,7 @@ fn render_lsp(
 }
 
 /// Render AST results.
-fn render_ast(
-    tool: &ToolCall,
-    header: Line<'static>,
-    symbols: &Symbols,
-) -> Vec<Line<'static>> {
+fn render_ast(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<Line<'static>> {
     let theme = Theme::default();
     let mut lines = Vec::new();
     lines.push(Line::from(""));
@@ -405,7 +391,9 @@ fn render_ast(
                     let label = label[..1].to_uppercase() + &label[1..];
                     lines.push(Line::from(Span::styled(
                         format!("  {}", label),
-                        Style::default().fg(theme::DIM_TEAL).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme::DIM_TEAL)
+                            .add_modifier(Modifier::BOLD),
                     )));
                     if let serde_json::Value::Array(items) = v {
                         for item in items {
@@ -424,10 +412,7 @@ fn render_ast(
                 }
             }
             _ => {
-                lines.push(Line::from(Span::styled(
-                    format!("  {}", val),
-                    theme.dim,
-                )));
+                lines.push(Line::from(Span::styled(format!("  {}", val), theme.dim)));
             }
         }
     } else {
@@ -609,12 +594,7 @@ fn format_item(item: &serde_json::Value) -> String {
                 (None, None) => serde_json::to_string(item).unwrap_or_default(),
             }
         }
-        serde_json::Value::Array(arr) => {
-            arr.iter()
-                .map(format_item)
-                .collect::<Vec<_>>()
-                .join(", ")
-        }
+        serde_json::Value::Array(arr) => arr.iter().map(format_item).collect::<Vec<_>>().join(", "),
         other => other.to_string(),
     }
 }
@@ -624,7 +604,12 @@ fn truncate(s: &str, max_len: usize) -> String {
     if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}…", s.chars().take(max_len.saturating_sub(1)).collect::<String>())
+        format!(
+            "{}…",
+            s.chars()
+                .take(max_len.saturating_sub(1))
+                .collect::<String>()
+        )
     }
 }
 
@@ -743,7 +728,9 @@ mod tests {
             Some("command failed with exit code 1"),
         );
         let lines = render_tool_call(&tool, &symbols::UNICODE, 80);
-        assert!(lines.iter().any(|l| l.to_string().contains("command failed")));
+        assert!(lines
+            .iter()
+            .any(|l| l.to_string().contains("command failed")));
     }
 
     #[test]

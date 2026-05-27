@@ -8,11 +8,10 @@ pub mod iteration_budget;
 pub mod llm_client;
 pub mod message;
 pub mod meta_cognition;
+pub mod token_counter;
 pub mod tool;
 pub mod tool_approval;
 pub mod verification;
-pub mod token_counter;
-
 
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
@@ -30,7 +29,7 @@ pub use message::{FunctionCall, Message, ToolCallData};
 pub use meta_cognition::{
     MetaCognition, MetaRecord, ModificationKind, ModificationRecord, ModificationStats,
 };
+pub use token_counter::TokenCounter;
 pub use tool::Tool;
 pub use tool_approval::{ApprovalDecision, ApprovalMode, RiskLevel, ToolApproval};
 pub use verification::{StateSnapshot, VerificationResult, VerificationSystem};
-pub use token_counter::TokenCounter;

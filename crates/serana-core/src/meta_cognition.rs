@@ -117,7 +117,11 @@ impl MetaCognition {
     }
 
     /// Get recent failures for a specific tool.
-    pub async fn get_recent_failures(&self, tool_name: &str, count: usize) -> Vec<ModificationRecord> {
+    pub async fn get_recent_failures(
+        &self,
+        tool_name: &str,
+        count: usize,
+    ) -> Vec<ModificationRecord> {
         let mut failures = Vec::new();
         let history = self.history.lock().await;
         for record in history.iter().rev() {

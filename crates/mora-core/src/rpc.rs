@@ -148,10 +148,7 @@ impl RpcServer {
         Ok(())
     }
 
-    async fn write_response(
-        stdout: &mut tokio::io::Stdout,
-        resp: &RpcResponse,
-    ) -> Result<()> {
+    async fn write_response(stdout: &mut tokio::io::Stdout, resp: &RpcResponse) -> Result<()> {
         let json = serde_json::to_string(resp)?;
         stdout.write_all(json.as_bytes()).await?;
         stdout.write_all(b"\n").await?;

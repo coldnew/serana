@@ -126,10 +126,7 @@ impl Tool for BrowserTool {
                     .ok_or_else(|| anyhow::anyhow!("Missing 'code' for run"))?;
                 // v1: use puppeteer-style HTTP evaluate via CDP
                 let client = reqwest::Client::new();
-                let targets_resp = client
-                    .get("http://127.0.0.1:9222/json")
-                    .send()
-                    .await?;
+                let targets_resp = client.get("http://127.0.0.1:9222/json").send().await?;
                 let targets: Vec<Value> = targets_resp.json().await?;
                 let page = targets
                     .iter()

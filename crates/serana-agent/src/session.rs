@@ -222,7 +222,12 @@ impl SessionStore {
         }))
     }
 
-    pub fn save_message(&self, session_id: &str, role: &str, content: &str) -> serana_core::Result<()> {
+    pub fn save_message(
+        &self,
+        session_id: &str,
+        role: &str,
+        content: &str,
+    ) -> serana_core::Result<()> {
         let now = Utc::now().to_rfc3339();
         let conn = rusqlite::Connection::open(&self.db_path)?;
         conn.execute(
@@ -262,7 +267,11 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn search_messages(&self, query: &str, limit: usize) -> serana_core::Result<Vec<SearchResult>> {
+    pub fn search_messages(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> serana_core::Result<Vec<SearchResult>> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT m.session_id, m.role, m.content, m.timestamp FROM messages_fts f JOIN messages m ON m.id = f.rowid WHERE messages_fts MATCH ?1 ORDER BY m.id DESC LIMIT ?2",

@@ -141,15 +141,13 @@ pub fn render_diff(diff_text: &str, _width: usize) -> Vec<Line<'static>> {
         let line = diff_lines[i];
 
         if line.starts_with("@@") {
-            lines.push(Line::from(Span::styled(
-                line.to_string(),
-                theme.info,
-            )));
+            lines.push(Line::from(Span::styled(line.to_string(), theme.info)));
             i += 1;
             continue;
         }
 
-        if !line.is_empty() && line.as_bytes()[0] == b'-'
+        if !line.is_empty()
+            && line.as_bytes()[0] == b'-'
             && i + 1 < diff_lines.len()
             && !diff_lines[i + 1].is_empty()
             && diff_lines[i + 1].as_bytes()[0] == b'+'
@@ -187,14 +185,22 @@ mod tests {
     #[test]
     fn test_tokenize() {
         let tokens = tokenize("foo bar baz");
-        let words: Vec<&str> = tokens.iter().filter(|(_, w)| *w).map(|(s, _)| s.as_str()).collect();
+        let words: Vec<&str> = tokens
+            .iter()
+            .filter(|(_, w)| *w)
+            .map(|(s, _)| s.as_str())
+            .collect();
         assert_eq!(words, vec!["foo", "bar", "baz"]);
     }
 
     #[test]
     fn test_tokenize_with_punctuation() {
         let tokens = tokenize("foo.bar()");
-        let words: Vec<&str> = tokens.iter().filter(|(_, w)| *w).map(|(s, _)| s.as_str()).collect();
+        let words: Vec<&str> = tokens
+            .iter()
+            .filter(|(_, w)| *w)
+            .map(|(s, _)| s.as_str())
+            .collect();
         assert_eq!(words, vec!["foo", "bar"]);
     }
 

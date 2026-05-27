@@ -95,11 +95,7 @@ impl LspManager {
         languages
     }
 
-    pub async fn definition(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Vec<Location>> {
+    pub async fn definition(&mut self, path: &Path, position: Position) -> Result<Vec<Location>> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -109,11 +105,7 @@ impl LspManager {
             .await
     }
 
-    pub async fn references(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Vec<Location>> {
+    pub async fn references(&mut self, path: &Path, position: Position) -> Result<Vec<Location>> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -123,11 +115,7 @@ impl LspManager {
             .await
     }
 
-    pub async fn hover(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Option<String>> {
+    pub async fn hover(&mut self, path: &Path, position: Position) -> Result<Option<String>> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -403,7 +391,10 @@ mod tests {
     #[test]
     fn test_language_from_extension() {
         assert_eq!(LanguageId::from_extension("rs"), Some(LanguageId::Rust));
-        assert_eq!(LanguageId::from_extension("ts"), Some(LanguageId::TypeScript));
+        assert_eq!(
+            LanguageId::from_extension("ts"),
+            Some(LanguageId::TypeScript)
+        );
         assert_eq!(LanguageId::from_extension("py"), Some(LanguageId::Python));
         assert_eq!(LanguageId::from_extension("go"), Some(LanguageId::Go));
         assert_eq!(LanguageId::from_extension("txt"), None);

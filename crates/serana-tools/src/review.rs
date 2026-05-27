@@ -40,10 +40,7 @@ impl Tool for CodeReviewTool {
             .get("diff")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'diff' field"))?;
-        let context = input
-            .get("context")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let context = input.get("context").and_then(|v| v.as_str()).unwrap_or("");
 
         // This tool returns a structured prompt that the agent should
         // send to the LLM. The actual LLM call happens in the agent layer.

@@ -70,7 +70,9 @@ impl Tool for ClipboardCopyTool {
             Err(_) => {}
         }
 
-        Err(anyhow::anyhow!("No clipboard tool found (tried xclip, pbcopy)"))
+        Err(anyhow::anyhow!(
+            "No clipboard tool found (tried xclip, pbcopy)"
+        ))
     }
 }
 
@@ -118,6 +120,8 @@ impl Tool for ClipboardPasteTool {
             _ => {}
         }
 
-        Err(anyhow::anyhow!("No clipboard tool found (tried xclip, pbpaste)"))
+        Err(anyhow::anyhow!(
+            "No clipboard tool found (tried xclip, pbpaste)"
+        ))
     }
 }

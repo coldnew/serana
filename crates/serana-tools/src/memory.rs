@@ -42,13 +42,16 @@ impl MemoryStore {
     }
 
     fn db_path() -> Result<PathBuf> {
-        let data_dir = dirs::data_dir()
-            .ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?;
+        let data_dir =
+            dirs::data_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine data directory"))?;
         Ok(data_dir.join("serana").join("memory.db"))
     }
 
     fn create_tables(&self) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS facts (
@@ -89,7 +92,10 @@ impl MemoryStore {
 
     /// Insert a new fact for the given project.
     pub fn store_fact(&self, project: &str, fact_text: &str, tags: &str) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO facts (project, fact_text, tags) VALUES (?1, ?2, ?3)",
             params![project, fact_text, tags],
@@ -99,7 +105,10 @@ impl MemoryStore {
 
     /// Full-text search across facts for the given project.
     pub fn search_facts(&self, project: &str, query: &str, limit: i64) -> Result<Vec<Value>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT f.id, f.fact_text, f.tags, f.created_at
              FROM facts_fts fts
@@ -131,7 +140,10 @@ impl MemoryStore {
 
     /// List recent facts for the given project, ordered by created_at DESC.
     pub fn list_facts(&self, project: &str, limit: i64) -> Result<Vec<Value>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, fact_text, tags, created_at
              FROM facts
@@ -221,10 +233,7 @@ impl Tool for RetainTool {
             .get("fact")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'fact' field"))?;
-        let tags = input
-            .get("tags")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let tags = input.get("tags").and_then(|v| v.as_str()).unwrap_or("");
         let project = current_project();
         let id = self.store.store_fact(&project, fact, tags)?;
         Ok(json!({ "stored": true, "id": id }))
@@ -278,10 +287,7 @@ impl Tool for RecallTool {
             .get("query")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'query' field"))?;
-        let limit = input
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(10);
+        let limit = input.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
         let project = current_project();
         let results = self.store.search_facts(&project, query, limit)?;
         Ok(json!({ "facts": results, "count": results.len() }))
@@ -326,10 +332,7 @@ impl Tool for ReflectTool {
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
-        let limit = input
-            .get("limit")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(20);
+        let limit = input.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
         let project = current_project();
         let results = self.store.list_facts(&project, limit)?;
         Ok(json!({ "facts": results, "count": results.len() }))

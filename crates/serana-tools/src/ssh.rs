@@ -50,10 +50,7 @@ impl Tool for SshTool {
 
         let result = timeout(
             Duration::from_secs(30),
-            Command::new("ssh")
-                .arg(host)
-                .arg(command)
-                .output(),
+            Command::new("ssh").arg(host).arg(command).output(),
         )
         .await;
 

@@ -195,7 +195,7 @@ pub fn render_dialog(frame: &mut ratatui::Frame, dialog: &Dialog) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // filter
-            Constraint::Min(3),   // list
+            Constraint::Min(3),    // list
             Constraint::Length(1), // help
         ])
         .split(popup_area.inner(ratatui::layout::Margin {
@@ -207,7 +207,9 @@ pub fn render_dialog(frame: &mut ratatui::Frame, dialog: &Dialog) {
     let block = Block::default()
         .title(Span::styled(
             &dialog.title,
-            Style::new().fg(theme::AQUAMARINE).add_modifier(Modifier::BOLD),
+            Style::new()
+                .fg(theme::AQUAMARINE)
+                .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -220,7 +222,12 @@ pub fn render_dialog(frame: &mut ratatui::Frame, dialog: &Dialog) {
     } else {
         Line::from(vec![
             Span::styled(&dialog.filter, Style::new().fg(theme::AQUAMARINE)),
-            Span::styled("▏", Style::new().fg(theme::AQUAMARINE).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "▏",
+                Style::new()
+                    .fg(theme::AQUAMARINE)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ])
     };
     frame.render_widget(Paragraph::new(filter_text), inner[0]);
@@ -375,7 +382,10 @@ fn truncate_text(text: &str, width: usize) -> String {
 
 fn dialog_help_line(width: usize, theme: &Theme) -> Line<'static> {
     Line::from(Span::styled(
-        truncate_text("↑↓: navigate  Enter: select  Esc: cancel  Type: filter", width),
+        truncate_text(
+            "↑↓: navigate  Enter: select  Esc: cancel  Type: filter",
+            width,
+        ),
         theme.dim,
     ))
 }
@@ -468,7 +478,11 @@ mod tests {
             value: "model".into(),
         };
         let line = render_dialog_item(&item, true, 20, 12);
-        let text: String = line.spans.iter().map(|span| span.content.as_ref()).collect();
+        let text: String = line
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect();
         assert!(text.starts_with("› very long…"));
         assert!(!text.contains('\n'));
         assert!(!text.contains('\t'));

@@ -111,10 +111,7 @@ impl Tool for GitLogTool {
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
-        let limit = input
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
+        let limit = input.get("limit").and_then(|v| v.as_u64()).unwrap_or(10);
 
         let limit_str = limit.to_string();
         let output = Command::new("git")
@@ -172,11 +169,7 @@ impl Tool for GitCommitTool {
 
         // Stage files if provided
         if !files.is_empty() {
-            let add_output = Command::new("git")
-                .arg("add")
-                .args(&files)
-                .output()
-                .await?;
+            let add_output = Command::new("git").arg("add").args(&files).output().await?;
 
             if !add_output.status.success() {
                 return Ok(json!({

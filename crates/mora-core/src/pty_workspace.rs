@@ -149,10 +149,14 @@ pub mod workspace_isolation {
 
         let output = tokio::process::Command::new("mount")
             .args([
-                "-t", "overlay", "overlay",
+                "-t",
+                "overlay",
+                "overlay",
                 &format!(
                     "lowerdir={},upperdir={},workdir={}",
-                    source.display(), upper_dir.display(), work_dir.display()
+                    source.display(),
+                    upper_dir.display(),
+                    work_dir.display()
                 ),
             ])
             .arg(dest)
@@ -193,7 +197,10 @@ mod tests {
     #[tokio::test]
     async fn pty_tool_runs_command() {
         let tool = PtyTool;
-        let result = tool.execute(json!({"command": "echo hello"})).await.unwrap();
+        let result = tool
+            .execute(json!({"command": "echo hello"}))
+            .await
+            .unwrap();
         assert_eq!(result["stdout"].as_str().unwrap().trim(), "hello");
         assert_eq!(result["exit_code"].as_i64().unwrap(), 0);
     }
@@ -201,21 +208,30 @@ mod tests {
     #[tokio::test]
     async fn pty_tool_sends_input() {
         let tool = PtyTool;
-        let result = tool.execute(json!({"command": "cat", "input": "test input"})).await.unwrap();
+        let result = tool
+            .execute(json!({"command": "cat", "input": "test input"}))
+            .await
+            .unwrap();
         assert_eq!(result["stdout"].as_str().unwrap().trim(), "test input");
     }
 
     #[tokio::test]
     async fn workspace_copy_isolation() {
         let src = tempdir().unwrap();
-        tokio::fs::write(src.path().join("test.txt"), "hello").await.unwrap();
+        tokio::fs::write(src.path().join("test.txt"), "hello")
+            .await
+            .unwrap();
 
         let dest = workspace_isolation::isolate_workspace(
             src.path(),
             workspace_isolation::IsolationStrategy::Copy,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
-        let content = tokio::fs::read_to_string(dest.join("test.txt")).await.unwrap();
+        let content = tokio::fs::read_to_string(dest.join("test.txt"))
+            .await
+            .unwrap();
         assert_eq!(content, "hello");
 
         workspace_isolation::cleanup_workspace(&dest).await.unwrap();

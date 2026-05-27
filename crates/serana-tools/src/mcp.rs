@@ -41,7 +41,10 @@ impl McpConnection {
         }
 
         let mut child = cmd.spawn()?;
-        let stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("No stdin"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No stdin"))?;
 
         Ok(Self {
             child: Mutex::new(child),
@@ -163,13 +166,22 @@ impl Tool for McpTool {
 
         match action {
             "connect" => {
-                let name = input.get("name").and_then(|v| v.as_str())
+                let name = input
+                    .get("name")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'name'"))?;
-                let command = input.get("command").and_then(|v| v.as_str())
+                let command = input
+                    .get("command")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'command'"))?;
-                let args: Vec<String> = input.get("args")
+                let args: Vec<String> = input
+                    .get("args")
                     .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
 
                 let config = McpServerConfig {
@@ -191,14 +203,19 @@ impl Tool for McpTool {
                 Ok(json!({ "servers": names }))
             }
             "call" => {
-                let server = input.get("server").and_then(|v| v.as_str())
+                let server = input
+                    .get("server")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'server'"))?;
-                let method = input.get("method").and_then(|v| v.as_str())
+                let method = input
+                    .get("method")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'method'"))?;
                 let params = input.get("params").cloned();
 
                 let connections = self.connections.lock().await;
-                let (_, conn) = connections.iter()
+                let (_, conn) = connections
+                    .iter()
                     .find(|(n, _)| n == server)
                     .ok_or_else(|| anyhow::anyhow!("MCP server '{}' not connected", server))?;
 
@@ -206,7 +223,9 @@ impl Tool for McpTool {
                 Ok(result)
             }
             "disconnect" => {
-                let server = input.get("server").and_then(|v| v.as_str())
+                let server = input
+                    .get("server")
+                    .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'server'"))?;
 
                 let mut connections = self.connections.lock().await;

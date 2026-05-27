@@ -92,8 +92,9 @@ impl Tool for RecipeTool {
             cwd.to_path_buf()
         };
 
-        let runner = detect_runner(&cwd)
-            .ok_or_else(|| anyhow::anyhow!("No supported task runner found in {}", cwd.display()))?;
+        let runner = detect_runner(&cwd).ok_or_else(|| {
+            anyhow::anyhow!("No supported task runner found in {}", cwd.display())
+        })?;
 
         let runner_name = runner.name();
         let (program, args) = runner.command(task);

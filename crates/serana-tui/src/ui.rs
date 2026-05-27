@@ -120,13 +120,20 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let divider = Paragraph::new(vec![
-        Line::from(Span::styled(s.box_round.vertical, theme.border));
+        Line::from(Span::styled(
+            s.box_round.vertical,
+            theme.border
+        ));
         right_area.height as usize
     ]);
     frame.render_widget(divider, cols[1]);
 
     let mut right_lines: Vec<Line> = Vec::new();
-    let sep = format!(" {}", s.hr_char.repeat(right_area.width.saturating_sub(3) as usize));
+    let sep = format!(
+        " {}",
+        s.hr_char
+            .repeat(right_area.width.saturating_sub(3) as usize)
+    );
 
     right_lines.push(Line::from(Span::styled(
         format!(" {}", "Tips"),
@@ -159,10 +166,7 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
         theme.dim,
     )));
     right_lines.push(Line::from(Span::styled(&sep, theme.dim)));
-    right_lines.push(Line::from(Span::styled(
-        " Recent sessions",
-        theme.accent,
-    )));
+    right_lines.push(Line::from(Span::styled(" Recent sessions", theme.accent)));
     if app.recent_sessions.is_empty() {
         right_lines.push(Line::from(Span::styled(
             format!("  {} No recent sessions", s.bullet),
@@ -223,7 +227,12 @@ fn clamp_line(line: Line<'static>, width: usize) -> Line<'static> {
     Line::from(spans)
 }
 
-fn render_message_para(msg: &ChatMessage, width: usize, theme: &Theme, symbols: &Symbols) -> Vec<Line<'static>> {
+fn render_message_para(
+    msg: &ChatMessage,
+    width: usize,
+    theme: &Theme,
+    symbols: &Symbols,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     match msg.role {
@@ -345,7 +354,9 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
         .map(|line| clamp_line(line, area.width as usize))
         .collect();
 
-    let scroll_offset = app.scroll.min(all_lines.len().saturating_sub(area.height as usize));
+    let scroll_offset = app
+        .scroll
+        .min(all_lines.len().saturating_sub(area.height as usize));
 
     let para = Paragraph::new(all_lines)
         .scroll((scroll_offset as u16, 0))
@@ -367,7 +378,12 @@ fn render_todo_lines(items: &[TodoItem], theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(vec![
         Span::styled("  Tasks", theme.accent),
         Span::styled(
-            format!("  {} incomplete {} / {} total", incomplete, label, items.len()),
+            format!(
+                "  {} incomplete {} / {} total",
+                incomplete,
+                label,
+                items.len()
+            ),
             theme.dim,
         ),
     ])];
@@ -443,10 +459,7 @@ fn render_btw_lines(
         let note_text = truncate_text(note, text_width);
         let pad = " ".repeat(text_width.saturating_sub(note_text.chars().count()));
         lines.push(Line::from(vec![
-            Span::styled(
-                format!("  {} ", symbols.box_round.vertical),
-                theme.border,
-            ),
+            Span::styled(format!("  {} ", symbols.box_round.vertical), theme.border),
             Span::styled(bullet, theme.dim),
             Span::styled(note_text, theme.muted),
             Span::raw(pad),
@@ -458,7 +471,10 @@ fn render_btw_lines(
         format!(
             "  {}{}{}",
             symbols.box_round.bottom_left,
-            symbols.box_round.horizontal.repeat(panel_width.saturating_sub(2)),
+            symbols
+                .box_round
+                .horizontal
+                .repeat(panel_width.saturating_sub(2)),
             symbols.box_round.bottom_right
         ),
         theme.border,
@@ -483,7 +499,10 @@ fn render_processing_lines(
             format!(
                 "  {}{}{}",
                 symbols.box_sharp.top_left,
-                symbols.box_sharp.horizontal.repeat(panel_width.saturating_sub(2)),
+                symbols
+                    .box_sharp
+                    .horizontal
+                    .repeat(panel_width.saturating_sub(2)),
                 symbols.box_sharp.top_right
             ),
             theme.border,
@@ -502,10 +521,7 @@ fn render_processing_lines(
 
     for item in pending {
         lines.push(padded_panel_line(
-            vec![Span::styled(
-                truncate_text(item, inner_width),
-                theme.dim,
-            )],
+            vec![Span::styled(truncate_text(item, inner_width), theme.dim)],
             inner_width,
             theme,
             symbols,
@@ -516,7 +532,10 @@ fn render_processing_lines(
         format!(
             "  {}{}{}",
             symbols.box_sharp.bottom_left,
-            symbols.box_sharp.horizontal.repeat(panel_width.saturating_sub(2)),
+            symbols
+                .box_sharp
+                .horizontal
+                .repeat(panel_width.saturating_sub(2)),
             symbols.box_sharp.bottom_right
         ),
         theme.border,
@@ -546,10 +565,7 @@ fn padded_panel_line(
 }
 
 fn spans_text_width(spans: &[Span<'static>]) -> usize {
-    spans
-        .iter()
-        .map(|span| span.content.chars().count())
-        .sum()
+    spans.iter().map(|span| span.content.chars().count()).sum()
 }
 
 fn render_status_notice_lines(
@@ -579,9 +595,7 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
 
     let border_style = match app.mode {
         AppMode::Normal => Style::new().fg(theme::MUTED_TEAL),
-        AppMode::Input => {
-            Style::new().fg(theme::AQUAMARINE)
-        }
+        AppMode::Input => Style::new().fg(theme::AQUAMARINE),
         AppMode::Processing => Style::new().fg(theme::CORAL),
     };
 
@@ -597,7 +611,10 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
                 .border_type(BorderType::Rounded)
                 .border_style(border_style)
                 .padding(Padding::horizontal(2))
-                .title(build_status_line(area.width.saturating_sub(2) as usize, app)),
+                .title(build_status_line(
+                    area.width.saturating_sub(2) as usize,
+                    app,
+                )),
         )
         .wrap(Wrap { trim: false })
         .scroll((
@@ -619,7 +636,10 @@ fn render_editor_display_lines(
             AppMode::Processing => "Waiting for AI response...",
             _ => "Type your message... (Shift+Enter for newline)",
         };
-        return vec![clamp_line(Line::from(Span::styled(placeholder, theme.dim)), width)];
+        return vec![clamp_line(
+            Line::from(Span::styled(placeholder, theme.dim)),
+            width,
+        )];
     }
 
     (0..editor.line_count())
@@ -706,7 +726,9 @@ fn wrap_editor_display_line(line: Line<'static>, width: usize) -> Vec<Line<'stat
     }
 
     if !current.is_empty() || lines.is_empty() {
-        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(current)));
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(
+            current,
+        )));
     }
     lines
 }
@@ -744,9 +766,9 @@ fn append_editor_wrap_token(
     }
 
     if *current_width + token_width > width {
-        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(std::mem::take(
-            current,
-        ))));
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(
+            std::mem::take(current),
+        )));
         *current_width = 0;
         if is_whitespace {
             return;
@@ -770,14 +792,14 @@ fn append_long_editor_token(
         let take = (width - *current_width).min(token_width);
         current.extend_from_slice(&token[..take]);
         idx = take;
-        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(std::mem::take(
-            current,
-        ))));
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(
+            std::mem::take(current),
+        )));
         *current_width = 0;
     } else if !current.is_empty() {
-        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(std::mem::take(
-            current,
-        ))));
+        lines.push(line_from_styled_chars(trim_trailing_editor_whitespace(
+            std::mem::take(current),
+        )));
         *current_width = 0;
     }
 
@@ -857,7 +879,9 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(i, item)| {
             let selected = i == ac.selected;
             let name_style = if selected {
-                Style::new().fg(theme::AQUAMARINE).add_modifier(ratatui::style::Modifier::BOLD)
+                Style::new()
+                    .fg(theme::AQUAMARINE)
+                    .add_modifier(ratatui::style::Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -867,7 +891,10 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
                 Span::styled(cursor, Style::new().fg(theme::AQUAMARINE)),
                 Span::styled(truncate_text(&item.value, 18), name_style),
                 Span::raw(" "),
-                Span::styled(truncate_text(&item.description, popup.width.saturating_sub(24) as usize), desc_style),
+                Span::styled(
+                    truncate_text(&item.description, popup.width.saturating_sub(24) as usize),
+                    desc_style,
+                ),
             ]);
             ListItem::new(line)
         })
@@ -1138,13 +1165,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if !showing_welcome {
         let title = format!(" Serana v{} ", app.version);
-        let header = Paragraph::new(Line::from(Span::styled(&title, theme.muted)))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(theme.border)
-                    .title(title.clone()),
-            );
+        let header = Paragraph::new(Line::from(Span::styled(&title, theme.muted))).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(theme.border)
+                .title(title.clone()),
+        );
         frame.render_widget(header, header_area);
     }
 
@@ -1215,14 +1241,11 @@ mod tests {
         let lines = render_editor_display_lines(&editor, AppMode::Input, 80, &theme);
         let line = &lines[0];
         assert!(line.to_string().contains("▏"));
-        assert!(line
-            .spans
-            .iter()
-            .any(|span| span.content == "b"
-                && span
-                    .style
-                    .add_modifier
-                    .contains(ratatui::style::Modifier::REVERSED)));
+        assert!(line.spans.iter().any(|span| span.content == "b"
+            && span
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::REVERSED)));
     }
 
     #[test]
@@ -1246,9 +1269,7 @@ mod tests {
         let lines = render_editor_display_lines(&editor, AppMode::Input, 4, &theme);
         let rendered: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
         assert!(rendered.len() >= 3);
-        assert!(rendered
-            .iter()
-            .all(|line| line.chars().count() <= 4));
+        assert!(rendered.iter().all(|line| line.chars().count() <= 4));
     }
 
     #[test]
@@ -1308,7 +1329,9 @@ mod tests {
             ],
             &theme,
         );
-        assert!(lines[0].to_string().contains("2 incomplete todos / 3 total"));
+        assert!(lines[0]
+            .to_string()
+            .contains("2 incomplete todos / 3 total"));
     }
 
     #[test]

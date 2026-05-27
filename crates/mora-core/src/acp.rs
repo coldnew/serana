@@ -103,7 +103,8 @@ impl AcpServer {
                     Self::write_response(&mut stdout, &resp).await?;
                 }
                 "session/prompt" => {
-                    let message = request.params
+                    let message = request
+                        .params
                         .as_ref()
                         .and_then(|p| p.get("message"))
                         .and_then(|v| v.as_str())

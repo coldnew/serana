@@ -42,11 +42,11 @@ impl Tool for PluginTool {
         Box::leak(self.def.description.clone().into_boxed_str())
     }
 
-
     fn parameters(&self) -> Value {
-        self.def.parameters.clone().unwrap_or_else(|| {
-            json!({"type": "object", "properties": {}})
-        })
+        self.def
+            .parameters
+            .clone()
+            .unwrap_or_else(|| json!({"type": "object", "properties": {}}))
     }
 
     async fn execute(&self, input: Value) -> Result<Value> {
@@ -72,7 +72,13 @@ impl Tool for PluginTool {
                 .output(),
         )
         .await
-        .map_err(|_| anyhow::anyhow!("Plugin '{}' timed out after {}s", self.def.name, self.def.timeout))?
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "Plugin '{}' timed out after {}s",
+                self.def.name,
+                self.def.timeout
+            )
+        })?
         .map_err(|e| anyhow::anyhow!("Plugin '{}' failed: {}", self.def.name, e))?;
 
         Ok(json!({

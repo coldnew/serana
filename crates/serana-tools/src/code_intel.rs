@@ -220,9 +220,7 @@ impl Tool for LspHoverTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut mgr = self.manager.lock().await;
-        let hover = mgr
-            .hover(request.path.as_ref(), request.position)
-            .await?;
+        let hover = mgr.hover(request.path.as_ref(), request.position).await?;
         Ok(json!({ "hover": hover }))
     }
 }

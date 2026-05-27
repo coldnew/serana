@@ -35,7 +35,10 @@ impl ShellSession {
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
-        let stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("No stdin"))?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No stdin"))?;
 
         Ok(Self {
             child: Mutex::new(child),
@@ -46,10 +49,13 @@ impl ShellSession {
     /// Execute a command in the shell session.
     pub async fn execute(&self, command: &str, timeout_secs: u64) -> Result<Value> {
         // Use a sentinel to detect command completion
-        let sentinel = format!("__SERANA_DONE_{}__", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos());
+        let sentinel = format!(
+            "__SERANA_DONE_{}__",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
 
         let wrapped = format!("{}\necho \"{}\"", command, sentinel);
 
@@ -62,7 +68,10 @@ impl ShellSession {
         // Read output until sentinel
         let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
         let mut child = self.child.lock().await;
-        let stdout = child.stdout.as_mut().ok_or_else(|| anyhow::anyhow!("No stdout"))?;
+        let stdout = child
+            .stdout
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("No stdout"))?;
 
         let mut buf = Vec::new();
         let mut temp = [0u8; 4096];
@@ -173,10 +182,7 @@ impl Tool for ShellTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' field"))?;
 
-        let timeout = input
-            .get("timeout")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30);
+        let timeout = input.get("timeout").and_then(|v| v.as_u64()).unwrap_or(30);
 
         let mut guard = self.session.lock().await;
 

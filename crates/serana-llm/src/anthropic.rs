@@ -7,8 +7,8 @@ use reqwest::Client;
 use serde_json::json;
 use std::pin::Pin;
 
-use serana_core::{Config, FunctionCall, LlmClient, Message, ToolCallData, ToolDefinition};
 use serana_core::Result;
+use serana_core::{Config, FunctionCall, LlmClient, Message, ToolCallData, ToolDefinition};
 
 use crate::streaming::SseStream;
 
@@ -43,30 +43,32 @@ impl AnthropicClient {
 
         for msg in messages {
             match msg {
-                Message::Text { role, content } => {
-                    match role.as_str() {
-                        "system" => {
-                            if !system.is_empty() {
-                                system.push('\n');
-                            }
-                            system.push_str(content);
+                Message::Text { role, content } => match role.as_str() {
+                    "system" => {
+                        if !system.is_empty() {
+                            system.push('\n');
                         }
-                        "user" => {
-                            api_messages.push(json!({
-                                "role": "user",
-                                "content": content
-                            }));
-                        }
-                        "assistant" => {
-                            api_messages.push(json!({
-                                "role": "assistant",
-                                "content": content
-                            }));
-                        }
-                        _ => {}
+                        system.push_str(content);
                     }
-                }
-                Message::ToolCall { role: _, content, tool_calls } => {
+                    "user" => {
+                        api_messages.push(json!({
+                            "role": "user",
+                            "content": content
+                        }));
+                    }
+                    "assistant" => {
+                        api_messages.push(json!({
+                            "role": "assistant",
+                            "content": content
+                        }));
+                    }
+                    _ => {}
+                },
+                Message::ToolCall {
+                    role: _,
+                    content,
+                    tool_calls,
+                } => {
                     let mut blocks = Vec::new();
                     if let Some(text) = content {
                         blocks.push(json!({"type": "text", "text": text}));
@@ -86,7 +88,11 @@ impl AnthropicClient {
                         "content": blocks
                     }));
                 }
-                Message::ToolResult { tool_call_id, content, .. } => {
+                Message::ToolResult {
+                    tool_call_id,
+                    content,
+                    ..
+                } => {
                     api_messages.push(json!({
                         "role": "user",
                         "content": [{

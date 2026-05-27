@@ -36,9 +36,10 @@ impl TokenCounter {
                         ..
                     } => {
                         content.as_ref().map(|c| c.len()).unwrap_or(0)
-                            + tool_calls.iter().map(|tc| {
-                                tc.function.name.len() + tc.function.arguments.len() + 20
-                            }).sum::<usize>()
+                            + tool_calls
+                                .iter()
+                                .map(|tc| tc.function.name.len() + tc.function.arguments.len() + 20)
+                                .sum::<usize>()
                     }
                     Message::ToolResult { content, .. } => content.len(),
                 };

@@ -107,28 +107,16 @@ pub fn render_image(path: &Path, protocol: ImageProtocol) -> Option<String> {
 
                 if offset == 0 && is_last {
                     // Single chunk
-                    result.push_str(&format!(
-                        "\x1b_Ga=T,f=100,m={};{}\x1b\\",
-                        0, chunk
-                    ));
+                    result.push_str(&format!("\x1b_Ga=T,f=100,m={};{}\x1b\\", 0, chunk));
                 } else if offset == 0 {
                     // First chunk
-                    result.push_str(&format!(
-                        "\x1b_Ga=T,f=100,m=1;{}\x1b\\",
-                        chunk
-                    ));
+                    result.push_str(&format!("\x1b_Ga=T,f=100,m=1;{}\x1b\\", chunk));
                 } else if is_last {
                     // Last chunk
-                    result.push_str(&format!(
-                        "\x1b_Gm=0;{}\x1b\\",
-                        chunk
-                    ));
+                    result.push_str(&format!("\x1b_Gm=0;{}\x1b\\", chunk));
                 } else {
                     // Middle chunk
-                    result.push_str(&format!(
-                        "\x1b_Gm=1;{}\x1b\\",
-                        chunk
-                    ));
+                    result.push_str(&format!("\x1b_Gm=1;{}\x1b\\", chunk));
                 }
 
                 offset = end;
@@ -137,10 +125,7 @@ pub fn render_image(path: &Path, protocol: ImageProtocol) -> Option<String> {
         }
         ImageProtocol::ITerm2 => {
             // iTerm2 inline images
-            let filename = path
-                .file_name()
-                .and_then(|f| f.to_str())
-                .unwrap_or("image");
+            let filename = path.file_name().and_then(|f| f.to_str()).unwrap_or("image");
             Some(format!(
                 "\x1b]1337;File=name={};inline=1;size={};preserveAspectRatio=1:{}\x07",
                 base64_encode(filename.as_bytes()),
@@ -201,11 +186,19 @@ pub fn detect_image_in_result(result: &str, _tool_name: &str) -> Option<String> 
     for line in result.lines() {
         let trimmed = line.trim();
         // Standalone path: line starts with /, ./, ../, or ~ and is an image
-        if is_image_file(trimmed) && (trimmed.starts_with('/') || trimmed.starts_with("./") || trimmed.starts_with("../") || trimmed.starts_with('~')) {
+        if is_image_file(trimmed)
+            && (trimmed.starts_with('/')
+                || trimmed.starts_with("./")
+                || trimmed.starts_with("../")
+                || trimmed.starts_with('~'))
+        {
             return Some(trimmed.to_string());
         }
         // Check for "Saved to: <path>" patterns
-        if let Some(path) = trimmed.strip_prefix("saved to:").or_else(|| trimmed.strip_prefix("Saved to:")) {
+        if let Some(path) = trimmed
+            .strip_prefix("saved to:")
+            .or_else(|| trimmed.strip_prefix("Saved to:"))
+        {
             let path = path.trim();
             if is_image_file(path) {
                 return Some(path.to_string());
@@ -258,9 +251,15 @@ mod tests {
         assert_eq!(detect_image_in_result(result, "bash"), None); // doesn't match "Saved to:" exactly
 
         let result2 = "Saved to: /tmp/chart.png";
-        assert_eq!(detect_image_in_result(result2, "bash"), Some("/tmp/chart.png".to_string()));
+        assert_eq!(
+            detect_image_in_result(result2, "bash"),
+            Some("/tmp/chart.png".to_string())
+        );
 
         let result3 = "/tmp/output.jpg";
-        assert_eq!(detect_image_in_result(result3, "generate"), Some("/tmp/output.jpg".to_string()));
+        assert_eq!(
+            detect_image_in_result(result3, "generate"),
+            Some("/tmp/output.jpg".to_string())
+        );
     }
 }
