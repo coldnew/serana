@@ -20,6 +20,7 @@ serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
 mora-lisp = { path = "../crates/mora-lisp" }
 mora-compile = { path = "../crates/mora-compile" }
 mishell-parser = { path = "../crates/mishell-parser" }
+display-protocol = { path = "../crates/display-protocol", features = ["tui"] }
 tokio.workspace = true
 thiserror.workspace = true
 hostname = "0.4"
@@ -37,6 +38,14 @@ tempfile = "3.12"
 [[bin]]
 name = "mora"
 path = "src/bin/mora.rs"
+
+[[bin]]
+name = "mora-server"
+path = "src/bin/mora_server.rs"
+
+[[bin]]
+name = "mora-client"
+path = "src/bin/mora_client.rs"
 
 [[bin]]
 name = "mishell"

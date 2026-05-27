@@ -1,5 +1,6 @@
 mod buffer;
 pub mod display;
+pub mod editor_core;
 mod editor;
 mod keymap;
 mod kill_ring;

@@ -2657,6 +2657,45 @@ impl MoraEditor {
                 self.command_input.clear();
                 return;
             }
+            _ if trimmed.starts_with("shell-command ") => {
+                let cmd = trimmed["shell-command ".len()..].trim().to_string();
+                if cmd.is_empty() {
+                    self.status_message = "Usage: shell-command <command>".to_string();
+                } else {
+                    let mut state = super::lisp_ext::EditorState::new();
+                    state.lines = self.buffer.lines.clone();
+                    state.cursor_row = self.buffer.cursor.row;
+                    state.cursor_col = self.buffer.cursor.col;
+                    state.modified = self.buffer.modified;
+                    state.file_path = self.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
+                    state.mode = self.mode.label().to_lowercase();
+                    state.window_count = self.windows.len();
+                    state.overlays = std::mem::replace(&mut self.buffer.overlays, super::overlay::OverlayStore::new());
+                    super::lisp_ext::set_editor_state(state);
+
+                    let result = self.lisp_bridge.eval(&format!("(shell-command \"{}\")", cmd.replace('\\', "\\\\").replace('"', "\\\"")));
+
+                    if let Some(state) = super::lisp_ext::take_editor_state() {
+                        self.buffer.lines = state.lines;
+                        self.buffer.cursor.row = state.cursor_row.min(self.buffer.lines.len().saturating_sub(1));
+                        self.buffer.cursor.col = state.cursor_col;
+                        self.buffer.modified = state.modified;
+                        self.buffer.overlays = state.overlays;
+                        self.status_message = state.status_message;
+                        if state.quit_requested {
+                            self.quit_requested = true;
+                        }
+                    }
+
+                    match result {
+                        Ok(_) => {}
+                        Err(e) => self.status_message = format!("Error: {}", e),
+                    }
+                }
+                self.mode = EditorMode::Emacs;
+                self.command_input.clear();
+                return;
+            }
             _ => {}
         }
 
@@ -2709,6 +2748,7 @@ impl MoraEditor {
             "save-buffer",
             "save-some-buffers",
             "set-mode",
+            "shell-command",
             "switch-mode",
             "toggle-fold",
             "toggle-minor-mode",

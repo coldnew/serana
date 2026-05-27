@@ -139,6 +139,10 @@ impl MoraLispBridge {
         ns.intern("overlay-put-invisible", Value::Native(prim_overlay_put_invisible));
         ns.intern("overlay-put-read-only", Value::Native(prim_overlay_put_read_only));
 
+        // Shell operations
+        ns.intern("shell-command", Value::Native(prim_shell_command));
+        ns.intern("shell-capture", Value::Native(prim_shell_capture));
+
         // Constants
         ns.intern("*mora-version*", Value::string(env!("CARGO_PKG_VERSION")));
         ns.intern("*newline*", Value::string("\n"));
@@ -569,6 +573,51 @@ fn prim_overlay_put_read_only(args: &[Value]) -> Result<Value, String> {
         }
         Ok(Value::Nil)
     })
+}
+
+// --- Shell primitives ---
+
+fn prim_shell_command(args: &[Value]) -> Result<Value, String> {
+    let cmd = extract_string(args, 0)?;
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&cmd)
+        .output()
+        .map_err(|e| format!("failed to run command: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if output.status.success() {
+        let trimmed = stdout.trim_end_matches('\n').to_string();
+        with_editor_state_mut(|state| {
+            state.status_message = if trimmed.is_empty() {
+                format!("Shell command succeeded (exit {})", output.status.code().unwrap_or(0))
+            } else {
+                trimmed.clone()
+            };
+            Ok(Value::string(trimmed))
+        })
+    } else {
+        let msg = if stderr.is_empty() {
+            format!("Command failed (exit {})", output.status.code().unwrap_or(-1))
+        } else {
+            stderr.trim_end_matches('\n').to_string()
+        };
+        with_editor_state_mut(|state| {
+            state.status_message = msg.clone();
+            Ok(Value::string(msg))
+        })
+    }
+}
+
+fn prim_shell_capture(args: &[Value]) -> Result<Value, String> {
+    let cmd = extract_string(args, 0)?;
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&cmd)
+        .output()
+        .map_err(|e| format!("failed to run command: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(Value::string(stdout.trim_end_matches('\n').to_string()))
 }
 
 fn parse_color(s: &str) -> Option<super::display::style::MoraColor> {

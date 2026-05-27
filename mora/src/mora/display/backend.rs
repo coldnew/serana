@@ -33,20 +33,7 @@ pub enum MouseKind {
     ScrollDown,
 }
 
-#[derive(Debug, Clone)]
-pub struct Cell {
-    pub ch: char,
-    pub style: MoraStyle,
-}
-
-impl Default for Cell {
-    fn default() -> Self {
-        Self {
-            ch: ' ',
-            style: MoraStyle::default(),
-        }
-    }
-}
+pub use display_protocol::Cell;
 
 pub struct CellBuffer {
     pub width: u16,
