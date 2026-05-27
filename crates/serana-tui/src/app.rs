@@ -543,10 +543,78 @@ impl App {
                     thinking: None,
                 });
             }
-            SlashResult::Compact | SlashResult::Clear | SlashResult::Reload => {
+            SlashResult::Compact => {
+                // Keep system prompt and last few messages, summarize the rest
+                let keep_last = 4.min(self.messages.len());
+                let drain_end = self.messages.len().saturating_sub(keep_last);
+                if drain_end > 0 {
+                    let removed = drain_end;
+                    // Build a summary of removed messages
+                    let summary_parts: Vec<String> = self.messages[..drain_end]
+                        .iter()
+                        .filter(|m| !m.content.is_empty())
+                        .map(|m| {
+                            let role = match m.role {
+                                MessageRole::User => "User",
+                                MessageRole::Agent => "Assistant",
+                                MessageRole::System => "System",
+                            };
+                            let preview: String = m.content.chars().take(120).collect();
+                            format!("{}: {}", role, preview)
+                        })
+                        .collect();
+                    let summary = if summary_parts.is_empty() {
+                        format!("Compacted {} messages.", removed)
+                    } else {
+                        format!(
+                            "Compacted {} messages. Summary:\n{}",
+                            removed,
+                            summary_parts.join("\n")
+                        )
+                    };
+                    self.messages.drain(..drain_end);
+                    // Insert compaction summary as system message at the start
+                    self.messages.insert(
+                        0,
+                        ChatMessage {
+                            role: MessageRole::System,
+                            content: summary,
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        },
+                    );
+                    self.scroll = 0;
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "Nothing to compact.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::Clear => {
+                self.messages.clear();
+                self.pending_messages.clear();
+                self.scroll = 0;
+                self.show_welcome = true;
+            }
+            SlashResult::Reload => {
+                // Reload skills from disk
+                let workspace = self.workspace.clone();
+                let new_store = serana_tools::skill::SkillStore::discover(&workspace);
+                let count = new_store.len();
+                self.skill_store = Some(new_store);
+                // Reload custom slash commands
+                self.slash_commands = SlashCommandRegistry::new();
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(self.slash_commands.load_custom_commands());
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: format!("{:?} not yet implemented", result),
+                    content: format!(
+                        "Reloaded: {} skill(s), custom commands refreshed.",
+                        count
+                    ),
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
