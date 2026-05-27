@@ -8,66 +8,73 @@ pub struct ThreadPool {
     sender: Option<channel::Sender<Box<dyn FnOnce() + Send>>>,
 }
 
-// Simple channel implementation without crossbeam
 mod channel {
-    use parking_lot::Mutex;
+    use parking_lot::{Condvar, Mutex};
     use std::collections::VecDeque;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct Shared<T> {
+        queue: Mutex<VecDeque<T>>,
+        condvar: Condvar,
+        closed: Mutex<bool>,
+    }
 
     pub struct Sender<T> {
-        queue: Arc<Mutex<VecDeque<T>>>,
-        available: Arc<AtomicBool>,
+        shared: Arc<Shared<T>>,
     }
 
     impl<T> Clone for Sender<T> {
         fn clone(&self) -> Self {
             Self {
-                queue: self.queue.clone(),
-                available: self.available.clone(),
+                shared: self.shared.clone(),
             }
         }
     }
 
     impl<T> Sender<T> {
         pub fn send(&self, msg: T) {
-            self.queue.lock().push_back(msg);
-            self.available.store(true, Ordering::SeqCst);
+            let mut queue = self.shared.queue.lock();
+            queue.push_back(msg);
+            drop(queue);
+            self.shared.condvar.notify_one();
+        }
+    }
+
+    impl<T> Drop for Sender<T> {
+        fn drop(&mut self) {
+            *self.shared.closed.lock() = true;
+            self.shared.condvar.notify_all();
         }
     }
 
     pub struct Receiver<T> {
-        queue: Arc<Mutex<VecDeque<T>>>,
-        available: Arc<AtomicBool>,
+        shared: Arc<Shared<T>>,
     }
 
     impl<T> Receiver<T> {
         pub fn recv(&self) -> Option<T> {
+            let mut queue = self.shared.queue.lock();
             loop {
-                let msg = self.queue.lock().pop_front();
-                if msg.is_some() {
-                    if self.queue.lock().is_empty() {
-                        self.available.store(false, Ordering::SeqCst);
-                    }
-                    return msg;
+                if let Some(msg) = queue.pop_front() {
+                    return Some(msg);
                 }
-                if !self.available.load(Ordering::SeqCst) {
+                if *self.shared.closed.lock() {
                     return None;
                 }
-                std::thread::yield_now();
+                self.shared.condvar.wait(&mut queue);
             }
         }
     }
 
     pub fn unbounded<T>() -> (Sender<T>, Receiver<T>) {
-        let queue = Arc::new(Mutex::new(VecDeque::new()));
-        let available = Arc::new(AtomicBool::new(false));
+        let shared = Arc::new(Shared {
+            queue: Mutex::new(VecDeque::new()),
+            condvar: Condvar::new(),
+            closed: Mutex::new(false),
+        });
         (
-            Sender {
-                queue: queue.clone(),
-                available: available.clone(),
-            },
-            Receiver { queue, available },
+            Sender { shared: shared.clone() },
+            Receiver { shared },
         )
     }
 }
@@ -90,9 +97,7 @@ impl ThreadPool {
                     };
                     match job {
                         Some(job) => job(),
-                        None => {
-                            thread::yield_now();
-                        }
+                        None => break,
                     }
                 }
             });
@@ -118,5 +123,8 @@ impl ThreadPool {
 impl Drop for ThreadPool {
     fn drop(&mut self) {
         drop(self.sender.take());
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
     }
 }

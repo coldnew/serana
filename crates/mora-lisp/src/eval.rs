@@ -79,12 +79,15 @@ pub struct Evaluator {
     pub ns: NamespaceRegistry,
     pub thread_pool: ThreadPool,
     macroexpand_cache: HashMap<Symbol, Value>,
+    in_tail_position: bool,
+    pending_tail_call: Option<(FnValue, Vec<Value>)>,
 }
 
 thread_local! {
     static EVALUATOR_PTR: Cell<*mut Evaluator> = Cell::new(std::ptr::null_mut());
 }
 
+#[allow(unsafe_code)]
 pub fn with_evaluator<R>(f: impl FnOnce(&mut Evaluator) -> R) -> R {
     EVALUATOR_PTR.with(|cell| {
         let ptr = cell.get();
@@ -100,6 +103,8 @@ impl Evaluator {
             ns: NamespaceRegistry::new(),
             thread_pool: ThreadPool::new(4),
             macroexpand_cache: HashMap::new(),
+            in_tail_position: false,
+            pending_tail_call: None,
         };
         eval.register_builtins();
         eval
@@ -238,8 +243,17 @@ impl Evaluator {
         let args = self.eval_args(env.clone(), &list[1..])?;
         
         match func {
-            Value::Fn(f) => self.call_fn(f, args),
+            Value::Fn(f) => {
+                if self.in_tail_position {
+                    self.in_tail_position = false;
+                    self.pending_tail_call = Some((f, args));
+                    Ok(Value::Nil)
+                } else {
+                    self.call_fn(f, args)
+                }
+            }
             Value::Native(f) => {
+                self.in_tail_position = false;
                 EVALUATOR_PTR.with(|cell| cell.set(self as *mut Evaluator));
                 let result = f(&args).map_err(|e| EvalError::Custom(e));
                 EVALUATOR_PTR.with(|cell| cell.set(std::ptr::null_mut()));
@@ -261,30 +275,59 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn call_fn(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
-        let mut env = Env::new();
-        
-        // Capture closure bindings
-        let closure = func.closure.lock();
-        for (sym, val) in closure.iter() {
-            env.set(sym.clone(), val.clone());
-        }
-        drop(closure);
+    pub fn call_fn(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
+        let mut current_func = func;
+        let mut current_args = args;
 
-        // Bind parameters
-        self.bind_params(&mut env, &func.params, args)?;
+        loop {
+            self.pending_tail_call = None;
+            let mut env = Env::new();
 
-        // Evaluate body with TCO
-        let body = func.body.clone();
-        let last = body.len().saturating_sub(1);
-        for (i, form) in body.iter().enumerate() {
-            if i == last {
-                // Tail position - could optimize with TCO
-                return self.eval_in(env, form);
+            // Capture closure bindings
+            let closure = current_func.closure.lock();
+            for (sym, val) in closure.iter() {
+                env.set(sym.clone(), val.clone());
             }
-            self.eval_in(env.clone(), form)?;
+            drop(closure);
+
+            // Bind parameters
+            self.bind_params(&mut env, &current_func.params, current_args)?;
+
+            // Evaluate body
+            let body = current_func.body.clone();
+            let last = body.len().saturating_sub(1);
+            let mut result = Value::Nil;
+            for (i, form) in body.iter().enumerate() {
+                if i == last {
+                    self.in_tail_position = true;
+                    result = self.eval_in(env.clone(), form)?;
+                    self.in_tail_position = false;
+                } else {
+                    self.eval_in(env.clone(), form)?;
+                }
+            }
+
+            // Handle recur marker in fn context
+            if let Value::List(ref list) = result {
+                if !list.is_empty() {
+                    if let Value::Symbol(sym) = &list[0] {
+                        if *sym.name == *"recur" {
+                            current_args = list[1..].to_vec();
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Check for pending tail call (from eval_list in tail position)
+            if let Some((next_func, next_args)) = self.pending_tail_call.take() {
+                current_func = next_func;
+                current_args = next_args;
+                continue;
+            }
+
+            return Ok(result);
         }
-        Ok(Value::Nil)
     }
 
     fn bind_params(&self, env: &mut Env, params: &[Param], args: Vec<Value>) -> Result<(), EvalError> {
@@ -317,9 +360,8 @@ impl Evaluator {
                     for (kw, param) in bindings {
                         let val = match map {
                             Value::Map(m) => {
-                                m.iter()
-                                    .find(|(k, _)| k == &Value::Keyword(kw.clone()))
-                                    .map(|(_, v)| v.clone())
+                                m.get(&Value::Keyword(kw.clone()))
+                                    .cloned()
                                     .unwrap_or(Value::Nil)
                             }
                             _ => Value::Nil,
@@ -376,7 +418,10 @@ impl Evaluator {
         if args.len() < 2 || args.len() > 3 {
             return Err(EvalError::SpecialForm("if requires 2-3 arguments".to_string()));
         }
+        let was_tail = self.in_tail_position;
+        self.in_tail_position = false;
         let cond = self.eval_in(env.clone(), &args[0])?;
+        self.in_tail_position = was_tail;
         if cond.is_truthy() {
             self.eval_in(env, &args[1])
         } else if args.len() == 3 {
@@ -387,10 +432,18 @@ impl Evaluator {
     }
 
     fn eval_do(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        let was_tail = self.in_tail_position;
+        let last = args.len().saturating_sub(1);
         let mut result = Value::Nil;
-        for form in args {
+        for (i, form) in args.iter().enumerate() {
+            if i == last {
+                self.in_tail_position = was_tail;
+            } else {
+                self.in_tail_position = false;
+            }
             result = self.eval_in(env.clone(), form)?;
         }
+        self.in_tail_position = false;
         Ok(result)
     }
 
@@ -407,6 +460,8 @@ impl Evaluator {
             return Err(EvalError::SpecialForm("let bindings must have even number of forms".to_string()));
         }
 
+        let was_tail = self.in_tail_position;
+        self.in_tail_position = false;
         let mut let_env = Env::extend(env);
         let mut i = 0;
         while i < bindings.len() {
@@ -419,10 +474,17 @@ impl Evaluator {
             i += 2;
         }
 
+        let last = args[1..].len().saturating_sub(1);
         let mut result = Value::Nil;
-        for form in &args[1..] {
+        for (i, form) in args[1..].iter().enumerate() {
+            if i == last {
+                self.in_tail_position = was_tail;
+            } else {
+                self.in_tail_position = false;
+            }
             result = self.eval_in(let_env.clone(), form)?;
         }
+        self.in_tail_position = false;
         Ok(result)
     }
 
@@ -912,14 +974,18 @@ impl Evaluator {
         if args.len() % 2 != 0 {
             return Err(EvalError::SpecialForm("cond requires even number of arguments".to_string()));
         }
+        let was_tail = self.in_tail_position;
         let mut i = 0;
         while i < args.len() {
+            self.in_tail_position = false;
             let cond = self.eval_in(env.clone(), &args[i])?;
             if cond.is_truthy() {
+                self.in_tail_position = was_tail;
                 return self.eval_in(env.clone(), &args[i + 1]);
             }
             i += 2;
         }
+        self.in_tail_position = false;
         Ok(Value::Nil)
     }
 
@@ -927,17 +993,21 @@ impl Evaluator {
         if args.len() < 2 || args.len() % 2 != 0 {
             return Err(EvalError::SpecialForm("case requires test-expr and pairs".to_string()));
         }
+        let was_tail = self.in_tail_position;
+        self.in_tail_position = false;
         let test = self.eval_in(env.clone(), &args[0])?;
         let mut i = 1;
         while i < args.len() - 1 {
             let val = self.eval_in(env.clone(), &args[i])?;
             if test == val {
+                self.in_tail_position = was_tail;
                 return self.eval_in(env.clone(), &args[i + 1]);
             }
             i += 2;
         }
         // Default clause
         if i < args.len() {
+            self.in_tail_position = was_tail;
             self.eval_in(env.clone(), &args[i])
         } else {
             Ok(Value::Nil)
@@ -948,14 +1018,24 @@ impl Evaluator {
         if args.len() < 2 {
             return Err(EvalError::SpecialForm("when requires at least 2 arguments".to_string()));
         }
+        let was_tail = self.in_tail_position;
+        self.in_tail_position = false;
         let cond = self.eval_in(env.clone(), &args[0])?;
         if cond.is_truthy() {
+            let last = args[1..].len().saturating_sub(1);
             let mut result = Value::Nil;
-            for form in &args[1..] {
+            for (i, form) in args[1..].iter().enumerate() {
+                if i == last {
+                    self.in_tail_position = was_tail;
+                } else {
+                    self.in_tail_position = false;
+                }
                 result = self.eval_in(env.clone(), form)?;
             }
+            self.in_tail_position = false;
             Ok(result)
         } else {
+            self.in_tail_position = false;
             Ok(Value::Nil)
         }
     }
@@ -964,37 +1044,63 @@ impl Evaluator {
         if args.len() < 2 {
             return Err(EvalError::SpecialForm("when-not requires at least 2 arguments".to_string()));
         }
+        let was_tail = self.in_tail_position;
+        self.in_tail_position = false;
         let cond = self.eval_in(env.clone(), &args[0])?;
         if !cond.is_truthy() {
+            let last = args[1..].len().saturating_sub(1);
             let mut result = Value::Nil;
-            for form in &args[1..] {
+            for (i, form) in args[1..].iter().enumerate() {
+                if i == last {
+                    self.in_tail_position = was_tail;
+                } else {
+                    self.in_tail_position = false;
+                }
                 result = self.eval_in(env.clone(), form)?;
             }
+            self.in_tail_position = false;
             Ok(result)
         } else {
+            self.in_tail_position = false;
             Ok(Value::Nil)
         }
     }
 
     fn eval_and(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        let was_tail = self.in_tail_position;
         let mut result = Value::Bool(true);
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
+            if i == args.len() - 1 {
+                self.in_tail_position = was_tail;
+            } else {
+                self.in_tail_position = false;
+            }
             result = self.eval_in(env.clone(), arg)?;
             if !result.is_truthy() {
+                self.in_tail_position = false;
                 return Ok(result);
             }
         }
+        self.in_tail_position = false;
         Ok(result)
     }
 
     fn eval_or(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        let was_tail = self.in_tail_position;
         let mut result = Value::Nil;
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
+            if i == args.len() - 1 {
+                self.in_tail_position = was_tail;
+            } else {
+                self.in_tail_position = false;
+            }
             result = self.eval_in(env.clone(), arg)?;
             if result.is_truthy() {
+                self.in_tail_position = false;
                 return Ok(result);
             }
         }
+        self.in_tail_position = false;
         Ok(result)
     }
 

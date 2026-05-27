@@ -186,8 +186,6 @@ fn register_native(ns: &mut Namespace, name: &str, func: fn(&[Value]) -> Result<
     ns.intern(name, Value::Native(func));
 }
 
-// Store native functions in a global registry
-use std::collections::HashMap;
 use parking_lot::Mutex;
 use std::sync::OnceLock;
 
@@ -1318,7 +1316,7 @@ fn native_sort_by(args: &[Value]) -> Result<Value, String> {
     let keyfn = &args[0];
     match &args[1] {
         Value::List(v) | Value::Vector(v) => {
-            let mut items: Vec<Value> = v.as_ref().clone();
+            let items: Vec<Value> = v.as_ref().clone();
             let mut keys: Vec<Value> = Vec::with_capacity(items.len());
             for item in items.iter() {
                 keys.push(invoke_fn(keyfn, &[item.clone()])?);
@@ -1689,8 +1687,8 @@ fn native_interleave(args: &[Value]) -> Result<Value, String> {
         return Err("interleave requires at least 2 arguments".to_string());
     }
     let seqs: Vec<&[Value]> = args.iter().map(|a| match a {
-        Value::List(v) | Value::Vector(v) => v.as_ref(),
-        _ => &[],
+        Value::List(v) | Value::Vector(v) => v.as_ref() as &[Value],
+        _ => &[] as &[Value],
     }).collect();
     let min_len = seqs.iter().map(|s| s.len()).min().unwrap_or(0);
     let mut result = Vec::with_capacity(min_len * args.len());
