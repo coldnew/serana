@@ -23,6 +23,7 @@ pub mod search_native;
 pub mod self_evolve;
 pub mod shell;
 pub mod skill;
+pub mod minimizer;
 pub mod ssh;
 pub mod stats;
 pub mod web_search;
