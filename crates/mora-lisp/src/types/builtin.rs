@@ -1494,26 +1494,98 @@ fn native_map_fn(args: &[Value]) -> Result<Value, String> {
 }
 
 fn native_mapcat(args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(args.get(1).cloned().unwrap_or(Value::Nil))
+    if args.len() < 2 {
+        return Err("mapcat requires at least 2 arguments".to_string());
+    }
+    let func = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::new();
+            for item in v.iter() {
+                let mapped = invoke_fn(func, &[item.clone()])?;
+                match mapped {
+                    Value::List(seq) | Value::Vector(seq) => {
+                        result.extend(seq.iter().cloned());
+                    }
+                    Value::Nil => {}
+                    other => result.push(other),
+                }
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("mapcat second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_reduce(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 || args.len() > 3 {
         return Err("reduce requires 2-3 arguments".to_string());
     }
-    // Simplified - would need to call func
-    Ok(args.last().cloned().unwrap_or(Value::Nil))
+    let func = &args[0];
+    let (init, seq) = if args.len() == 3 {
+        (args[1].clone(), &args[2])
+    } else {
+        match &args[1] {
+            Value::List(v) | Value::Vector(v) if !v.is_empty() => {
+                (v[0].clone(), &args[1])
+            }
+            Value::List(_) | Value::Vector(_) => return Ok(Value::Nil),
+            _ => return Err("reduce second arg must be a sequence".to_string()),
+        }
+    };
+    match seq {
+        Value::List(v) | Value::Vector(v) => {
+            let start = if args.len() == 3 { 0 } else { 1 };
+            let mut acc = init;
+            for item in v[start..].iter() {
+                acc = invoke_fn(func, &[acc, item.clone()])?;
+            }
+            Ok(acc)
+        }
+        _ => Err("reduce requires a sequence".to_string()),
+    }
 }
 
-fn native_reduce_kv(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::Nil)
+fn native_reduce_kv(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err("reduce-kv requires exactly 3 arguments".to_string());
+    }
+    let func = &args[0];
+    let mut acc = args[1].clone();
+    match &args[2] {
+        Value::Map(m) => {
+            for (k, v) in m.iter() {
+                acc = invoke_fn(func, &[acc, k.clone(), v.clone()])?;
+            }
+            Ok(acc)
+        }
+        Value::Vector(v) => {
+            for (i, item) in v.iter().enumerate() {
+                acc = invoke_fn(func, &[acc, Value::Int(i as i64), item.clone()])?;
+            }
+            Ok(acc)
+        }
+        _ => Err("reduce-kv third arg must be a map or vector".to_string()),
+    }
 }
 
 fn native_apply(args: &[Value]) -> Result<Value, String> {
-    // Simplified - would need to call func
-    Ok(args.last().cloned().unwrap_or(Value::Nil))
+    if args.len() < 2 {
+        return Err("apply requires at least 2 arguments".to_string());
+    }
+    let func = &args[0];
+    let mut call_args: Vec<Value> = Vec::new();
+    for arg in &args[1..args.len() - 1] {
+        call_args.push(arg.clone());
+    }
+    match &args[args.len() - 1] {
+        Value::List(v) | Value::Vector(v) => {
+            call_args.extend(v.iter().cloned());
+        }
+        Value::Nil => {}
+        other => call_args.push(other.clone()),
+    }
+    invoke_fn(func, &call_args)
 }
 
 fn native_some(_args: &[Value]) -> Result<Value, String> {
