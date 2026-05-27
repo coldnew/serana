@@ -512,11 +512,8 @@ impl Shell {
             result.push_str(val);
         } else if let Some(val) = self.universal_vars.get(name) {
             result.push_str(val);
-        } else {
-            match std::env::var(name) {
-                Ok(val) => result.push_str(&val),
-                Err(_) => {}
-            }
+        } else if let Ok(val) = std::env::var(name) {
+            result.push_str(&val);
         }
     }
 
@@ -564,7 +561,7 @@ impl Shell {
         }
     }
 
-    fn glob_match(pattern: &str, text: &str) -> bool {
+    pub fn glob_match(pattern: &str, text: &str) -> bool {
         let p: Vec<char> = pattern.chars().collect();
         let t: Vec<char> = text.chars().collect();
         Self::glob_match_impl(&p, &t)
@@ -1681,6 +1678,11 @@ impl Shell {
 
     pub fn set_interactive(&mut self, interactive: bool) {
         self.is_interactive = interactive;
+    }
+
+    #[allow(dead_code)]
+    pub fn set_var(&mut self, key: &str, value: &str) {
+        self.vars.insert(key.to_string(), value.to_string());
     }
 }
 
