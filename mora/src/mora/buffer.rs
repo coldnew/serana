@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use super::major_mode::{self, MajorMode, MajorModeKind};
+use super::overlay::OverlayStore;
 
 const MAX_UNDO: usize = 500;
 
@@ -31,6 +32,7 @@ pub struct Buffer {
     pub fold_level: Option<usize>,
     pub folded_lines: Vec<bool>,
     pub major_mode: Box<dyn MajorMode>,
+    pub overlays: OverlayStore,
 }
 
 impl Buffer {
@@ -48,6 +50,7 @@ impl Buffer {
             fold_level: None,
             folded_lines: Vec::new(),
             major_mode: major_mode::create_mode(MajorModeKind::Fundamental),
+            overlays: OverlayStore::new(),
         }
     }
 
@@ -72,6 +75,7 @@ impl Buffer {
             fold_level: None,
             folded_lines: Vec::new(),
             major_mode: major_mode::create_mode(kind),
+            overlays: OverlayStore::new(),
         })
     }
 
@@ -104,6 +108,14 @@ impl Buffer {
 
     pub fn line(&self, idx: usize) -> &str {
         &self.lines[idx]
+    }
+
+    pub fn byte_offset(&self, row: usize, col: usize) -> usize {
+        let mut offset = 0;
+        for i in 0..row.min(self.lines.len()) {
+            offset += self.lines[i].len() + 1;
+        }
+        offset + col.min(self.lines.get(row).map_or(0, |l| l.len()))
     }
 
     pub fn filename(&self) -> &str {
@@ -167,27 +179,36 @@ impl Buffer {
         self.push_undo();
         let line = &mut self.lines[self.cursor.row];
         line.insert(self.cursor.col, ch);
+        let pos = self.byte_offset(self.cursor.row, self.cursor.col);
+        self.overlays.adjust_for_insert(pos, ch.len_utf8());
         self.cursor.col += ch.len_utf8();
         self.modified = true;
     }
 
     pub fn insert_string(&mut self, s: &str) {
         self.push_undo();
+        let start_pos = self.byte_offset(self.cursor.row, self.cursor.col);
+        let mut total_len = 0;
         for ch in s.chars() {
             if ch == '\n' {
                 self.insert_newline_no_undo();
+                total_len += 1;
             } else {
                 let line = &mut self.lines[self.cursor.row];
                 line.insert(self.cursor.col, ch);
                 self.cursor.col += ch.len_utf8();
+                total_len += ch.len_utf8();
             }
         }
+        self.overlays.adjust_for_insert(start_pos, total_len);
         self.modified = true;
     }
 
     pub fn insert_newline(&mut self) {
         self.push_undo();
+        let pos = self.byte_offset(self.cursor.row, self.cursor.col);
         self.insert_newline_no_undo();
+        self.overlays.adjust_for_insert(pos, 1);
         self.modified = true;
     }
 
@@ -210,13 +231,17 @@ impl Buffer {
                 .unwrap_or(0);
             self.cursor.col -= prev_len;
             line.remove(self.cursor.col);
+            let pos = self.byte_offset(self.cursor.row, self.cursor.col);
+            self.overlays.adjust_for_delete(pos, prev_len);
             self.modified = true;
         } else if self.cursor.row > 0 {
             self.push_undo();
             let current = self.lines.remove(self.cursor.row);
             self.cursor.row -= 1;
+            let pos = self.byte_offset(self.cursor.row, self.lines[self.cursor.row].len());
             self.cursor.col = self.lines[self.cursor.row].len();
             self.lines[self.cursor.row].push_str(&current);
+            self.overlays.adjust_for_delete(pos, 1);
             self.modified = true;
         }
     }
@@ -225,12 +250,21 @@ impl Buffer {
         let line_len = self.lines[self.cursor.row].len();
         if self.cursor.col < line_len {
             self.push_undo();
+            let ch_len = self.lines[self.cursor.row][self.cursor.col..]
+                .chars()
+                .next()
+                .map(|c| c.len_utf8())
+                .unwrap_or(0);
             self.lines[self.cursor.row].remove(self.cursor.col);
+            let pos = self.byte_offset(self.cursor.row, self.cursor.col);
+            self.overlays.adjust_for_delete(pos, ch_len);
             self.modified = true;
         } else if self.cursor.row + 1 < self.lines.len() {
             self.push_undo();
             let next = self.lines.remove(self.cursor.row + 1);
+            let pos = self.byte_offset(self.cursor.row, self.lines[self.cursor.row].len());
             self.lines[self.cursor.row].push_str(&next);
+            self.overlays.adjust_for_delete(pos, 1);
             self.modified = true;
         }
     }
@@ -304,7 +338,9 @@ impl Buffer {
     }
 
     pub fn move_down(&mut self) {
-        let max_row = self.narrow_end.unwrap_or(self.lines.len().saturating_sub(1));
+        let max_row = self
+            .narrow_end
+            .unwrap_or(self.lines.len().saturating_sub(1));
         let mut next = self.cursor.row + 1;
         while next <= max_row && self.is_line_folded(next) {
             next += 1;
@@ -329,7 +365,9 @@ impl Buffer {
     }
 
     pub fn move_to_file_end(&mut self) {
-        self.cursor.row = self.narrow_end.unwrap_or(self.lines.len().saturating_sub(1));
+        self.cursor.row = self
+            .narrow_end
+            .unwrap_or(self.lines.len().saturating_sub(1));
         self.cursor.col = self.lines[self.cursor.row].len();
     }
 
@@ -630,7 +668,10 @@ impl Buffer {
 
         let mut new_chars = chars.clone();
         if start < new_chars.len() {
-            new_chars[start] = new_chars[start].to_uppercase().next().unwrap_or(new_chars[start]);
+            new_chars[start] = new_chars[start]
+                .to_uppercase()
+                .next()
+                .unwrap_or(new_chars[start]);
         }
         for j in (start + 1)..i {
             if j < new_chars.len() {
@@ -735,7 +776,11 @@ impl Buffer {
             let line_chars: Vec<char> = self.lines[row].chars().collect();
             let line_len = line_chars.len();
             let col_start = if row == sr { sc } else { 0 };
-            let col_end = if row == er { ec.min(line_len) } else { line_len };
+            let col_end = if row == er {
+                ec.min(line_len)
+            } else {
+                line_len
+            };
             let mut new_chars = line_chars;
             for j in col_start..col_end {
                 if j < new_chars.len() {
@@ -758,7 +803,11 @@ impl Buffer {
             let line_chars: Vec<char> = self.lines[row].chars().collect();
             let line_len = line_chars.len();
             let col_start = if row == sr { sc } else { 0 };
-            let col_end = if row == er { ec.min(line_len) } else { line_len };
+            let col_end = if row == er {
+                ec.min(line_len)
+            } else {
+                line_len
+            };
             let mut new_chars = line_chars;
             for j in col_start..col_end {
                 if j < new_chars.len() {
@@ -815,7 +864,8 @@ impl Buffer {
     pub fn replace_range(&mut self, start: usize, end: usize, replacement: &str) {
         self.push_undo();
         let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
-        let new_line: String = chars[..start].iter()
+        let new_line: String = chars[..start]
+            .iter()
             .copied()
             .chain(replacement.chars())
             .chain(chars[end..].iter().copied())
@@ -828,7 +878,8 @@ impl Buffer {
     pub fn delete_range(&mut self, start: usize, end: usize) {
         self.push_undo();
         let chars: Vec<char> = self.lines[self.cursor.row].chars().collect();
-        let new_line: String = chars[..start].iter()
+        let new_line: String = chars[..start]
+            .iter()
             .copied()
             .chain(chars[end..].iter().copied())
             .collect();
@@ -974,7 +1025,9 @@ impl Buffer {
 
     pub fn narrow_to_region(&mut self, start_row: usize, end_row: usize) {
         let start = start_row.min(end_row);
-        let end = start_row.max(end_row).min(self.lines.len().saturating_sub(1));
+        let end = start_row
+            .max(end_row)
+            .min(self.lines.len().saturating_sub(1));
         if start <= end && end < self.lines.len() {
             self.narrow_start = Some(start);
             self.narrow_end = Some(end);
@@ -1026,12 +1079,19 @@ impl Buffer {
             self.folded_lines.clear();
         } else {
             let row = self.cursor.row;
-            let indent = self.lines[row].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            let indent = self.lines[row]
+                .chars()
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .count();
             self.fold_level = Some(indent);
-            self.folded_lines = self.lines.iter().map(|line| {
-                let line_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
-                line_indent > indent && !line.trim().is_empty()
-            }).collect();
+            self.folded_lines = self
+                .lines
+                .iter()
+                .map(|line| {
+                    let line_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                    line_indent > indent && !line.trim().is_empty()
+                })
+                .collect();
         }
     }
 
@@ -1048,9 +1108,15 @@ impl Buffer {
         if !self.is_line_folded(row) {
             return;
         }
-        let indent = self.lines[row].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        let indent = self.lines[row]
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .count();
         for i in row..self.folded_lines.len() {
-            let line_indent = self.lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            let line_indent = self.lines[i]
+                .chars()
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .count();
             if line_indent <= indent && i > row {
                 break;
             }
@@ -1062,13 +1128,19 @@ impl Buffer {
 
     pub fn close_fold(&mut self) {
         let row = self.cursor.row;
-        let indent = self.lines[row].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        let indent = self.lines[row]
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .count();
         if self.fold_level.is_none() {
             self.fold_level = Some(indent);
             self.folded_lines = vec![false; self.lines.len()];
         }
         for i in (row + 1)..self.lines.len() {
-            let line_indent = self.lines[i].chars().take_while(|c| *c == ' ' || *c == '\t').count();
+            let line_indent = self.lines[i]
+                .chars()
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .count();
             if line_indent <= indent && !self.lines[i].trim().is_empty() {
                 break;
             }
@@ -1090,10 +1162,14 @@ impl Buffer {
     pub fn maximize_folds(&mut self) {
         if self.fold_level.is_some() {
             self.fold_level = Some(0);
-            self.folded_lines = self.lines.iter().map(|line| {
-                let line_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
-                line_indent > 0 && !line.trim().is_empty()
-            }).collect();
+            self.folded_lines = self
+                .lines
+                .iter()
+                .map(|line| {
+                    let line_indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                    line_indent > 0 && !line.trim().is_empty()
+                })
+                .collect();
         }
     }
 
@@ -1156,24 +1232,37 @@ impl Buffer {
             let mut depth = 1;
             let mut pos = col;
             loop {
-                if pos == 0 { return (col, col); }
+                if pos == 0 {
+                    return (col, col);
+                }
                 pos -= 1;
-                if chars[pos] == close { depth += 1; }
+                if chars[pos] == close {
+                    depth += 1;
+                }
                 if chars[pos] == open {
                     depth -= 1;
-                    if depth == 0 { break Some(pos); }
+                    if depth == 0 {
+                        break Some(pos);
+                    }
                 }
             }
         } else {
             // Search backward for open bracket
             let mut pos = col;
             loop {
-                if chars[pos] == open { break Some(pos); }
-                if pos == 0 { break None; }
+                if chars[pos] == open {
+                    break Some(pos);
+                }
+                if pos == 0 {
+                    break None;
+                }
                 pos -= 1;
             }
         };
-        let open_pos = match open_pos { Some(p) => p, None => return (col, col) };
+        let open_pos = match open_pos {
+            Some(p) => p,
+            None => return (col, col),
+        };
         // Find matching close bracket forward
         if is_same {
             // For same-char delimiters (quotes), find the next occurrence
@@ -1189,11 +1278,17 @@ impl Buffer {
         let mut depth = 1;
         let mut pos = open_pos + 1;
         while pos < chars.len() && depth > 0 {
-            if chars[pos] == open { depth += 1; }
-            if chars[pos] == close { depth -= 1; }
+            if chars[pos] == open {
+                depth += 1;
+            }
+            if chars[pos] == close {
+                depth -= 1;
+            }
             pos += 1;
         }
-        if depth != 0 { return (col, col); }
+        if depth != 0 {
+            return (col, col);
+        }
         let close_pos = pos - 1;
         if open_pos + 1 >= close_pos {
             return (open_pos + 1, open_pos + 1);
@@ -1241,7 +1336,12 @@ impl Buffer {
         (start, end)
     }
 
-    pub fn search_forward_from(&self, pattern: &str, from_row: usize, from_col: usize) -> Option<(usize, usize)> {
+    pub fn search_forward_from(
+        &self,
+        pattern: &str,
+        from_row: usize,
+        from_col: usize,
+    ) -> Option<(usize, usize)> {
         if pattern.is_empty() {
             return None;
         }
@@ -1257,13 +1357,22 @@ impl Buffer {
         None
     }
 
-    pub fn search_backward_from(&self, pattern: &str, from_row: usize, from_col: usize) -> Option<(usize, usize)> {
+    pub fn search_backward_from(
+        &self,
+        pattern: &str,
+        from_row: usize,
+        from_col: usize,
+    ) -> Option<(usize, usize)> {
         if pattern.is_empty() {
             return None;
         }
         for row in (0..=from_row).rev() {
             let line = &self.lines[row];
-            let end_col = if row == from_row { from_col.min(line.len()) } else { line.len() };
+            let end_col = if row == from_row {
+                from_col.min(line.len())
+            } else {
+                line.len()
+            };
             if let Some(pos) = line[..end_col].rfind(pattern) {
                 return Some((row, pos));
             }
@@ -1470,7 +1579,7 @@ mod tests {
         buf.cursor.col = 7; // inside braces
         let (start, end) = buf.inner_bracket_range('{', '}');
         assert_eq!(start, 4); // after '{' at col 3
-        assert_eq!(end, 12);  // before '}' at col 12
+        assert_eq!(end, 12); // before '}' at col 12
     }
 
     #[test]
