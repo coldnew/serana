@@ -17,6 +17,13 @@ mishell-parser = { path = "../crates/mishell-parser" }
 thiserror.workspace = true
 hostname = "0.4"
 
+[dev-dependencies]
+criterion = "0.5"
+
 [[bin]]
 name = "mishell"
 path = "src/main.rs"
+
+[[bench]]
+name = "shell_bench"
+harness = false
