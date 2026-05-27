@@ -29,6 +29,14 @@ pub struct Shell {
     event_handlers: HashMap<String, Vec<FunctionDef>>,
     is_interactive: bool,
     home_dir: Option<PathBuf>,
+    completions: HashMap<String, Vec<CompletionEntry>>,
+}
+
+#[derive(Clone)]
+pub struct CompletionEntry {
+    pub condition: String,
+    pub description: String,
+    pub arguments: Vec<String>,
 }
 
 impl Shell {
@@ -62,6 +70,7 @@ impl Shell {
             event_handlers: HashMap::new(),
             is_interactive: true,
             home_dir,
+            completions: HashMap::new(),
         })
     }
 
@@ -307,7 +316,7 @@ impl Shell {
             "pushd" => return self.builtin_pushd(&cmd.words[1..]),
             "popd" => return self.builtin_popd(),
             "dirs" => return self.builtin_dirs(),
-            "history" => return self.builtin_history(),
+            "history" => return self.builtin_history(&cmd.words[1..]),
             "jobs" => return self.builtin_jobs(),
             "fg" => return self.builtin_fg(&cmd.words[1..]),
             "bg" => return self.builtin_bg(&cmd.words[1..]),
@@ -553,6 +562,32 @@ impl Shell {
     fn expand_variable_into(&self, name: &str, result: &mut String) {
         if name == "status" {
             result.push_str(&self.last_exit_code.to_string());
+        } else if name == "fish_pid" {
+            result.push_str(&std::process::id().to_string());
+        } else if name == "hostname" {
+            if let Ok(h) = hostname::get() {
+                result.push_str(&h.to_string_lossy());
+            }
+        } else if name == "version" {
+            result.push_str("0.1.0");
+        } else if name == "USER" {
+            if let Ok(u) = std::env::var("USER") {
+                result.push_str(&u);
+            }
+        } else if name == "HOME" {
+            if let Some(ref h) = self.home_dir {
+                result.push_str(&h.to_string_lossy());
+            }
+        } else if name == "SHELL" {
+            if let Ok(s) = std::env::var("SHELL") {
+                result.push_str(&s);
+            } else {
+                result.push_str("/usr/bin/mishell");
+            }
+        } else if name == "SHLVL" {
+            let lvl = std::env::var("SHLVL").unwrap_or_else(|_| "1".to_string());
+            let next: i32 = lvl.parse().unwrap_or(1) + 1;
+            result.push_str(&next.to_string());
         } else if let Some(val) = self.vars.get(name) {
             result.push_str(val);
         } else if let Some(val) = self.universal_vars.get(name) {
@@ -1103,9 +1138,76 @@ impl Shell {
         Ok(())
     }
 
-    fn builtin_history(&self) -> Result<()> {
-        // History is handled by the History struct in the main loop
-        println!("history: use up/down arrows to navigate");
+    fn builtin_history(&mut self, args: &[Word]) -> Result<()> {
+        let history_path = self.home_dir.as_ref().map(|h| h.join(".mishell_history"));
+        if args.is_empty() {
+            // List history
+            if let Some(ref path) = history_path {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    for (i, line) in content.lines().enumerate() {
+                        println!("{}\t{}", i + 1, line);
+                    }
+                }
+            }
+            return Ok(());
+        }
+        let subcmd = self.expand_word(&args[0]);
+        match subcmd.as_str() {
+            "delete" | "--delete" => {
+                if args.len() < 2 {
+                    eprintln!("history delete: expected search term");
+                    self.last_exit_code = 1;
+                    return Ok(());
+                }
+                let pattern = self.expand_word(&args[1]);
+                if let Some(ref path) = history_path {
+                    if let Ok(content) = std::fs::read_to_string(path) {
+                        let lines: Vec<&str> = content.lines().collect();
+                        let kept: Vec<&str> = lines.iter()
+                            .filter(|l| !l.contains(pattern.as_str()))
+                            .copied()
+                            .collect();
+                        let removed = lines.len() - kept.len();
+                        std::fs::write(path, kept.join("\n"))?;
+                        eprintln!("history: deleted {} entries matching '{}'", removed, pattern);
+                    }
+                }
+            }
+            "save" | "--save" => {
+                // History is saved automatically; this is a no-op for compat
+            }
+            "clear" | "--clear" => {
+                if let Some(ref path) = history_path {
+                    std::fs::write(path, "")?;
+                    eprintln!("history: cleared");
+                }
+            }
+            "merge" | "--merge" => {
+                // Merge history from file into session (handled by History in main loop)
+                eprintln!("history merge: session history is managed by the interactive loop");
+            }
+            "search" | "--search" => {
+                if args.len() < 2 {
+                    eprintln!("history search: expected search term");
+                    self.last_exit_code = 1;
+                    return Ok(());
+                }
+                let pattern = self.expand_word(&args[1]);
+                if let Some(ref path) = history_path {
+                    if let Ok(content) = std::fs::read_to_string(path) {
+                        for line in content.lines() {
+                            if line.contains(pattern.as_str()) {
+                                println!("{}", line);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                eprintln!("history: unknown subcommand '{}'", subcmd);
+                self.last_exit_code = 1;
+            }
+        }
         Ok(())
     }
 
@@ -1320,23 +1422,53 @@ impl Shell {
             self.last_exit_code = 1;
             return Ok(());
         }
+        let mut path_only = false;
+        let mut names = Vec::new();
         for arg in args {
-            let name = self.expand_word(arg);
-            if self.functions.contains_key(&name) {
-                println!("{} is a function", name);
-            } else if self.aliases.contains_key(&name) {
-                println!("{} is an alias", name);
-            } else if is_builtin(&name) {
-                println!("{} is a builtin", name);
+            let s = self.expand_word(arg);
+            match s.as_str() {
+                "-p" | "--path" => path_only = true,
+                _ => names.push(s),
+            }
+        }
+        if names.is_empty() {
+            eprintln!("type: expected command name");
+            self.last_exit_code = 1;
+            return Ok(());
+        }
+        for name in &names {
+            if self.functions.contains_key(name) {
+                if path_only {
+                    self.last_exit_code = 1;
+                } else {
+                    println!("{} is a function", name);
+                }
+            } else if self.aliases.contains_key(name) {
+                if path_only {
+                    self.last_exit_code = 1;
+                } else {
+                    println!("{} is an alias", name);
+                }
+            } else if is_builtin(name) {
+                if path_only {
+                    self.last_exit_code = 1;
+                } else {
+                    println!("{} is a builtin", name);
+                }
             } else {
-                // Check if it's an executable on PATH
                 match ProcessCommand::new("sh").arg("-c").arg(format!("command -v {}", name)).output() {
                     Ok(output) if output.status.success() => {
                         let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                        println!("{} is {}", name, path);
+                        if path_only {
+                            println!("{}", path);
+                        } else {
+                            println!("{} is {}", name, path);
+                        }
                     }
                     _ => {
-                        println!("{}: not found", name);
+                        if !path_only {
+                            println!("{}: not found", name);
+                        }
                         self.last_exit_code = 1;
                     }
                 }
@@ -1585,6 +1717,127 @@ impl Shell {
                     print!("{}", text);
                 }
                 println!();
+            }
+            "collect" => {
+                let separator = if !sub_args.is_empty() && sub_args[0] == "-n" || sub_args[0] == "--no-newline" {
+                    ""
+                } else {
+                    "\n"
+                };
+                let start = if separator.is_empty() { 1 } else { 0 };
+                for (i, arg) in sub_args[start..].iter().enumerate() {
+                    if i > 0 {
+                        print!("{}", separator);
+                    }
+                    print!("{}", arg);
+                }
+                if separator.is_empty() {
+                    println!();
+                }
+            }
+            "escape" => {
+                for arg in &sub_args {
+                    let escaped: String = arg.chars().map(|c| match c {
+                        '\n' => "\\n".to_string(),
+                        '\t' => "\\t".to_string(),
+                        '\r' => "\\r".to_string(),
+                        '\\' => "\\\\".to_string(),
+                        '"' => "\\\"".to_string(),
+                        '\'' => "\\'".to_string(),
+                        '\x07' => "\\a".to_string(),
+                        '\x08' => "\\b".to_string(),
+                        '\x0c' => "\\f".to_string(),
+                        '\x0b' => "\\v".to_string(),
+                        c if c.is_control() => format!("\\x{:02x}", c as u8),
+                        c => c.to_string(),
+                    }).collect();
+                    println!("{}", escaped);
+                }
+            }
+            "unescape" => {
+                for arg in &sub_args {
+                    let mut result = String::new();
+                    let mut chars = arg.chars();
+                    while let Some(c) = chars.next() {
+                        if c == '\\' {
+                            match chars.next() {
+                                Some('n') => result.push('\n'),
+                                Some('t') => result.push('\t'),
+                                Some('r') => result.push('\r'),
+                                Some('\\') => result.push('\\'),
+                                Some('"') => result.push('"'),
+                                Some('\'') => result.push('\''),
+                                Some('a') => result.push('\x07'),
+                                Some('b') => result.push('\x08'),
+                                Some('f') => result.push('\x0c'),
+                                Some('v') => result.push('\x0b'),
+                                Some('x') => {
+                                    let h1 = chars.next().unwrap_or('0');
+                                    let h2 = chars.next().unwrap_or('0');
+                                    if let Ok(byte) = u8::from_str_radix(&format!("{}{}", h1, h2), 16) {
+                                        result.push(byte as char);
+                                    }
+                                }
+                                Some(c) => {
+                                    result.push('\\');
+                                    result.push(c);
+                                }
+                                None => result.push('\\'),
+                            }
+                        } else {
+                            result.push(c);
+                        }
+                    }
+                    println!("{}", result);
+                }
+            }
+            "pad" => {
+                let mut width = 0;
+                let mut pad_char = ' ';
+                let mut pad_right = true;
+                let mut strings_start = 0;
+                for (i, arg) in sub_args.iter().enumerate() {
+                    match arg.as_str() {
+                        "-c" | "--char" => {
+                            if let Some(c) = sub_args.get(i + 1) {
+                                pad_char = c.chars().next().unwrap_or(' ');
+                                strings_start = i + 2;
+                            }
+                        }
+                        "-w" | "--width" => {
+                            if let Some(w) = sub_args.get(i + 1) {
+                                width = w.parse::<usize>().unwrap_or(0);
+                                strings_start = i + 2;
+                            }
+                        }
+                        "-r" | "--right" => {
+                            pad_right = true;
+                            strings_start = i + 1;
+                        }
+                        "-l" | "--left" => {
+                            pad_right = false;
+                            strings_start = i + 1;
+                        }
+                        _ => {
+                            if strings_start == 0 {
+                                strings_start = i;
+                            }
+                            break;
+                        }
+                    }
+                }
+                for arg in &sub_args[strings_start..] {
+                    if arg.len() >= width {
+                        println!("{}", arg);
+                    } else {
+                        let pad = pad_char.to_string().repeat(width - arg.len());
+                        if pad_right {
+                            println!("{}{}", arg, pad);
+                        } else {
+                            println!("{}{}", pad, arg);
+                        }
+                    }
+                }
             }
             _ => {
                 eprintln!("string: unknown subcommand '{}'", subcmd);
