@@ -4,47 +4,116 @@
 //! supports navigation, JS evaluation, screenshots.
 
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::process::Command;
+use tokio::sync::Mutex;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use serana_core::{Result, Tool};
 
+static CDP_PORT: u16 = 9222;
+static BROWSER_STATE: Mutex<Option<BrowserState>> = Mutex::const_new(None);
+
+struct BrowserState {
+    ws_url: String,
+}
+
+async fn get_page_ws_url(port: u16) -> Result<String> {
+    let client = reqwest::Client::new();
+    let targets_resp = client
+        .get(format!("http://127.0.0.1:{}/json", port))
+        .send()
+        .await?;
+    let targets: Vec<Value> = targets_resp.json().await?;
+    let page = targets
+        .iter()
+        .find(|t| t["type"].as_str() == Some("page"))
+        .ok_or_else(|| anyhow::anyhow!("No page target found"))?;
+    page["webSocketDebuggerUrl"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow::anyhow!("No page WebSocket URL"))
+}
+
+async fn cdp_evaluate(ws_url: &str, expression: &str) -> Result<Value> {
+    let (mut ws, _) = connect_async(ws_url).await?;
+
+    let cmd = json!({
+        "id": 1,
+        "method": "Runtime.evaluate",
+        "params": {
+            "expression": expression,
+            "returnByValue": true,
+            "awaitPromise": true,
+        }
+    });
+    ws.send(Message::Text(cmd.to_string())).await?;
+
+    // Wait for response with matching id
+    loop {
+        match ws.next().await {
+            Some(Ok(Message::Text(text))) => {
+                let msg: Value = serde_json::from_str(&text)?;
+                if msg["id"].as_i64() == Some(1) {
+                    if let Some(err) = msg.get("error") {
+                        return Ok(json!({
+                            "error": err["message"].as_str().unwrap_or("CDP error"),
+                        }));
+                    }
+                    let result = &msg["result"]["result"];
+                    if result["type"].as_str() == Some("undefined") {
+                        return Ok(json!({ "type": "undefined" }));
+                    }
+                    return Ok(result.clone());
+                }
+            }
+            Some(Ok(Message::Close(_))) | None => break,
+            Some(Err(e)) => return Err(anyhow::anyhow!("WebSocket error: {}", e)),
+            _ => continue,
+        }
+    }
+    Err(anyhow::anyhow!("WebSocket closed before response"))
+}
+
+async fn cdp_screenshot(ws_url: &str) -> Result<Value> {
+    let (mut ws, _) = connect_async(ws_url).await?;
+
+    let cmd = json!({
+        "id": 1,
+        "method": "Page.captureScreenshot",
+        "params": { "format": "png" }
+    });
+    ws.send(Message::Text(cmd.to_string())).await?;
+
+    loop {
+        match ws.next().await {
+            Some(Ok(Message::Text(text))) => {
+                let msg: Value = serde_json::from_str(&text)?;
+                if msg["id"].as_i64() == Some(1) {
+                    if let Some(err) = msg.get("error") {
+                        return Ok(json!({
+                            "error": err["message"].as_str().unwrap_or("CDP error"),
+                        }));
+                    }
+                    let data = msg["result"]["data"].as_str().unwrap_or("");
+                    return Ok(json!({
+                        "format": "png",
+                        "data": data,
+                        "size_bytes": data.len(),
+                    }));
+                }
+            }
+            Some(Ok(Message::Close(_))) | None => break,
+            Some(Err(e)) => return Err(anyhow::anyhow!("WebSocket error: {}", e)),
+            _ => continue,
+        }
+    }
+    Err(anyhow::anyhow!("WebSocket closed before response"))
+}
+
 /// Browser tool for driving headless Chromium.
 pub struct BrowserTool;
-
-impl BrowserTool {
-    async fn cdp_request(_method: &str, _params: Option<Value>, port: u16) -> Result<Value> {
-        let url = format!("http://127.0.0.1:{}/json/version", port);
-        let client = reqwest::Client::new();
-        let version_resp = client.get(&url).send().await?;
-        let version: Value = version_resp.json().await?;
-        let _ws_url = version["webSocketDebuggerUrl"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("No WebSocket debugger URL"))?;
-
-        // Use HTTP endpoint for simplicity (CDP over HTTP)
-        let target_url = format!("http://127.0.0.1:{}/json", port);
-        let targets_resp = client.get(&target_url).send().await?;
-        let targets: Vec<Value> = targets_resp.json().await?;
-
-        let page = targets
-            .iter()
-            .find(|t| t["type"].as_str() == Some("page"))
-            .ok_or_else(|| anyhow::anyhow!("No page target found"))?;
-
-        let _ws_page_url = page["webSocketDebuggerUrl"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("No page WebSocket URL"))?;
-
-        // For v1, use simple HTTP-based approach
-        // Full WebSocket CDP requires tungstenite dependency
-        Ok(json!({
-            "status": "connected",
-            "url": page["url"].as_str().unwrap_or(""),
-            "title": page["title"].as_str().unwrap_or(""),
-        }))
-    }
-}
 
 #[async_trait]
 impl Tool for BrowserTool {
@@ -53,9 +122,8 @@ impl Tool for BrowserTool {
     }
 
     fn description(&self) -> &'static str {
-        "Drive a headless browser. Input: {\"action\": \"open\", \"url\": \"https://example.com\"} \
-         or {\"action\": \"run\", \"code\": \"document.title\"} \
-         or {\"action\": \"close\"}"
+        "Drive a headless browser via CDP. Actions: open (spawn + navigate), run (evaluate JS), \
+         screenshot (capture page as base64 PNG), extract (fetch + strip HTML), close (kill browser)."
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -73,7 +141,7 @@ impl Tool for BrowserTool {
                 },
                 "code": {
                     "type": "string",
-                    "description": "JavaScript to execute (for run)"
+                    "description": "JavaScript to evaluate (for run)"
                 }
             },
             "required": ["action"]
@@ -93,14 +161,13 @@ impl Tool for BrowserTool {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'url' for open"))?;
 
-                // Try to use chromium/chrome with remote debugging
-                let port = 9222u16;
                 let output = Command::new("chromium")
                     .args([
                         "--headless=new",
                         "--disable-gpu",
-                        &format!("--remote-debugging-port={}", port),
+                        &format!("--remote-debugging-port={}", CDP_PORT),
                         "--no-sandbox",
+                        "--disable-dev-shm-usage",
                         url,
                     ])
                     .stdout(std::process::Stdio::null())
@@ -109,9 +176,13 @@ impl Tool for BrowserTool {
 
                 match output {
                     Ok(_child) => {
-                        // Give browser time to start
                         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        Ok(json!({ "status": "opened", "url": url, "port": port }))
+                        let ws_url = get_page_ws_url(CDP_PORT).await?;
+                        let mut state = BROWSER_STATE.lock().await;
+                        *state = Some(BrowserState {
+                            ws_url: ws_url.clone(),
+                        });
+                        Ok(json!({ "status": "opened", "url": url, "port": CDP_PORT }))
                     }
                     Err(e) => Err(anyhow::anyhow!(
                         "Failed to start browser (chromium not found?): {}",
@@ -120,28 +191,44 @@ impl Tool for BrowserTool {
                 }
             }
             "run" => {
-                let _code = input
+                let code = input
                     .get("code")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'code' for run"))?;
-                // v1: use puppeteer-style HTTP evaluate via CDP
-                let client = reqwest::Client::new();
-                let targets_resp = client.get("http://127.0.0.1:9222/json").send().await?;
-                let targets: Vec<Value> = targets_resp.json().await?;
-                let page = targets
-                    .iter()
-                    .find(|t| t["type"].as_str() == Some("page"))
-                    .ok_or_else(|| anyhow::anyhow!("No page target found"))?;
 
-                Ok(json!({
-                    "status": "ready",
-                    "url": page["url"].as_str().unwrap_or(""),
-                    "title": page["title"].as_str().unwrap_or(""),
-                    "note": "Full JS evaluation requires WebSocket CDP (tungstenite). Use url_fetch for simple page content."
-                }))
+                let state = BROWSER_STATE.lock().await;
+                let ws_url = match &*state {
+                    Some(s) => s.ws_url.clone(),
+                    None => {
+                        // Try auto-detecting a running browser
+                        match get_page_ws_url(CDP_PORT).await {
+                            Ok(url) => url,
+                            Err(_) => {
+                                return Ok(json!({
+                                    "error": "No browser session. Use action=open first."
+                                }));
+                            }
+                        }
+                    }
+                };
+                drop(state);
+
+                let result = cdp_evaluate(&ws_url, code).await?;
+                Ok(result)
+            }
+            "screenshot" => {
+                let state = BROWSER_STATE.lock().await;
+                let ws_url = match &*state {
+                    Some(s) => s.ws_url.clone(),
+                    None => get_page_ws_url(CDP_PORT).await?,
+                };
+                drop(state);
+
+                cdp_screenshot(&ws_url).await
             }
             "close" => {
-                // Kill chromium processes
+                let mut state = BROWSER_STATE.lock().await;
+                *state = None;
                 let _ = Command::new("pkill")
                     .args(["-f", "remote-debugging-port=9222"])
                     .output()
@@ -154,12 +241,10 @@ impl Tool for BrowserTool {
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Missing 'url' for extract"))?;
 
-                // Simple fetch + strip HTML
                 let client = reqwest::Client::new();
                 let resp = client.get(url).send().await?;
                 let html = resp.text().await?;
 
-                // Very basic HTML-to-text: strip tags
                 let text: String = html
                     .lines()
                     .map(|line| {
