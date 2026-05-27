@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::gatherer::ContextGatherer;
+
 #[derive(Debug, Clone)]
 pub struct PromptBuilder {
     workspace: PathBuf,
@@ -9,6 +11,7 @@ pub struct PromptBuilder {
     user_memory_path: Option<PathBuf>,
     skills: Vec<String>,
     tool_descriptions: String,
+    gatherer: ContextGatherer,
 }
 
 impl PromptBuilder {
@@ -20,6 +23,7 @@ impl PromptBuilder {
             user_memory_path: None,
             skills: Vec::new(),
             tool_descriptions: String::new(),
+            gatherer: ContextGatherer::new(),
         }
     }
 
@@ -76,6 +80,16 @@ impl PromptBuilder {
         }
 
         parts.push(self.build_context_files_section());
+
+        let tree = self.gatherer.build_workspace_tree(&self.workspace);
+        if !tree.is_empty() {
+            parts.push(format!("\n## Workspace Tree\n\n```\n{}\n```", tree));
+        }
+
+        let meta = self.gatherer.gather_project_metadata(&self.workspace);
+        if !meta.is_empty() {
+            parts.push(format!("\n## Project Metadata\n\n{}", meta.join("\n\n")));
+        }
 
         if !self.tool_descriptions.is_empty() {
             parts.push(format!(
