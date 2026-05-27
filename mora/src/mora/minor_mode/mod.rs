@@ -1,26 +1,34 @@
-use crossterm::event::KeyEvent;
+use super::display::event::MoraKeyEvent;
 use super::keymap::KeyAction;
 
-mod line_numbers;
-mod relative_line_numbers;
-mod auto_fill;
-mod whitespace;
-mod highlight_trailing;
-mod auto_save;
-mod read_only;
-mod electric_pair;
 mod aggressive_indent;
+mod auto_fill;
 mod auto_indent;
+mod auto_save;
+mod electric_pair;
+mod highlight_trailing;
+mod line_numbers;
+mod read_only;
+mod relative_line_numbers;
+mod whitespace;
 
 pub trait MinorMode: std::fmt::Debug {
     fn name(&self) -> &'static str;
     fn modeline_indicator(&self) -> &'static str;
-    fn on_key(&self, _key: KeyEvent) -> Option<KeyAction> { None }
+    fn on_key(&self, _key: MoraKeyEvent) -> Option<KeyAction> {
+        None
+    }
     fn on_enable(&self) {}
     fn on_disable(&self) {}
-    fn priority(&self) -> i32 { 0 }
-    fn on_insert_char(&self, _ch: char) -> Option<KeyAction> { None }
-    fn on_insert_newline(&self) -> Option<KeyAction> { None }
+    fn priority(&self) -> i32 {
+        0
+    }
+    fn on_insert_char(&self, _ch: char) -> Option<KeyAction> {
+        None
+    }
+    fn on_insert_newline(&self) -> Option<KeyAction> {
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -74,7 +82,7 @@ impl MinorModeRegistry {
         self.modes.iter().any(|m| m.name() == name)
     }
 
-    pub fn intercept_key(&self, key: KeyEvent) -> Option<KeyAction> {
+    pub fn intercept_key(&self, key: MoraKeyEvent) -> Option<KeyAction> {
         for mode in &self.modes {
             if let Some(action) = mode.on_key(key) {
                 return Some(action);
@@ -102,7 +110,9 @@ impl MinorModeRegistry {
     }
 
     pub fn modeline_string(&self) -> String {
-        let indicators: Vec<&str> = self.modes.iter()
+        let indicators: Vec<&str> = self
+            .modes
+            .iter()
             .map(|m| m.modeline_indicator())
             .filter(|s| !s.is_empty())
             .collect();
@@ -140,14 +150,20 @@ pub fn all_minor_mode_names() -> Vec<&'static str> {
 pub fn create_minor_mode(name: &str) -> Option<Box<dyn MinorMode>> {
     match name.to_lowercase().as_str() {
         "line-numbers" | "line-numbers-mode" => Some(Box::new(line_numbers::LineNumbersMode)),
-        "relative-line-numbers" | "relative-line-numbers-mode" => Some(Box::new(relative_line_numbers::RelativeLineNumbersMode)),
+        "relative-line-numbers" | "relative-line-numbers-mode" => {
+            Some(Box::new(relative_line_numbers::RelativeLineNumbersMode))
+        }
         "auto-fill" | "auto-fill-mode" => Some(Box::new(auto_fill::AutoFillMode)),
         "whitespace" | "whitespace-mode" => Some(Box::new(whitespace::WhitespaceMode)),
-        "highlight-trailing" | "highlight-trailing-whitespace" => Some(Box::new(highlight_trailing::HighlightTrailingMode)),
+        "highlight-trailing" | "highlight-trailing-whitespace" => {
+            Some(Box::new(highlight_trailing::HighlightTrailingMode))
+        }
         "auto-save" | "auto-save-mode" => Some(Box::new(auto_save::AutoSaveMode)),
         "read-only" | "read-only-mode" => Some(Box::new(read_only::ReadOnlyMode)),
         "electric-pair" | "electric-pair-mode" => Some(Box::new(electric_pair::ElectricPairMode)),
-        "aggressive-indent" | "aggressive-indent-mode" => Some(Box::new(aggressive_indent::AggressiveIndentMode)),
+        "aggressive-indent" | "aggressive-indent-mode" => {
+            Some(Box::new(aggressive_indent::AggressiveIndentMode))
+        }
         "auto-indent" | "auto-indent-mode" => Some(Box::new(auto_indent::AutoIndentMode)),
         _ => None,
     }
@@ -156,6 +172,7 @@ pub fn create_minor_mode(name: &str) -> Option<Box<dyn MinorMode>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::display::event::{MoraKeyCode, MoraKeyModifiers};
 
     #[test]
     fn test_registry_create() {
@@ -237,12 +254,11 @@ mod tests {
     #[test]
     fn test_read_only_intercept() {
         let mode = read_only::ReadOnlyMode;
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-        let insert_key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        let insert_key = MoraKeyEvent::new(MoraKeyCode::Char('a'), MoraKeyModifiers::NONE);
         assert!(mode.on_key(insert_key).is_some());
-        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let esc_key = MoraKeyEvent::new(MoraKeyCode::Esc, MoraKeyModifiers::NONE);
         assert!(mode.on_key(esc_key).is_none());
-        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let ctrl_c = MoraKeyEvent::new(MoraKeyCode::Char('c'), MoraKeyModifiers::CTRL);
         assert!(mode.on_key(ctrl_c).is_none());
     }
 
@@ -299,7 +315,10 @@ mod tests {
     fn test_registry_insert_char_hooks() {
         let mut registry = MinorModeRegistry::new();
         registry.enable_by_name("electric-pair");
-        assert_eq!(registry.on_insert_char('('), Some(KeyAction::InsertChar(')')));
+        assert_eq!(
+            registry.on_insert_char('('),
+            Some(KeyAction::InsertChar(')'))
+        );
         assert_eq!(registry.on_insert_char('a'), None);
     }
 

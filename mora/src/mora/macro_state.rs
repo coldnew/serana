@@ -1,4 +1,4 @@
-use crossterm::event::KeyEvent;
+use super::display::event::MoraKeyEvent as KeyEvent;
 
 #[derive(Debug, Clone)]
 pub struct KeyboardMacro {
@@ -46,11 +46,7 @@ impl MacroState {
     pub fn stop_recording(&mut self) {
         self.recording = false;
         if !self.current_events.is_empty() {
-            if let Some(existing) = self
-                .macros
-                .iter_mut()
-                .find(|m| m.name == self.record_name)
-            {
+            if let Some(existing) = self.macros.iter_mut().find(|m| m.name == self.record_name) {
                 existing.events = self.current_events.clone();
             } else {
                 self.macros.push(KeyboardMacro {
@@ -110,11 +106,7 @@ impl MacroState {
     }
 
     pub fn load_from_register(&mut self, name: char, events: &[KeyEvent]) {
-        if let Some(existing) = self
-            .macros
-            .iter_mut()
-            .find(|m| m.name == name)
-        {
+        if let Some(existing) = self.macros.iter_mut().find(|m| m.name == name) {
             existing.events = events.to_vec();
         } else {
             self.macros.push(KeyboardMacro {
@@ -133,14 +125,14 @@ impl MacroState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use super::super::display::event::{MoraKeyCode as KeyCode, MoraKeyModifiers as KeyModifiers};
 
     fn fake_key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::empty())
+        KeyEvent::new(code, KeyModifiers::NONE)
     }
 
     fn fake_ctrl(c: char) -> KeyEvent {
-        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CTRL)
     }
 
     #[test]

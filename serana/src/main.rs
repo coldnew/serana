@@ -120,9 +120,10 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
         execute,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     };
+    use mora_bin::mora::MoraEditor;
+    use mora_bin::mora::display::event::MoraKeyEvent;
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
-    use mora_bin::mora::MoraEditor;
     use std::io;
     use std::path::Path;
     use std::time::Duration;
@@ -157,7 +158,7 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
                     {
                         break;
                     }
-                    editor.handle_key(key);
+                    editor.handle_key(MoraKeyEvent::from(key));
                 }
             }
 

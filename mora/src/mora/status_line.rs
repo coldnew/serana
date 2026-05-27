@@ -1,60 +1,58 @@
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-
+use super::display::style::{MoraColor, MoraStyle, StyledLine, StyledSpan};
 use super::editor::MoraEditor;
 use super::keymap::EditorMode;
 
-pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
+pub fn render_status_line(editor: &MoraEditor, width: usize) -> StyledLine {
     let mode = editor.mode();
     let (mode_label, mode_style) = match mode {
         EditorMode::Normal => (
             " NORMAL ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(0, 180, 255))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(0, 180, 255))
+                .bold(),
         ),
         EditorMode::Insert => (
             " INSERT ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(0, 255, 136))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(0, 255, 136))
+                .bold(),
         ),
         EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward => (
             " CMD ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(212, 192, 144))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(212, 192, 144))
+                .bold(),
         ),
         EditorMode::Emacs => (
             " EMACS ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(255, 179, 71))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(255, 179, 71))
+                .bold(),
         ),
         EditorMode::ReplaceChar => (
             " REPLACE ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(255, 71, 87))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(255, 71, 87))
+                .bold(),
         ),
         EditorMode::Visual => (
             " VISUAL ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(180, 130, 20))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(180, 130, 20))
+                .bold(),
         ),
         EditorMode::Iedit => (
             " IEDIT ",
-            Style::new()
-                .fg(Color::Rgb(15, 18, 22))
-                .bg(Color::Rgb(200, 80, 200))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(15, 18, 22))
+                .bg(MoraColor::new(200, 80, 200))
+                .bold(),
         ),
     };
 
@@ -65,21 +63,21 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
     let pos = format!(" {}:{} ", buf.cursor.row + 1, buf.cursor.col + 1);
     let total = format!(" /{} ", buf.line_count());
 
-    let dim = Style::new().fg(Color::Rgb(107, 114, 128));
-    let bright = Style::new()
-        .fg(Color::Rgb(232, 236, 244))
-        .add_modifier(Modifier::BOLD);
-    let modified_style = Style::new()
-        .fg(Color::Rgb(255, 179, 71))
-        .add_modifier(Modifier::BOLD);
-    let mode_name_style = Style::new().fg(Color::Rgb(140, 160, 200));
+    let dim = MoraStyle::new().fg(MoraColor::new(107, 114, 128));
+    let bright = MoraStyle::new()
+        .fg(MoraColor::new(232, 236, 244))
+        .bold();
+    let modified_style = MoraStyle::new()
+        .fg(MoraColor::new(255, 179, 71))
+        .bold();
+    let mode_name_style = MoraStyle::new().fg(MoraColor::new(140, 160, 200));
 
     let mut spans = vec![
-        Span::styled(mode_label, mode_style),
-        Span::styled(" ", dim),
-        Span::styled(filename.to_string(), bright),
-        Span::styled(modified.to_string(), modified_style),
-        Span::styled(mode_name, mode_name_style),
+        StyledSpan::new(mode_label, mode_style),
+        StyledSpan::new(" ", dim),
+        StyledSpan::new(filename.to_string(), bright),
+        StyledSpan::new(modified.to_string(), modified_style),
+        StyledSpan::new(mode_name, mode_name_style),
     ];
 
     let macro_indicator = if editor.macro_state.is_recording() {
@@ -90,11 +88,12 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
         ""
     };
     if !macro_indicator.is_empty() {
-        spans.push(Span::styled(
+        spans.push(StyledSpan::new(
             macro_indicator,
-            Style::new()
-                .fg(Color::Rgb(255, 71, 87))
-                .add_modifier(Modifier::BOLD | Modifier::SLOW_BLINK),
+            MoraStyle::new()
+                .fg(MoraColor::new(255, 71, 87))
+                .bold()
+                .blink(),
         ));
     }
 
@@ -104,34 +103,34 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> Line<'static> {
         ""
     };
     if !mark_indicator.is_empty() {
-        spans.push(Span::styled(
+        spans.push(StyledSpan::new(
             mark_indicator,
-            Style::new()
-                .fg(Color::Rgb(0, 255, 136))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(0, 255, 136))
+                .bold(),
         ));
     }
 
     let minor_indicator = editor.minor_modes.modeline_string();
     if !minor_indicator.is_empty() {
-        spans.push(Span::styled(
+        spans.push(StyledSpan::new(
             minor_indicator,
-            Style::new()
-                .fg(Color::Rgb(180, 130, 255))
-                .add_modifier(Modifier::BOLD),
+            MoraStyle::new()
+                .fg(MoraColor::new(180, 130, 255))
+                .bold(),
         ));
     }
 
     let used: usize = spans.iter().map(|s| s.width()).sum();
     let right = format!("{}{}", pos, total);
     let fill = width.saturating_sub(used + right.len());
-    spans.push(Span::styled(" ".repeat(fill), dim));
-    spans.push(Span::styled(right, dim));
+    spans.push(StyledSpan::new(" ".repeat(fill), dim));
+    spans.push(StyledSpan::new(right, dim));
 
-    Line::from(spans)
+    StyledLine::new(spans)
 }
 
-pub fn render_command_line(editor: &MoraEditor, width: usize) -> Line<'static> {
+pub fn render_command_line(editor: &MoraEditor, width: usize) -> StyledLine {
     let prompt = match editor.mode() {
         EditorMode::Command => ":",
         EditorMode::SearchForward => "/",
@@ -140,21 +139,21 @@ pub fn render_command_line(editor: &MoraEditor, width: usize) -> Line<'static> {
     };
     let input = editor.command_input();
 
-    let style = Style::new().fg(Color::Rgb(232, 236, 244));
-    let prompt_style = Style::new()
-        .fg(Color::Rgb(0, 180, 255))
-        .add_modifier(Modifier::BOLD);
+    let style = MoraStyle::new().fg(MoraColor::new(232, 236, 244));
+    let prompt_style = MoraStyle::new()
+        .fg(MoraColor::new(0, 180, 255))
+        .bold();
 
     let content = format!("{}{}", prompt, input);
     let padded = format!("{:width$}", content, width = width);
 
-    Line::from(vec![
-        Span::styled(format!("{}", prompt), prompt_style),
-        Span::styled(padded[prompt.len()..].to_string(), style),
+    StyledLine::new(vec![
+        StyledSpan::new(format!("{}", prompt), prompt_style),
+        StyledSpan::new(padded[prompt.len()..].to_string(), style),
     ])
 }
 
-pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
+pub fn render_help_bar(mode: EditorMode, width: usize) -> StyledLine {
     let hints = match mode {
         EditorMode::Normal => {
             "i:Insert  f/F/t/T:Find  ;/,:Repeat  *:Search  ~:Case  S:Sub  .:Repeat  %:Match  /:Search  ::Cmd  v:Visual  u:Undo  Ctrl-E:Emacs"
@@ -172,7 +171,7 @@ pub fn render_help_bar(mode: EditorMode, width: usize) -> Line<'static> {
         EditorMode::Iedit => "Type:Edit all  Tab/Shift-Tab:Cycle  C-n/C-p:Nav  Backspace/Del:Delete  Esc/C-g:Exit",
     };
 
-    let style = Style::new().fg(Color::Rgb(107, 114, 128));
+    let style = MoraStyle::new().fg(MoraColor::new(107, 114, 128));
     let padded = format!("{:width$}", hints, width = width);
-    Line::from(Span::styled(padded, style))
+    StyledLine::new(vec![StyledSpan::new(padded, style)])
 }

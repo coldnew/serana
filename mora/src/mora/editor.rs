@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use super::display::event::{MoraKeyCode as KeyCode, MoraKeyEvent as KeyEvent, MoraKeyModifiers as KeyModifiers};
 
 use super::buffer::Buffer;
 use super::keymap::{self, EditorMode, KeyAction, PendingOp};
@@ -2621,6 +2621,7 @@ impl MoraEditor {
                 state.file_path = self.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
                 state.mode = self.mode.label().to_lowercase();
                 state.window_count = self.windows.len();
+                state.overlays = std::mem::replace(&mut self.buffer.overlays, super::overlay::OverlayStore::new());
                 super::lisp_ext::set_editor_state(state);
 
                 let result = self.lisp_bridge.eval(code);
@@ -2631,6 +2632,7 @@ impl MoraEditor {
                     self.buffer.cursor.row = state.cursor_row.min(self.buffer.lines.len().saturating_sub(1));
                     self.buffer.cursor.col = state.cursor_col;
                     self.buffer.modified = state.modified;
+                    self.buffer.overlays = state.overlays;
                     self.status_message = state.status_message;
                     if state.quit_requested {
                         self.quit_requested = true;

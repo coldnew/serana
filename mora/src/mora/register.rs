@@ -1,11 +1,12 @@
 use crate::mora::buffer::Cursor;
+use super::display::event::MoraKeyEvent as KeyEvent;
 
 #[derive(Debug, Clone)]
 pub enum RegisterValue {
     Text(String),
     Lines(Vec<String>),
     Position(Cursor),
-    Macro(Vec<crossterm::event::KeyEvent>),
+    Macro(Vec<KeyEvent>),
     Rectangle(Vec<String>),
     Number(usize),
 }
