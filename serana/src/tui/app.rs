@@ -1,5 +1,6 @@
 //! Application state machine.
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -172,6 +173,8 @@ pub struct App {
     pub recent_sessions: Vec<crate::agent::SessionMeta>,
     // Skills
     pub skill_store: Option<crate::tools::skill::SkillStore>,
+    // Task queue for /queue command
+    pub task_queue: VecDeque<String>,
 }
 
 /// Todo item for task tracking.
@@ -230,6 +233,7 @@ impl App {
             current_session_id: None,
             recent_sessions: Vec::new(),
             skill_store: None,
+            task_queue: VecDeque::new(),
         }
     }
 
@@ -772,19 +776,50 @@ impl App {
                     thinking: None,
                 });
             }
+            SlashResult::QueueAdd(task) => {
+                self.task_queue.push_back(task.clone());
+                let pos = self.task_queue.len();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!(
+                        "Queued task #{}: {} ({} in queue)",
+                        pos,
+                        task,
+                        self.task_queue.len()
+                    ),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
             SlashResult::QueueStatus => {
-                let pending = self.pending_messages.len();
                 let status = if self.mode == AppMode::Processing {
                     "processing"
                 } else {
                     "idle"
                 };
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    content: format!("Queue: {} pending messages, mode: {}", pending, status,),
-                    tool_calls: Vec::new(),
-                    thinking: None,
-                });
+                if self.task_queue.is_empty() {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!("Queue: empty, mode: {}", status),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                } else {
+                    let mut lines = vec![format!(
+                        "Queue: {} task(s), mode: {}",
+                        self.task_queue.len(),
+                        status
+                    )];
+                    for (i, task) in self.task_queue.iter().enumerate() {
+                        lines.push(format!("  {}. {}", i + 1, task));
+                    }
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: lines.join("\n"),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
             }
             SlashResult::SetThinkingLevel(level) => {
                 self.thinking_level = match level.as_str() {

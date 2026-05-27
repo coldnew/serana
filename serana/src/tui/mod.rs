@@ -127,7 +127,6 @@ fn run_app(
                 tool_calls: Vec::new(),
                 thinking: None,
             });
-            app.mode = app::AppMode::Normal;
             app.clear_pending_response();
             streaming_content.clear();
             pending_request = None;
@@ -144,6 +143,19 @@ fn run_app(
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
+            }
+
+            // Process next queued task if available
+            if let Some(next_task) = app.task_queue.pop_front() {
+                app.messages.push(app::ChatMessage {
+                    role: app::MessageRole::User,
+                    content: next_task.clone(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+                app.mode = app::AppMode::Processing;
+            } else {
+                app.mode = app::AppMode::Normal;
             }
         }
 

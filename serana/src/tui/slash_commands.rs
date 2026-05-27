@@ -53,12 +53,14 @@ pub enum SlashResult {
     BtwAdd(String),
     /// Clear all BTW notes.
     BtwClear,
+    /// Add a task to the execution queue.
+    QueueAdd(String),
     /// Show message queue status.
+    QueueStatus,
     /// List loaded skills.
     SkillList,
     /// Reload skills from disk.
     SkillReload,
-    QueueStatus,
     /// Set thinking/reasoning level.
     SetThinkingLevel(String),
     /// Copy last assistant response to clipboard.
@@ -234,8 +236,15 @@ impl SlashCommandRegistry {
 
         self.register(SlashCommand {
             name: "queue",
-            description: "Show message queue status",
-            handler: Box::new(|_| SlashResult::QueueStatus),
+            description: "Task queue. Usage: /queue <task> or /queue list",
+            handler: Box::new(|args| {
+                let args = args.trim();
+                if args == "list" || args.is_empty() {
+                    SlashResult::QueueStatus
+                } else {
+                    SlashResult::QueueAdd(args.to_string())
+                }
+            }),
         });
 
         self.register(SlashCommand {
