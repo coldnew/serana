@@ -148,8 +148,10 @@ fn run_app(
         }
 
         match events.next()? {
-            Event::Key(key_event) => {
-                if !app.handle_key_event(key_event)? || app.should_quit {
+            Event::Input(display_protocol::InputEvent::Key(key_event)) => {
+                // Convert display-protocol KeyEvent to crossterm KeyEvent for app
+                let crossterm_key: crossterm::event::KeyEvent = key_event.into();
+                if !app.handle_key_event(crossterm_key)? || app.should_quit {
                     return Ok(());
                 }
 
@@ -157,7 +159,6 @@ fn run_app(
                     if let Some(last_msg) = app.messages.last() {
                         if last_msg.role == app::MessageRole::User {
                             let user_input = last_msg.content.clone();
-                            // Persist user message to session store
                             if let (Some(ref store), Some(ref sid)) =
                                 (&app.session_store, &app.current_session_id)
                             {
@@ -178,7 +179,7 @@ fn run_app(
                     }
                 }
             }
-            Event::Resize(_width, _height) => {}
+            Event::Input(_) => {}
             Event::Tick => {
                 app.tick();
             }

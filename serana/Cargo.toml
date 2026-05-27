@@ -37,6 +37,8 @@ chrono.workspace = true
 uuid.workspace = true
 crossterm.workspace = true
 ratatui.workspace = true
+display-protocol = { path = "../crates/display-protocol" }
+display-tui = { path = "../crates/display-tui" }
 strip-ansi-escapes.workspace = true
 pulldown-cmark.workspace = true
 syntect.workspace = true

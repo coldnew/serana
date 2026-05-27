@@ -21,6 +21,7 @@ mora-lisp = { path = "../crates/mora-lisp" }
 mora-compile = { path = "../crates/mora-compile" }
 mishell-parser = { path = "../crates/mishell-parser" }
 display-protocol = { path = "../crates/display-protocol", features = ["tui"] }
+display-tui = { path = "../crates/display-tui" }
 tokio.workspace = true
 thiserror.workspace = true
 hostname = "0.4"

@@ -1,17 +1,14 @@
 use clap::{Parser, Subcommand};
 use mora_bin::mora::editor_core::MoraCore;
 use mora_bin::mora::display::backend::{DisplayBackend, InputEvent};
-use mora_bin::mora::display::tui::TuiBackend;
 use mora_bin::mora::display::wgpu_backend::WgpuBackend;
 use mora_bin::mora::display::style::MoraStyle;
 use mora_compile::{CompileOptions, CompileTarget};
-use display_protocol::{Cell, Color, Grid, Style, WireMessage, PROTOCOL_VERSION, DisplayCmd, InputEvent as ProtoInputEvent, KeyEvent, KeyCode, KeyModifiers, MouseEventKind};
+use display_protocol::{Color, Grid, WireMessage, PROTOCOL_VERSION, DisplayCmd, InputEvent as ProtoInputEvent};
+use display_tui::TuiTerminal;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::panic;
 use std::path::Path;
-use mora_bin::mora::display::event::{MoraKeyEvent, MoraKeyCode};
-use mora_bin::mora::display::backend::MouseKind;
 
 #[derive(Parser)]
 #[command(name = "mora")]
@@ -194,35 +191,12 @@ fn init_lisp_state(core: &MoraCore) {
     mora_bin::mora::lisp_ext::set_editor_state(state);
 }
 
-/// Convert a display-protocol Grid to a ratatui Buffer for TUI rendering.
-fn grid_to_ratatui_buf(grid: &Grid) -> ratatui::buffer::Buffer {
-    let area = ratatui::layout::Rect::new(0, 0, grid.width, grid.height);
-    let mut buf = ratatui::buffer::Buffer::empty(area);
-    for y in 0..grid.height {
-        for x in 0..grid.width {
-            let cell = grid.get(x, y);
-            let ratatui_cell = buf.get_mut(x, y);
-            ratatui_cell.set_symbol(&cell.ch.to_string());
-            ratatui_cell.set_fg(ratatui::style::Color::from(cell.style.fg.unwrap_or(Color::WHITE)));
-            ratatui_cell.set_bg(ratatui::style::Color::from(cell.style.bg.unwrap_or(Color::BLACK)));
-        }
-    }
-    buf
-}
-
 fn run_editor_tui(file: Option<String>) -> anyhow::Result<()> {
-    let mut backend = TuiBackend::new();
-    backend.init().map_err(|e| anyhow::anyhow!(e))?;
+    let mut tui = TuiTerminal::new().map_err(|e| anyhow::anyhow!(e))?;
+    tui.init().map_err(|e| anyhow::anyhow!(e))?;
+    display_tui::install_panic_hook();
 
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(io::stdout(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Show);
-        default_hook(info);
-    }));
-
-    let (w, h) = backend.size();
+    let (w, h) = tui.size();
     let mut core = match file {
         Some(ref path) => MoraCore::open(Path::new(path), w, h)
             .map_err(|e| anyhow::anyhow!(e))?,
@@ -235,30 +209,15 @@ fn run_editor_tui(file: Option<String>) -> anyhow::Result<()> {
     let result = (|| -> anyhow::Result<()> {
         loop {
             let frame = core.render_frame();
-            let ratatui_buf = grid_to_ratatui_buf(&frame.grid);
+            tui.render_frame(&frame).map_err(|e| anyhow::anyhow!(e))?;
 
-            backend
-                .draw(|buf, _area| {
-                    // Copy our rendered grid into the terminal buffer
-                    for y in 0..frame.grid.height.min(buf.area().height) {
-                        for x in 0..frame.grid.width.min(buf.area().width) {
-                            let src = ratatui_buf.get(x, y);
-                            let dst = buf.get_mut(x, y);
-                            *dst = src.clone();
-                        }
-                    }
-                })
-                .map_err(|e| anyhow::anyhow!(e))?;
-
-            match backend.poll_event(50) {
-                Some(InputEvent::Key(key)) => {
-                    if core.handle_mora_input(InputEvent::Key(key)) {
-                        break;
-                    }
-                }
+            match tui.poll_input(50) {
                 Some(event) => {
-                    if core.handle_mora_input(event) {
-                        break;
+                    let cmds = core.handle_input(event);
+                    for cmd in &cmds {
+                        if matches!(cmd, DisplayCmd::Quit) {
+                            return Ok(());
+                        }
                     }
                 }
                 _ => {}
@@ -271,7 +230,7 @@ fn run_editor_tui(file: Option<String>) -> anyhow::Result<()> {
         Ok(())
     })();
 
-    backend.cleanup().map_err(|e| anyhow::anyhow!(e))?;
+    tui.cleanup().map_err(|e| anyhow::anyhow!(e))?;
     result
 }
 
@@ -430,29 +389,6 @@ fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn mora_key_to_proto(key: MoraKeyEvent) -> KeyEvent {
-    let code = match key.code {
-        MoraKeyCode::Char(c) => KeyCode::Char(c),
-        MoraKeyCode::Enter => KeyCode::Enter,
-        MoraKeyCode::Tab => KeyCode::Tab,
-        MoraKeyCode::Backspace => KeyCode::Backspace,
-        MoraKeyCode::Delete => KeyCode::Delete,
-        MoraKeyCode::Esc => KeyCode::Esc,
-        MoraKeyCode::Left => KeyCode::Left,
-        MoraKeyCode::Right => KeyCode::Right,
-        MoraKeyCode::Up => KeyCode::Up,
-        MoraKeyCode::Down => KeyCode::Down,
-        MoraKeyCode::Home => KeyCode::Home,
-        MoraKeyCode::End => KeyCode::End,
-        MoraKeyCode::PageUp => KeyCode::PageUp,
-        MoraKeyCode::PageDown => KeyCode::PageDown,
-        MoraKeyCode::F(n) => KeyCode::F(n),
-        MoraKeyCode::Insert => KeyCode::Insert,
-        MoraKeyCode::BackTab => KeyCode::BackTab,
-    };
-    KeyEvent::new(code, KeyModifiers::EMPTY)
-}
-
 fn run_client(addr: &str) -> anyhow::Result<()> {
     let mut stream = TcpStream::connect(addr)?;
     eprintln!("Connected to {}", addr);
@@ -476,16 +412,9 @@ fn run_client(addr: &str) -> anyhow::Result<()> {
     stream.write_all(&client_hello.to_json_line().unwrap())?;
     stream.flush()?;
 
-    let mut backend = TuiBackend::new();
-    backend.init().map_err(|e| anyhow::anyhow!(e))?;
-
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(io::stdout(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Show);
-        default_hook(info);
-    }));
+    let mut tui = TuiTerminal::new().map_err(|e| anyhow::anyhow!(e))?;
+    tui.init().map_err(|e| anyhow::anyhow!(e))?;
+    display_tui::install_panic_hook();
 
     stream.set_nonblocking(true)?;
 
@@ -525,51 +454,18 @@ fn run_client(addr: &str) -> anyhow::Result<()> {
             }
 
             if let Some(ref frame) = current_frame {
-                let ratatui_buf = grid_to_ratatui_buf(&frame.grid);
-                let w = frame.grid.width;
-                let h = frame.grid.height;
-                backend.draw(|buf, _area| {
-                    for y in 0..h.min(buf.area().height) {
-                        for x in 0..w.min(buf.area().width) {
-                            let src = ratatui_buf.get(x, y);
-                            let dst = buf.get_mut(x, y);
-                            *dst = src.clone();
-                        }
-                    }
-                }).map_err(|e| anyhow::anyhow!(e))?;
+                tui.render_frame(frame).map_err(|e| anyhow::anyhow!(e))?;
             }
 
-            match backend.poll_event(16) {
-                Some(InputEvent::Key(key)) => {
-                    let proto_key = mora_key_to_proto(key);
-                    let msg = WireMessage::Input(ProtoInputEvent::Key(proto_key));
-                    stream.write_all(&msg.to_json_line().unwrap())?;
-                    stream.flush()?;
-                }
-                Some(InputEvent::Resize(w, h)) => {
-                    let msg = WireMessage::Input(ProtoInputEvent::Resize { width: w, height: h });
-                    stream.write_all(&msg.to_json_line().unwrap())?;
-                    stream.flush()?;
-                }
-                Some(InputEvent::Mouse { x, y, kind }) => {
-                    let proto_kind = match kind {
-                        MouseKind::Press => MouseEventKind::Press,
-                        MouseKind::Release => MouseEventKind::Release,
-                        MouseKind::Drag => MouseEventKind::Drag,
-                        MouseKind::ScrollUp => MouseEventKind::ScrollUp,
-                        MouseKind::ScrollDown => MouseEventKind::ScrollDown,
-                    };
-                    let msg = WireMessage::Input(ProtoInputEvent::Mouse {
-                        x, y, kind: proto_kind, modifiers: KeyModifiers::EMPTY,
-                    });
-                    stream.write_all(&msg.to_json_line().unwrap())?;
-                    stream.flush()?;
-                }
-                _ => {}
+            // poll_input returns display-protocol InputEvent directly
+            if let Some(event) = tui.poll_input(16) {
+                let msg = WireMessage::Input(event);
+                stream.write_all(&msg.to_json_line().unwrap())?;
+                stream.flush()?;
             }
         }
     })();
 
-    backend.cleanup().map_err(|e| anyhow::anyhow!(e))?;
+    tui.cleanup().map_err(|e| anyhow::anyhow!(e))?;
     result
 }

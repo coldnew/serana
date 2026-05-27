@@ -6,6 +6,7 @@ members = [
     "crates/mora-compile",
     "crates/mishell-parser",
     "crates/display-protocol",
+    "crates/display-tui",
     "mishell",
     "mora",
     "serana",
