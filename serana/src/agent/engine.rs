@@ -157,6 +157,7 @@ impl<'a> AgentEngine<'a> {
                         self.parts.tools,
                         self.parts.callbacks,
                         self.parts.meta_cognition,
+                        None,
                     )
                     .await;
 

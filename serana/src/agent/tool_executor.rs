@@ -121,7 +121,7 @@ mod tests {
             },
         }];
 
-        let results = execute_tools_concurrent(&tool_calls, &registry, &callbacks).await;
+        let results = execute_tools_concurrent(&tool_calls, &registry, &callbacks, None).await;
         assert_eq!(results.len(), 1);
     }
 }

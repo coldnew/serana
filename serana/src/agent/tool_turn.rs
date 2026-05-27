@@ -40,7 +40,7 @@ pub async fn handle_tool_turn(
     }
 
     callbacks.fire_status(AgentStatus::ExecutingTool);
-    let results = execute_tools_concurrent(&enriched_tool_calls, tools, callbacks).await;
+    let results = execute_tools_concurrent(&enriched_tool_calls, tools, callbacks, approval).await;
     callbacks.fire_status(AgentStatus::Running);
 
     let mut messages = Vec::with_capacity(results.len());
