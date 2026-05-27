@@ -2,6 +2,7 @@
     note = "Use the hermes module and HermesAgent; coding is only a compatibility module."
 )]
 pub mod coding;
+pub mod checkpoint;
 pub mod compactor;
 pub mod compression_gate;
 pub mod compressor;
@@ -25,6 +26,7 @@ pub mod turn_runner;
 
 #[allow(deprecated)]
 pub use coding::CodingAgent;
+pub use checkpoint::CheckpointManager;
 pub use compactor::ContextCompactor;
 pub use compression_gate::{CompressionGate, CompressionGateOutcome};
 pub use compressor::ContextCompressor;
@@ -41,12 +43,15 @@ pub use session::{
     SearchResult, Session, SessionMeta, SessionStore, StoredMessage, StoredToolCall,
 };
 pub use session_recorder::SessionRecorder;
-pub use stream_rules::{StreamRule, StreamRuleEngine};
+pub use stream_rules::{
+    ContextMode, InterruptMode, RepeatPolicy, RuleScope, StreamRule, StreamRuleEngine,
+    StreamRuleMatch,
+};
 pub use subagent::{delegate_task, SubagentConfig, SubagentResult, SubagentSpawner, SubagentTask};
 pub use tool_call_validator::ToolCallValidator;
 pub use tool_executor::{execute_tools_concurrent, ToolExecutionResult};
 pub use tool_turn::{handle_tool_turn, ToolTurnOutput};
-pub use turn_runner::TurnRunner;
+pub use turn_runner::{TurnOutcome, TurnRunner};
 
 #[cfg(test)]
 mod test_support {

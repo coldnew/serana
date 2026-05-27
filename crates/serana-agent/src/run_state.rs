@@ -41,6 +41,21 @@ impl AgentRunState {
         self.tool_calls.extend(turn.tool_calls);
     }
 
+    /// Truncate messages to the given index, preserving system prompt and user instruction.
+    /// Used by checkpoint/rewind to discard exploratory context.
+    pub fn truncate_to(&mut self, index: usize) {
+        // Always keep at least system prompt (idx 0) and user instruction (idx 1)
+        let min_keep = 2;
+        let target = index.max(min_keep);
+        if target < self.messages.len() {
+            self.messages.truncate(target);
+        }
+    }
+
+    pub fn push_system_message(&mut self, content: &str) {
+        self.messages.push(Message::system(content.to_string()));
+    }
+
     pub fn output(self, response: String) -> AgentOutput {
         AgentOutput {
             response,

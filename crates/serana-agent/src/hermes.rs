@@ -1,6 +1,6 @@
 use crate::{
-    AgentEngine, AgentEngineParts, AgentPromptConfig, AgentRuntimeConfig, ContextCompressor,
-    PromptBuilder, SessionRecorder, SessionStore,
+    AgentEngine, AgentEngineParts, AgentPromptConfig, AgentRuntimeConfig, CheckpointManager,
+    ContextCompressor, PromptBuilder, SessionRecorder, SessionStore, StreamRuleEngine,
 };
 use async_trait::async_trait;
 use serana_core::{
@@ -11,6 +11,7 @@ use serana_llm::AuxiliaryClient;
 use serana_tools::ToolRegistry;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct HermesAgent {
     llm: Box<dyn LlmClient>,
@@ -24,6 +25,8 @@ pub struct HermesAgent {
     cancel_token: Option<CancelToken>,
     #[allow(dead_code)]
     meta_cognition: Arc<MetaCognition>,
+    checkpoint_manager: CheckpointManager,
+    stream_rules: Mutex<Option<StreamRuleEngine>>,
 }
 
 impl HermesAgent {
@@ -55,6 +58,8 @@ impl HermesAgent {
             compressor: ContextCompressor::with_defaults(),
             cancel_token: None,
             meta_cognition: Arc::new(MetaCognition::new()),
+            checkpoint_manager: CheckpointManager::new(),
+            stream_rules: Mutex::new(None),
         }
     }
 
@@ -107,6 +112,11 @@ impl HermesAgent {
         self
     }
 
+    pub fn with_stream_rules(mut self, rules: StreamRuleEngine) -> Self {
+        self.stream_rules = Mutex::new(Some(rules));
+        self
+    }
+
     fn apply_prompt_config(&mut self, config: AgentPromptConfig) {
         self.prompt_builder = PromptBuilder::new(config.workspace).with_skills(config.skills);
         self.compressor = config.compressor;
@@ -120,7 +130,11 @@ impl Agent for HermesAgent {
     }
 
     async fn execute(&self, instruction: &str) -> Result<AgentOutput> {
-        AgentEngine::new(AgentEngineParts {
+        // Take stream_rules out of Mutex for the duration of execution
+        let mut rules_guard = self.stream_rules.lock().await;
+        let mut rules_opt = rules_guard.take();
+
+        let result = AgentEngine::new(AgentEngineParts {
             llm: self.llm.as_ref(),
             auxiliary: self.auxiliary.clone(),
             tools: &self.tools,
@@ -131,9 +145,16 @@ impl Agent for HermesAgent {
             compressor: &self.compressor,
             cancel_token: self.cancel_token.as_ref(),
             meta_cognition: &self.meta_cognition,
+            checkpoint_manager: &self.checkpoint_manager,
+            stream_rules: rules_opt.as_mut(),
         })
         .execute(instruction)
-        .await
+        .await;
+
+        // Put stream_rules back
+        *rules_guard = rules_opt;
+
+        result
     }
 
     async fn chat(&self, message: &str) -> Result<String> {
