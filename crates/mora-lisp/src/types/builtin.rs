@@ -1676,17 +1676,30 @@ fn native_zipmap(args: &[Value]) -> Result<Value, String> {
         Value::List(v) | Value::Vector(v) => v.as_ref(),
         _ => return Err("zipmap second arg must be a sequence".to_string()),
     };
-    let pairs: Vec<(Value, Value)> = keys
+    let result: HashMap<Value, Value> = keys
         .iter()
         .zip(vals.iter())
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    Ok(Value::map(pairs))
+    Ok(Value::Map(Arc::new(result)))
 }
 
-fn native_interleave(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::list(vec![]))
+fn native_interleave(args: &[Value]) -> Result<Value, String> {
+    if args.len() < 2 {
+        return Err("interleave requires at least 2 arguments".to_string());
+    }
+    let seqs: Vec<&[Value]> = args.iter().map(|a| match a {
+        Value::List(v) | Value::Vector(v) => v.as_ref(),
+        _ => &[],
+    }).collect();
+    let min_len = seqs.iter().map(|s| s.len()).min().unwrap_or(0);
+    let mut result = Vec::with_capacity(min_len * args.len());
+    for i in 0..min_len {
+        for seq in &seqs {
+            result.push(seq[i].clone());
+        }
+    }
+    Ok(Value::list(result))
 }
 
 fn native_interpose(args: &[Value]) -> Result<Value, String> {
@@ -1709,19 +1722,94 @@ fn native_interpose(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn native_partition(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::list(vec![]))
+fn native_partition(args: &[Value]) -> Result<Value, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("partition requires 2-3 arguments".to_string());
+    }
+    let n = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err("partition first arg must be an integer".to_string()),
+    };
+    let step = if args.len() == 3 {
+        match &args[1] {
+            Value::Int(s) => *s as usize,
+            _ => return Err("partition second arg must be an integer".to_string()),
+        }
+    } else {
+        n
+    };
+    let seq_idx = if args.len() == 3 { 2 } else { 1 };
+    match &args[seq_idx] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::new();
+            let mut i = 0;
+            while i + n <= v.len() {
+                result.push(Value::list(v[i..i + n].to_vec()));
+                i += step;
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("partition requires a sequence".to_string()),
+    }
 }
 
-fn native_partition_all(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::list(vec![]))
+fn native_partition_all(args: &[Value]) -> Result<Value, String> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err("partition-all requires 2-3 arguments".to_string());
+    }
+    let n = match &args[0] {
+        Value::Int(n) => *n as usize,
+        _ => return Err("partition-all first arg must be an integer".to_string()),
+    };
+    let step = if args.len() == 3 {
+        match &args[1] {
+            Value::Int(s) => *s as usize,
+            _ => return Err("partition-all second arg must be an integer".to_string()),
+        }
+    } else {
+        n
+    };
+    let seq_idx = if args.len() == 3 { 2 } else { 1 };
+    match &args[seq_idx] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result = Vec::new();
+            let mut i = 0;
+            while i < v.len() {
+                let end = (i + n).min(v.len());
+                result.push(Value::list(v[i..end].to_vec()));
+                i += step;
+            }
+            Ok(Value::list(result))
+        }
+        _ => Err("partition-all requires a sequence".to_string()),
+    }
 }
 
-fn native_group_by(_args: &[Value]) -> Result<Value, String> {
-    // Simplified
-    Ok(Value::map(vec![]))
+fn native_group_by(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("group-by requires exactly 2 arguments".to_string());
+    }
+    let func = &args[0];
+    match &args[1] {
+        Value::List(v) | Value::Vector(v) => {
+            let mut result: HashMap<Value, Value> = HashMap::new();
+            for item in v.iter() {
+                let key = invoke_fn(func, &[item.clone()])?;
+                match result.get_mut(&key) {
+                    Some(Value::List(group)) => {
+                        let mut group = group.as_ref().clone();
+                        group.push(item.clone());
+                        result.insert(key, Value::list(group));
+                    }
+                    _ => {
+                        result.insert(key, Value::list(vec![item.clone()]));
+                    }
+                }
+            }
+            Ok(Value::Map(Arc::new(result)))
+        }
+        _ => Err("group-by second arg must be a sequence".to_string()),
+    }
 }
 
 fn native_frequencies(args: &[Value]) -> Result<Value, String> {
