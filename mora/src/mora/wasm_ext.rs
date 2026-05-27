@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WasmExtensionDef {

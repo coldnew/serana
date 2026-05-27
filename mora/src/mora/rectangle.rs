@@ -45,7 +45,11 @@ pub fn kill_rectangle(buf: &mut Buffer, rect: &RectRegion) -> Vec<String> {
             } else {
                 until_end
             };
-            let extracted: String = line.chars().skip(line[..c1].chars().count()).take(count).collect();
+            let extracted: String = line
+                .chars()
+                .skip(line[..c1].chars().count())
+                .take(count)
+                .collect();
             killed.push(extracted);
         } else {
             killed.push(String::new());

@@ -85,7 +85,13 @@ impl WindowManager {
         let y = win.y;
         let width = win.width;
 
-        let mut new_win = Window::new(buffer_idx, x, y + half_height, width, win.height - half_height);
+        let mut new_win = Window::new(
+            buffer_idx,
+            x,
+            y + half_height,
+            width,
+            win.height - half_height,
+        );
         new_win.view.scroll_top = win.view.scroll_top;
 
         self.windows[self.active_idx].height = half_height;
@@ -107,7 +113,13 @@ impl WindowManager {
         let y = win.y;
         let height = win.height;
 
-        let mut new_win = Window::new(buffer_idx, x + half_width, y, win.width - half_width, height);
+        let mut new_win = Window::new(
+            buffer_idx,
+            x + half_width,
+            y,
+            win.width - half_width,
+            height,
+        );
         new_win.view.scroll_top = win.view.scroll_top;
 
         self.windows[self.active_idx].width = half_width;
@@ -127,7 +139,8 @@ impl WindowManager {
             self.active_idx = self.windows.len() - 1;
         }
 
-        let remaining_buffer_indices: Vec<usize> = self.windows.iter().map(|w| w.buffer_idx).collect();
+        let remaining_buffer_indices: Vec<usize> =
+            self.windows.iter().map(|w| w.buffer_idx).collect();
         let closed_buffer_idx = closed.buffer_idx;
         if !remaining_buffer_indices.contains(&closed_buffer_idx) {
             if closed_buffer_idx < self.buffers.len() {
@@ -151,8 +164,19 @@ impl WindowManager {
         let active_buffer_idx = self.windows[self.active_idx].buffer_idx;
         let x = 0;
         let y = 1;
-        let width = self.windows.iter().map(|w| w.x + w.width).max().unwrap_or(80);
-        let height = self.windows.iter().map(|w| w.y + w.height).max().unwrap_or(24) - y;
+        let width = self
+            .windows
+            .iter()
+            .map(|w| w.x + w.width)
+            .max()
+            .unwrap_or(80);
+        let height = self
+            .windows
+            .iter()
+            .map(|w| w.y + w.height)
+            .max()
+            .unwrap_or(24)
+            - y;
 
         let remaining_buffer_indices: Vec<usize> = vec![active_buffer_idx];
 
@@ -188,8 +212,18 @@ impl WindowManager {
             return;
         }
 
-        let total_x = self.windows.iter().map(|w| w.x + w.width).max().unwrap_or(80);
-        let total_y = self.windows.iter().map(|w| w.y + w.height).max().unwrap_or(24);
+        let total_x = self
+            .windows
+            .iter()
+            .map(|w| w.x + w.width)
+            .max()
+            .unwrap_or(80);
+        let total_y = self
+            .windows
+            .iter()
+            .map(|w| w.y + w.height)
+            .max()
+            .unwrap_or(24);
         let count = self.windows.len() as u16;
 
         if count == 1 {
