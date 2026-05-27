@@ -121,7 +121,7 @@ impl ToolRegistry {
         self.register(Box::new(self_evolve::RecordModificationTool));
         self.register(Box::new(self_evolve::ModificationStatsTool));
         self.register(Box::new(self_evolve::ReflectModificationTool));
-        self.register(Box::new(eval::EvalTool));
+        self.register(Box::new(eval::EvalTool::new()));
         self.register(Box::new(web_search::WebSearchTool));
         self.register(Box::new(web_search::UrlFetchTool));
         self.register(Box::new(github::GitHubPrViewTool));
