@@ -18,6 +18,7 @@ serde_json.workspace = true
 dirs.workspace = true
 serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
 mora-lisp = { path = "../crates/mora-lisp" }
+mora-compile = { path = "../crates/mora-compile" }
 
 [dev-dependencies]
 tempfile = "3.12"

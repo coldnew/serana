@@ -1224,12 +1224,24 @@ dependencies = [
  "clap",
  "crossterm",
  "dirs",
+ "mora-compile",
  "mora-lisp",
  "ratatui",
  "serana-tree-sitter",
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "mora-compile"
+version = "0.1.0"
+dependencies = [
+ "mora-lisp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

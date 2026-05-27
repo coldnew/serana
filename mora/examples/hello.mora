@@ -1,0 +1,12 @@
+#!/usr/bin/env mora --script
+
+;; hello.mora - Example script for compilation
+(println "Hello from compiled Mora!")
+
+(defn greet [name]
+  (println (str "Hello, " name "!")))
+
+(greet "World")
+
+;; Return a value
+(+ 1 2 3)

@@ -1,0 +1,18 @@
+[package]
+name = "mora-compile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+mora-lisp = { path = "../mora-lisp" }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.12"
+
+[lints.rust]
+unsafe_code = "deny"

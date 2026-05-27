@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/mora-core",
     "crates/mora-lisp",
+    "crates/mora-compile",
     "mora",
     "serana",
     "crates/serana-core",
