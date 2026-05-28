@@ -884,6 +884,9 @@ impl Evaluator {
         self.ns
             .set_current(&sym.name)
             .map_err(|e| EvalError::SpecialForm(e))?;
+        self.ns
+            .refer_all("mora.core", &sym.name)
+            .map_err(|e| EvalError::SpecialForm(e))?;
         Ok(Value::Nil)
     }
 
@@ -895,17 +898,21 @@ impl Evaluator {
                         .require(&sym.name, None)
                         .map_err(|e| EvalError::SpecialForm(e))?;
                 }
-                Value::List(list) if list.len() >= 2 => {
+                Value::List(list) | Value::Vector(list) if list.len() >= 2 => {
                     if let Value::Symbol(sym) = &list[0] {
                         let mut alias = None;
-                        for item in &list[1..] {
-                            if let Value::Keyword(kw) = item {
+                        let mut i = 1;
+                        while i < list.len() {
+                            if let Value::Keyword(kw) = &list[i] {
                                 if kw.name.as_str() == "as" {
-                                    // Next item is the alias
+                                    if let Some(Value::Symbol(a)) = list.get(i + 1) {
+                                        alias = Some(a.name.to_string());
+                                    }
+                                    i += 2;
+                                    continue;
                                 }
-                            } else if let Value::Symbol(a) = item {
-                                alias = Some(a.name.to_string());
                             }
+                            i += 1;
                         }
                         self.ns
                             .require(&sym.name, alias.as_deref())
@@ -1732,8 +1739,12 @@ impl Evaluator {
     }
 
     fn register_builtins(&mut self) {
-        let current = self.ns.current();
-        let mut ns = current.lock();
+        let core = self.ns.find_or_create("mora.core");
+        let mut ns = core.lock();
         crate::types::builtin::register_builtins(&mut ns);
+        drop(ns);
+        self.ns
+            .refer_all("mora.core", "user")
+            .expect("mora.core and user namespaces exist");
     }
 }

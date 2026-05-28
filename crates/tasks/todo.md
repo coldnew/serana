@@ -1,5 +1,31 @@
 # Hermes Agent Refactor
 
+# Mora Coldnew Emacs Replacement
+
+Assumptions:
+- Start with the Mora Lisp/configuration foundation needed to port `ref/coldnew-emacs/init.el`.
+- Keep this slice small: do not try to reimplement every Emacs package integration yet.
+- Treat Clojure-style namespaces as first-class config structure, so editor primitives can live under Mora namespaces and user config can define its own namespaces.
+
+Success criteria for this slice:
+- [x] Audit namespace reader/evaluator behavior.
+- [x] Make Mora Lisp namespace resolution useful for qualified symbols and aliases.
+- [x] Move/register editor primitives into a Mora namespace while keeping existing unqualified init-file usage working.
+- [x] Add tests proving `(ns ...)`, `(require ... :as ...)`, qualified calls, and current `init.mora` compatibility.
+- [x] Update `mora/examples/init.mora` to demonstrate a Coldnew-style namespaced config shape.
+- [x] Run `cargo fmt` and targeted Mora Lisp/Mora tests.
+- [x] Record implementation results.
+
+Review:
+- Mora Lisp now registers builtins in `mora.core` and refers them into each new namespace, so namespaced configs keep normal core functions like `+` and `str`.
+- Namespace resolution now supports qualified symbols against real namespaces and current-namespace aliases, including `(require [some.ns :as alias])` vector forms.
+- Mora host primitives are split into namespaces such as `mora.buffer`, `mora.cursor`, `mora.editor`, `mora.hook`, `mora.mode`, `mora.overlay`, `mora.shell`, and `mora.ui`.
+- Legacy unqualified names such as `editor-message`, `buffer-name`, and `add-hook` are still referred into `user` for existing init-file compatibility.
+- Short alias-friendly names such as `editor/message`, `buffer/name`, and `hook/add` are private to namespace imports, so they work through aliases without polluting unqualified user scope.
+- `mora/examples/init.mora` now uses a `coldnew.init` namespace and alias-style host API calls.
+- Verification passed with `rustfmt` on the touched Rust files, `cargo test -p mora-lisp`, and `cargo test -p mora-bin`.
+- Full `cargo test` was attempted but is blocked by the pre-existing dirty `mishell/src/shell.rs` unclosed-delimiter error.
+
 # display-protocol-jsx
 
 Success criteria for this slice:

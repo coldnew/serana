@@ -273,6 +273,24 @@ mod tests {
     }
 
     #[test]
+    fn test_core_namespace_is_qualified_and_referred() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.core/+ 1 2)").unwrap(), Value::Int(3));
+        lisp.eval("(ns coldnew.config)").unwrap();
+        assert_eq!(lisp.eval("(+ 2 3)").unwrap(), Value::Int(5));
+    }
+
+    #[test]
+    fn test_require_alias_resolves_qualified_symbols() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(ns coldnew.alpha)").unwrap();
+        lisp.eval("(def value 42)").unwrap();
+        lisp.eval("(ns coldnew.beta)").unwrap();
+        lisp.eval("(require [coldnew.alpha :as alpha])").unwrap();
+        assert_eq!(lisp.eval("alpha/value").unwrap(), Value::Int(42));
+    }
+
+    #[test]
     fn test_eval_loop() {
         let mut lisp = MoraLisp::new();
         let result = lisp

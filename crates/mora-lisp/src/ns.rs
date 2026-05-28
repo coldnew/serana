@@ -76,6 +76,12 @@ impl Namespace {
         var
     }
 
+    pub fn intern_private(&mut self, name: &str, value: Value) -> Var {
+        let var = self.intern(name, value).private();
+        self.vars.insert(name.to_string(), var.clone());
+        var
+    }
+
     pub fn find_var(&self, name: &str) -> Option<&Var> {
         self.vars.get(name).or_else(|| self.refers.get(name))
     }
@@ -182,8 +188,45 @@ impl NamespaceRegistry {
         Ok(())
     }
 
+    pub fn refer_all(&mut self, from_ns: &str, to_ns: &str) -> Result<(), String> {
+        let source = self
+            .namespaces
+            .get(from_ns)
+            .ok_or_else(|| format!("namespace not found: {}", from_ns))?
+            .clone();
+        let target = self
+            .namespaces
+            .get(to_ns)
+            .ok_or_else(|| format!("namespace not found: {}", to_ns))?
+            .clone();
+
+        let source = source.lock();
+        let mut target = target.lock();
+        for (name, var) in &source.vars {
+            if !var.is_private {
+                target.refer(name, var.clone());
+            }
+        }
+        Ok(())
+    }
+
     pub fn resolve_symbol(&self, sym: &Symbol) -> Option<Value> {
         let current = self.current.lock();
-        current.resolve(sym)
+        if let Some(ns_name) = &sym.ns {
+            let resolved_ns = current
+                .aliases
+                .get(ns_name.as_str())
+                .map(|s| s.as_str())
+                .unwrap_or(ns_name.as_str())
+                .to_string();
+            drop(current);
+
+            return self
+                .namespaces
+                .get(&resolved_ns)
+                .and_then(|ns| ns.lock().find_var(sym.name.as_str()).map(|v| v.deref()));
+        }
+
+        current.find_var(sym.name.as_str()).map(|v| v.deref())
     }
 }

@@ -1,63 +1,61 @@
 ;;; init.mora --- Mora editor configuration -*- lisp -*-
 
 ;;; This file is loaded on startup from ~/.mora/init.mora
-;;; It uses Clojure-like syntax (mora-lisp)
+;;; It uses Clojure-like syntax with namespaces.
+
+(ns coldnew.init)
+
+(require [mora.buffer :as buffer])
+(require [mora.cursor :as cursor])
+(require [mora.editor :as editor])
+(require [mora.hook :as hook])
+(require [mora.mode :as mode])
 
 ;;; ---- Display Settings ----
 
-;; Show welcome message
-(editor-message "Welcome to Mora!")
+(editor/message "Welcome to Mora!")
 
 ;;; ---- Helper Functions ----
 
-;; Toggle line numbers (if minor mode available)
 (defn toggle-line-numbers []
-  (set-minor-mode! "line-numbers"))
+  (mode/toggle-minor! "line-numbers"))
 
-;; Insert current date
 (defn insert-date []
-  (buffer-insert! "2026-01-01"))
+  (buffer/insert! "2026-01-01"))
 
-;; Go to specific line and show message
 (defn goto-line-msg [n]
-  (cursor-goto-line n)
-  (editor-message (str "Went to line " n)))
+  (cursor/goto-line n)
+  (editor/message (str "Went to line " n)))
 
-;; Show current buffer info
 (defn show-buffer-info []
-  (editor-message (str "Buffer: " (buffer-name) " | Lines: " (buffer-line-count))))
+  (editor/message
+    (str "Buffer: " (buffer/name) " | Lines: " (buffer/line-count))))
 
-;; Show cursor position
 (defn show-cursor-pos []
-  (editor-message (str "Line: " (+ (cursor-row) 1) " Col: " (+ (cursor-col) 1))))
+  (editor/message
+    (str "Line: " (+ (cursor/row) 1) " Col: " (+ (cursor/col) 1))))
 
 ;;; ---- Hooks ----
 
-;; Run on buffer open
-(add-hook "after-open"
+(hook/add "after-open"
   (fn []
-    (editor-message (str "Opened: " (buffer-name)))))
+    (editor/message (str "Opened: " (buffer/name)))))
 
-;; Run before save
-(add-hook "before-save"
+(hook/add "before-save"
   (fn []
-    (editor-message (str "Saving: " (buffer-name)))))
+    (editor/message (str "Saving: " (buffer/name)))))
 
 ;;; ---- Custom Commands ----
 
-;; These can be invoked via M-x eval (command-name)
-;; Example: M-x eval (show-status)
-
 (defn show-status []
-  (editor-message (editor-status)))
+  (editor/message (editor/status)))
 
 (defn show-version []
-  (editor-message (str "Mora version: " *mora-version*)))
+  (editor/message (str "Mora version: " editor/*mora-version*)))
 
-;; Toggle between normal and insert mode
 (defn toggle-insert-mode []
-  (if (= (current-mode) :insert)
-    (set-mode! :normal)
-    (set-mode! :insert)))
+  (if (= (mode/current) :insert)
+    (mode/set! :normal)
+    (mode/set! :insert)))
 
 ;;; ---- End of init.mora ----

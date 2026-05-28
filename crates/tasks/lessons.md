@@ -1,5 +1,6 @@
 # Lessons
 
+- When formatting a workspace with unrelated dirty code, prefer `rustfmt` on the exact touched Rust files over `cargo fmt -p ...`; package-level formatting can create broad formatter churn outside the task slice.
 - JSX/proc-macro frontends should validate supported props before emitting builder calls; otherwise unsupported attributes turn into confusing downstream Rust type errors instead of clear macro diagnostics.
 - Macro coverage for enum-like UI models should include one compile/runtime test per variant; broad parser support is not enough if a generated constructor path can silently drift.
 - Keep Hermes-agent refactors behavior-preserving and incremental; the current agent loop has several responsibilities, so extracting one lifecycle piece at a time is safer than rewriting the loop.

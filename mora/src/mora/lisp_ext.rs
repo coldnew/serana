@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
-use mora_lisp::types::Value;
 use mora_lisp::eval::{EvalError, Evaluator};
+use mora_lisp::types::Value;
 
 use super::overlay::{OverlayFace, OverlayStore};
 
@@ -71,9 +71,7 @@ pub fn set_editor_state(state: EditorState) {
 }
 
 pub fn take_editor_state() -> Option<EditorState> {
-    EDITOR_STATE.with(|s| {
-        s.borrow_mut().take()
-    })
+    EDITOR_STATE.with(|s| s.borrow_mut().take())
 }
 
 pub struct MoraLispBridge {
@@ -88,71 +86,174 @@ impl MoraLispBridge {
     }
 
     fn register_editor_primitives(eval: &mut Evaluator) {
-        let ns = eval.ns.current();
-        let mut ns = ns.lock();
+        let buffer_ns = eval.ns.find_or_create("mora.buffer");
+        let cursor_ns = eval.ns.find_or_create("mora.cursor");
+        let mode_ns = eval.ns.find_or_create("mora.mode");
+        let editor_ns = eval.ns.find_or_create("mora.editor");
+        let window_ns = eval.ns.find_or_create("mora.window");
+        let hook_ns = eval.ns.find_or_create("mora.hook");
+        let keymap_ns = eval.ns.find_or_create("mora.keymap");
+        let overlay_ns = eval.ns.find_or_create("mora.overlay");
+        let shell_ns = eval.ns.find_or_create("mora.shell");
+        let ui_ns = eval.ns.find_or_create("mora.ui");
 
         // Buffer operations
+        let mut ns = buffer_ns.lock();
         ns.intern("buffer-name", Value::Native(prim_buffer_name));
+        ns.intern_private("name", Value::Native(prim_buffer_name));
         ns.intern("buffer-content", Value::Native(prim_buffer_content));
+        ns.intern_private("content", Value::Native(prim_buffer_content));
         ns.intern("buffer-set-content", Value::Native(prim_buffer_set_content));
+        ns.intern_private("set-content!", Value::Native(prim_buffer_set_content));
         ns.intern("buffer-modified?", Value::Native(prim_buffer_modified));
+        ns.intern_private("modified?", Value::Native(prim_buffer_modified));
         ns.intern("buffer-file-path", Value::Native(prim_buffer_file_path));
+        ns.intern_private("file-path", Value::Native(prim_buffer_file_path));
         ns.intern("buffer-line-count", Value::Native(prim_buffer_line_count));
-        ns.intern("buffer-current-line", Value::Native(prim_buffer_current_line));
+        ns.intern_private("line-count", Value::Native(prim_buffer_line_count));
+        ns.intern(
+            "buffer-current-line",
+            Value::Native(prim_buffer_current_line),
+        );
+        ns.intern_private("current-line", Value::Native(prim_buffer_current_line));
         ns.intern("buffer-line-at", Value::Native(prim_buffer_line_at));
+        ns.intern_private("line-at", Value::Native(prim_buffer_line_at));
         ns.intern("buffer-insert!", Value::Native(prim_buffer_insert));
-        ns.intern("buffer-replace-line!", Value::Native(prim_buffer_replace_line));
+        ns.intern_private("insert!", Value::Native(prim_buffer_insert));
+        ns.intern(
+            "buffer-replace-line!",
+            Value::Native(prim_buffer_replace_line),
+        );
+        ns.intern_private("replace-line!", Value::Native(prim_buffer_replace_line));
+        drop(ns);
 
         // Cursor operations
+        let mut ns = cursor_ns.lock();
         ns.intern("cursor-row", Value::Native(prim_cursor_row));
+        ns.intern_private("row", Value::Native(prim_cursor_row));
         ns.intern("cursor-col", Value::Native(prim_cursor_col));
+        ns.intern_private("col", Value::Native(prim_cursor_col));
         ns.intern("cursor-set!", Value::Native(prim_cursor_set));
+        ns.intern_private("set!", Value::Native(prim_cursor_set));
         ns.intern("cursor-goto-line", Value::Native(prim_cursor_goto_line));
+        ns.intern_private("goto-line", Value::Native(prim_cursor_goto_line));
         ns.intern("cursor-forward!", Value::Native(prim_cursor_forward));
+        ns.intern_private("forward!", Value::Native(prim_cursor_forward));
         ns.intern("cursor-backward!", Value::Native(prim_cursor_backward));
+        ns.intern_private("backward!", Value::Native(prim_cursor_backward));
         ns.intern("cursor-beginning-of-line", Value::Native(prim_cursor_bol));
+        ns.intern_private("beginning-of-line", Value::Native(prim_cursor_bol));
         ns.intern("cursor-end-of-line", Value::Native(prim_cursor_eol));
+        ns.intern_private("end-of-line", Value::Native(prim_cursor_eol));
+        drop(ns);
 
         // Mode operations
+        let mut ns = mode_ns.lock();
         ns.intern("current-mode", Value::Native(prim_current_mode));
+        ns.intern_private("current", Value::Native(prim_current_mode));
         ns.intern("set-mode!", Value::Native(prim_set_mode));
+        ns.intern_private("set!", Value::Native(prim_set_mode));
+        ns.intern("set-minor-mode!", Value::Native(prim_set_minor_mode));
+        ns.intern_private("toggle-minor!", Value::Native(prim_set_minor_mode));
+        drop(ns);
 
         // Editor operations
+        let mut ns = editor_ns.lock();
         ns.intern("editor-message", Value::Native(prim_editor_message));
+        ns.intern_private("message", Value::Native(prim_editor_message));
         ns.intern("editor-quit", Value::Native(prim_editor_quit));
+        ns.intern_private("quit", Value::Native(prim_editor_quit));
         ns.intern("editor-status", Value::Native(prim_editor_status));
-
-        // Window operations
-        ns.intern("window-count", Value::Native(prim_window_count));
-
-        // Hook system
-        ns.intern("add-hook", Value::Native(prim_add_hook));
-
-        // Keybinding
-        ns.intern("define-key", Value::Native(prim_define_key));
-
-        // Overlay operations
-        ns.intern("make-overlay", Value::Native(prim_make_overlay));
-        ns.intern("overlay-put-face", Value::Native(prim_overlay_put_face));
-        ns.intern("overlay-put-property", Value::Native(prim_overlay_put_property));
-        ns.intern("overlay-delete", Value::Native(prim_overlay_delete));
-        ns.intern("overlay-get", Value::Native(prim_overlay_get));
-        ns.intern("overlays-at", Value::Native(prim_overlays_at));
-        ns.intern("overlay-put-invisible", Value::Native(prim_overlay_put_invisible));
-        ns.intern("overlay-put-read-only", Value::Native(prim_overlay_put_read_only));
-
-        // Shell operations
-        ns.intern("shell-command", Value::Native(prim_shell_command));
-        ns.intern("shell-capture", Value::Native(prim_shell_capture));
+        ns.intern_private("status", Value::Native(prim_editor_status));
 
         // Constants
         ns.intern("*mora-version*", Value::string(env!("CARGO_PKG_VERSION")));
         ns.intern("*newline*", Value::string("\n"));
         ns.intern("*tab*", Value::string("\t"));
+        drop(ns);
+
+        // Window operations
+        let mut ns = window_ns.lock();
+        ns.intern("window-count", Value::Native(prim_window_count));
+        ns.intern_private("count", Value::Native(prim_window_count));
+        drop(ns);
+
+        // Hook system
+        let mut ns = hook_ns.lock();
+        ns.intern("add-hook", Value::Native(prim_add_hook));
+        ns.intern_private("add", Value::Native(prim_add_hook));
+        drop(ns);
+
+        // Keybinding
+        let mut ns = keymap_ns.lock();
+        ns.intern("define-key", Value::Native(prim_define_key));
+        ns.intern_private("define", Value::Native(prim_define_key));
+        drop(ns);
+
+        // Overlay operations
+        let mut ns = overlay_ns.lock();
+        ns.intern("make-overlay", Value::Native(prim_make_overlay));
+        ns.intern_private("make", Value::Native(prim_make_overlay));
+        ns.intern("overlay-put-face", Value::Native(prim_overlay_put_face));
+        ns.intern_private("put-face", Value::Native(prim_overlay_put_face));
+        ns.intern(
+            "overlay-put-property",
+            Value::Native(prim_overlay_put_property),
+        );
+        ns.intern_private("put-property", Value::Native(prim_overlay_put_property));
+        ns.intern("overlay-delete", Value::Native(prim_overlay_delete));
+        ns.intern_private("delete", Value::Native(prim_overlay_delete));
+        ns.intern("overlay-get", Value::Native(prim_overlay_get));
+        ns.intern_private("get", Value::Native(prim_overlay_get));
+        ns.intern("overlays-at", Value::Native(prim_overlays_at));
+        ns.intern_private("at", Value::Native(prim_overlays_at));
+        ns.intern(
+            "overlay-put-invisible",
+            Value::Native(prim_overlay_put_invisible),
+        );
+        ns.intern_private("put-invisible", Value::Native(prim_overlay_put_invisible));
+        ns.intern(
+            "overlay-put-read-only",
+            Value::Native(prim_overlay_put_read_only),
+        );
+        ns.intern_private("put-read-only", Value::Native(prim_overlay_put_read_only));
+        drop(ns);
+
+        // Shell operations
+        let mut ns = shell_ns.lock();
+        ns.intern("shell-command", Value::Native(prim_shell_command));
+        ns.intern_private("command", Value::Native(prim_shell_command));
+        ns.intern("shell-capture", Value::Native(prim_shell_capture));
+        ns.intern_private("capture", Value::Native(prim_shell_capture));
+        drop(ns);
 
         // UI DSL
-        ns.intern("register-ui-builder", Value::Native(prim_register_ui_builder));
+        let mut ns = ui_ns.lock();
+        ns.intern(
+            "register-ui-builder",
+            Value::Native(prim_register_ui_builder),
+        );
+        ns.intern_private("register-builder", Value::Native(prim_register_ui_builder));
         ns.intern("ui-builders", Value::Native(prim_ui_builders));
+        ns.intern_private("builders", Value::Native(prim_ui_builders));
+        drop(ns);
+
+        for ns_name in [
+            "mora.buffer",
+            "mora.cursor",
+            "mora.mode",
+            "mora.editor",
+            "mora.window",
+            "mora.hook",
+            "mora.keymap",
+            "mora.overlay",
+            "mora.shell",
+            "mora.ui",
+        ] {
+            eval.ns
+                .refer_all(ns_name, "user")
+                .expect("Mora host namespaces and user namespace exist");
+        }
     }
 
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
@@ -166,8 +267,7 @@ impl MoraLispBridge {
     }
 
     pub fn load_init_file(&mut self) {
-        let home_init = dirs::home_dir()
-            .map(|h| h.join(".mora").join("init.mora"));
+        let home_init = dirs::home_dir().map(|h| h.join(".mora").join("init.mora"));
         let local_init = std::path::PathBuf::from(".mora/init.mora");
 
         for path in [home_init, Some(local_init)].into_iter().flatten() {
@@ -184,7 +284,10 @@ impl MoraLispBridge {
                                 eprintln!("Error loading {}: {}", path.display(), e);
                             }
                             Err(_) => {
-                                eprintln!("Panic loading {}: init file caused a crash", path.display());
+                                eprintln!(
+                                    "Panic loading {}: init file caused a crash",
+                                    path.display()
+                                );
                             }
                         }
                     }
@@ -226,7 +329,8 @@ fn extract_int(args: &[Value], idx: usize) -> Result<i64, String> {
 
 fn prim_buffer_name(_args: &[Value]) -> Result<Value, String> {
     with_editor_state(|state| {
-        let name = state.file_path
+        let name = state
+            .file_path
             .as_ref()
             .and_then(|p| std::path::Path::new(p).file_name())
             .map(|n| n.to_string_lossy().to_string())
@@ -236,9 +340,7 @@ fn prim_buffer_name(_args: &[Value]) -> Result<Value, String> {
 }
 
 fn prim_buffer_content(_args: &[Value]) -> Result<Value, String> {
-    with_editor_state(|state| {
-        Ok(Value::string(state.lines.join("\n")))
-    })
+    with_editor_state(|state| Ok(Value::string(state.lines.join("\n"))))
 }
 
 fn prim_buffer_set_content(args: &[Value]) -> Result<Value, String> {
@@ -259,11 +361,9 @@ fn prim_buffer_modified(_args: &[Value]) -> Result<Value, String> {
 }
 
 fn prim_buffer_file_path(_args: &[Value]) -> Result<Value, String> {
-    with_editor_state(|state| {
-        match &state.file_path {
-            Some(p) => Ok(Value::string(p.clone())),
-            None => Ok(Value::Nil),
-        }
+    with_editor_state(|state| match &state.file_path {
+        Some(p) => Ok(Value::string(p.clone())),
+        None => Ok(Value::Nil),
     })
 }
 
@@ -310,7 +410,9 @@ fn prim_cursor_set(args: &[Value]) -> Result<Value, String> {
 fn prim_cursor_goto_line(args: &[Value]) -> Result<Value, String> {
     let line = extract_int(args, 0)? as usize;
     with_editor_state_mut(|state| {
-        let target = line.saturating_sub(1).min(state.lines.len().saturating_sub(1));
+        let target = line
+            .saturating_sub(1)
+            .min(state.lines.len().saturating_sub(1));
         state.cursor_row = target;
         state.cursor_col = 0;
         Ok(Value::Nil)
@@ -320,9 +422,7 @@ fn prim_cursor_goto_line(args: &[Value]) -> Result<Value, String> {
 // --- Mode primitives ---
 
 fn prim_current_mode(_args: &[Value]) -> Result<Value, String> {
-    with_editor_state(|state| {
-        Ok(Value::keyword(state.mode.clone()))
-    })
+    with_editor_state(|state| Ok(Value::keyword(state.mode.clone())))
 }
 
 fn prim_set_mode(args: &[Value]) -> Result<Value, String> {
@@ -333,6 +433,18 @@ fn prim_set_mode(args: &[Value]) -> Result<Value, String> {
     };
     with_editor_state_mut(|state| {
         state.mode = mode;
+        Ok(Value::Nil)
+    })
+}
+
+fn prim_set_minor_mode(args: &[Value]) -> Result<Value, String> {
+    let mode = extract_string(args, 0)?;
+    with_editor_state_mut(|state| {
+        if let Some(pos) = state.minor_modes.iter().position(|m| m == &mode) {
+            state.minor_modes.remove(pos);
+        } else {
+            state.minor_modes.push(mode);
+        }
         Ok(Value::Nil)
     })
 }
@@ -414,10 +526,13 @@ fn prim_buffer_replace_line(args: &[Value]) -> Result<Value, String> {
 // --- Cursor movement primitives ---
 
 fn prim_cursor_forward(args: &[Value]) -> Result<Value, String> {
-    let n = args.get(0).and_then(|v| match v {
-        Value::Int(n) => Some(*n as usize),
-        _ => None,
-    }).unwrap_or(1);
+    let n = args
+        .get(0)
+        .and_then(|v| match v {
+            Value::Int(n) => Some(*n as usize),
+            _ => None,
+        })
+        .unwrap_or(1);
     with_editor_state_mut(|state| {
         state.cursor_col += n;
         Ok(Value::Nil)
@@ -425,10 +540,13 @@ fn prim_cursor_forward(args: &[Value]) -> Result<Value, String> {
 }
 
 fn prim_cursor_backward(args: &[Value]) -> Result<Value, String> {
-    let n = args.get(0).and_then(|v| match v {
-        Value::Int(n) => Some(*n as usize),
-        _ => None,
-    }).unwrap_or(1);
+    let n = args
+        .get(0)
+        .and_then(|v| match v {
+            Value::Int(n) => Some(*n as usize),
+            _ => None,
+        })
+        .unwrap_or(1);
     with_editor_state_mut(|state| {
         state.cursor_col = state.cursor_col.saturating_sub(n);
         Ok(Value::Nil)
@@ -555,10 +673,13 @@ fn prim_overlays_at(args: &[Value]) -> Result<Value, String> {
 
 fn prim_overlay_put_invisible(args: &[Value]) -> Result<Value, String> {
     let id = extract_int(args, 0)? as usize;
-    let invisible = args.get(1).and_then(|v| match v {
-        Value::Bool(b) => Some(*b),
-        _ => None,
-    }).unwrap_or(true);
+    let invisible = args
+        .get(1)
+        .and_then(|v| match v {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        })
+        .unwrap_or(true);
     with_editor_state_mut(|state| {
         if let Some(ov) = state.overlays.get_mut(id) {
             ov.invisible = invisible;
@@ -569,10 +690,13 @@ fn prim_overlay_put_invisible(args: &[Value]) -> Result<Value, String> {
 
 fn prim_overlay_put_read_only(args: &[Value]) -> Result<Value, String> {
     let id = extract_int(args, 0)? as usize;
-    let read_only = args.get(1).and_then(|v| match v {
-        Value::Bool(b) => Some(*b),
-        _ => None,
-    }).unwrap_or(true);
+    let read_only = args
+        .get(1)
+        .and_then(|v| match v {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        })
+        .unwrap_or(true);
     with_editor_state_mut(|state| {
         if let Some(ov) = state.overlays.get_mut(id) {
             ov.read_only = read_only;
@@ -596,7 +720,10 @@ fn prim_shell_command(args: &[Value]) -> Result<Value, String> {
         let trimmed = stdout.trim_end_matches('\n').to_string();
         with_editor_state_mut(|state| {
             state.status_message = if trimmed.is_empty() {
-                format!("Shell command succeeded (exit {})", output.status.code().unwrap_or(0))
+                format!(
+                    "Shell command succeeded (exit {})",
+                    output.status.code().unwrap_or(0)
+                )
             } else {
                 trimmed.clone()
             };
@@ -604,7 +731,10 @@ fn prim_shell_command(args: &[Value]) -> Result<Value, String> {
         })
     } else {
         let msg = if stderr.is_empty() {
-            format!("Command failed (exit {})", output.status.code().unwrap_or(-1))
+            format!(
+                "Command failed (exit {})",
+                output.status.code().unwrap_or(-1)
+            )
         } else {
             stderr.trim_end_matches('\n').to_string()
         };
@@ -640,14 +770,15 @@ fn prim_register_ui_builder(args: &[Value]) -> Result<Value, String> {
 }
 
 fn prim_ui_builders(_args: &[Value]) -> Result<Value, String> {
-    with_editor_state(|state| {
-        Ok(Value::Int(state.ui_builders.len() as i64))
-    })
+    with_editor_state(|state| Ok(Value::Int(state.ui_builders.len() as i64)))
 }
 
 // --- Lisp Value → UiNode converter ---
 
-fn map_get_kw<'a>(map: &'a std::collections::HashMap<Value, Value>, key: &str) -> Option<&'a Value> {
+fn map_get_kw<'a>(
+    map: &'a std::collections::HashMap<Value, Value>,
+    key: &str,
+) -> Option<&'a Value> {
     map.get(&Value::keyword(key))
 }
 
@@ -725,15 +856,30 @@ fn lisp_value_to_style(val: &Value) -> display_protocol::Style {
     style
 }
 
-fn apply_style_to_text(mut node: display_protocol::UiNode, style: &display_protocol::Style) -> display_protocol::UiNode {
+fn apply_style_to_text(
+    mut node: display_protocol::UiNode,
+    style: &display_protocol::Style,
+) -> display_protocol::UiNode {
     if *style != display_protocol::Style::default() {
         node = node.bold().dim(); // reset
-        if style.bold { node = node.bold(); }
-        if style.dim { node = node.dim(); }
-        if style.italic { node = node.italic(); }
-        if style.underline { node = node.underline(); }
-        if let Some(fg) = style.fg { node = node.color(fg); }
-        if let Some(bg) = style.bg { node = node.bg(bg); }
+        if style.bold {
+            node = node.bold();
+        }
+        if style.dim {
+            node = node.dim();
+        }
+        if style.italic {
+            node = node.italic();
+        }
+        if style.underline {
+            node = node.underline();
+        }
+        if let Some(fg) = style.fg {
+            node = node.color(fg);
+        }
+        if let Some(bg) = style.bg {
+            node = node.bg(bg);
+        }
     }
     node
 }
@@ -746,12 +892,15 @@ pub fn lisp_value_to_uinode(val: &Value) -> display_protocol::UiNode {
         Value::Float(f) => display_protocol::UiNode::text(f.to_string()),
         Value::String(s) => display_protocol::UiNode::text(s.to_string()),
         Value::Vector(v) => {
-            let children: Vec<display_protocol::UiNode> = v.iter().map(lisp_value_to_uinode).collect();
+            let children: Vec<display_protocol::UiNode> =
+                v.iter().map(lisp_value_to_uinode).collect();
             display_protocol::UiNode::column(children)
         }
         Value::Map(map) => {
             let node_type = map_get_str_kw(map, "type").unwrap_or_default();
-            let style = map_get_kw(map, "style").map(lisp_value_to_style).unwrap_or_default();
+            let style = map_get_kw(map, "style")
+                .map(lisp_value_to_style)
+                .unwrap_or_default();
 
             match node_type.as_str() {
                 "text" => {
@@ -858,7 +1007,9 @@ pub fn lisp_value_to_uinode(val: &Value) -> display_protocol::UiNode {
     }
 }
 
-fn extract_children(map: &std::collections::HashMap<Value, Value>) -> Vec<display_protocol::UiNode> {
+fn extract_children(
+    map: &std::collections::HashMap<Value, Value>,
+) -> Vec<display_protocol::UiNode> {
     match map_get_kw(map, "children") {
         Some(Value::Vector(v)) => v.iter().map(lisp_value_to_uinode).collect(),
         Some(Value::List(v)) => v.iter().map(lisp_value_to_uinode).collect(),
@@ -992,3 +1143,42 @@ fn parse_color(s: &str) -> Option<super::display::style::MoraColor> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editor_primitives_remain_available_unqualified() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(editor-message \"legacy\")").unwrap();
+
+        with_editor_state(|state| {
+            assert_eq!(state.status_message, "legacy");
+        });
+        take_editor_state();
+    }
+
+    #[test]
+    fn editor_primitives_are_available_through_namespace_aliases() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge
+            .eval(
+                r#"
+                (ns coldnew.init)
+                (require [mora.editor :as editor])
+                (require [mora.buffer :as buffer])
+                (editor/message (str "Buffer: " (buffer/name)))
+                "#,
+            )
+            .unwrap();
+
+        with_editor_state(|state| {
+            assert_eq!(state.status_message, "Buffer: *scratch*");
+        });
+        take_editor_state();
+    }
+}
