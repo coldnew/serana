@@ -467,4 +467,24 @@ mod tests {
         let result = lisp.eval("my-var").unwrap();
         assert_eq!(result, Value::Int(42));
     }
+
+    #[test]
+    fn test_form_cache() {
+        let mut lisp = MoraLisp::new();
+        let code = "(def cached-val (+ 10 20))";
+
+        // First eval parses and caches
+        lisp.eval(code).unwrap();
+
+        // Second eval with same input should hit cache and still work
+        lisp.eval("(ns user)").unwrap();
+        lisp.eval(code).unwrap();
+        let result = lisp.eval("cached-val").unwrap();
+        assert_eq!(result, Value::Int(30));
+
+        // Different input should not hit cache
+        lisp.eval("(def other-val (+ 5 5))").unwrap();
+        let result = lisp.eval("other-val").unwrap();
+        assert_eq!(result, Value::Int(10));
+    }
  }

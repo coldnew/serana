@@ -1,5 +1,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -82,6 +84,7 @@ pub struct Evaluator {
     pub gc_heap: Arc<GcHeap>,
     collector: Option<CollectorHandle>,
     macroexpand_cache: HashMap<Symbol, Value>,
+    form_cache: HashMap<u64, Vec<Value>>,
     in_tail_position: bool,
     pending_tail_call: Option<(FnValue, Vec<Value>)>,
 }
@@ -114,6 +117,7 @@ impl Evaluator {
             gc_heap,
             collector: Some(collector),
             macroexpand_cache: HashMap::new(),
+            form_cache: HashMap::new(),
             in_tail_position: false,
             pending_tail_call: None,
         };
@@ -124,6 +128,26 @@ impl Evaluator {
     pub fn eval(&mut self, form: &Value) -> Result<Value, EvalError> {
         let env = Env::new();
         self.eval_in(env, form)
+    }
+
+    /// Parse source with a form cache. Returns cached forms if the input
+    /// hash matches a previous call.
+    pub fn read_cached(&mut self, input: &str) -> Result<Vec<Value>, EvalError> {
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        let hash = hasher.finish();
+        if let Some(forms) = self.form_cache.get(&hash) {
+            return Ok(forms.clone());
+        }
+        let forms = crate::reader::read_all(input)
+            .map_err(|e| EvalError::Custom(format!("read error: {}", e)))?;
+        self.form_cache.insert(hash, forms.clone());
+        Ok(forms)
+    }
+
+    /// Clear the form cache (useful if memory is a concern or after init).
+    pub fn clear_form_cache(&mut self) {
+        self.form_cache.clear();
     }
 
     pub fn eval_in(&mut self, env: Env, form: &Value) -> Result<Value, EvalError> {

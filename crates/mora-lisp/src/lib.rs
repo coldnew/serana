@@ -35,7 +35,7 @@ impl MoraLisp {
     }
 
     pub fn eval(&mut self, input: &str) -> Result<Value, Error> {
-        let forms = reader::read_all(input)?;
+        let forms = self.evaluator.read_cached(input)?;
         let mut result = Value::Nil;
         for form in forms {
             result = self.evaluator.eval(&form)?;

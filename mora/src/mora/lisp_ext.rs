@@ -277,8 +277,7 @@ impl MoraLispBridge {
     }
 
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
-        let forms = mora_lisp::reader::read_all(code)
-            .map_err(|e| EvalError::Custom(format!("read error: {}", e)))?;
+        let forms = self.evaluator.read_cached(code)?;
         let mut result = Value::Nil;
         for form in forms {
             result = self.evaluator.eval(&form)?;
