@@ -58,6 +58,8 @@ pub use wire::{WireMessage, PROTOCOL_VERSION};
 pub use ui::{
     UiNode, TextNode, BoxNode, FlexNode, SpanNode, ListNode, DividerNode,
     ProgressNode, TableNode, ScrollNode,
+    InputNode, TextAreaNode, TabBarNode, TabItem, TreeViewNode, TreeItem,
+    SplitPaneNode, CanvasNode, OverlayNode, StatusBarNode, Orientation,
     Padding, Border, Wrap, Align, Justify, ListMarker,
 };
 pub use buffer::{ScreenBuffer, ScreenCell};

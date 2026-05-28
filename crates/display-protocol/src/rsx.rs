@@ -158,6 +158,52 @@ macro_rules! rsx {
         __node
     }};
 
+    // Input self-closing
+    (Input ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
+        let mut __node = $crate::UiNode::input("");
+        $(
+            rsx!(@apply_input_prop __node $prop $(= $val)?);
+        )*
+        __node
+    }};
+
+    // TabBar with children
+    (TabBar ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
+        let mut __node = $crate::UiNode::tab_bar(vec![]);
+        $(
+            rsx!(@apply_tabbar_prop __node $prop $(= $val)?);
+        )*
+        __node
+    }};
+
+    // SplitPane with two children
+    (Split ( horizontal ) { $($first:tt)* } { $($second:tt)* }) => {{
+        let __first = rsx!(@single_child $($first)*);
+        let __second = rsx!(@single_child $($second)*);
+        $crate::UiNode::split($crate::Orientation::Horizontal, __first, __second)
+    }};
+    (Split ( vertical ) { $($first:tt)* } { $($second:tt)* }) => {{
+        let __first = rsx!(@single_child $($first)*);
+        let __second = rsx!(@single_child $($second)*);
+        $crate::UiNode::split($crate::Orientation::Vertical, __first, __second)
+    }};
+
+    // Canvas self-closing
+    (Canvas ( width = $w:expr, height = $h:expr, id = $id:expr )) => {{
+        $crate::UiNode::canvas($w, $h, $id)
+    }};
+
+    // StatusBar with left/right children
+    (StatusBar ( $($prop:ident $(= $val:expr)?),* $(,)? ) { left { $($left:tt)* } right { $($right:tt)* } }) => {{
+        let mut __left = $crate::UiNode::row(vec![]);
+        rsx!(@push_children __left $($left)*);
+        let mut __right = $crate::UiNode::row(vec![]);
+        rsx!(@push_children __right $($right)*);
+        let __left_items = match __left { $crate::UiNode::Row(f) => f.children, _ => vec![] };
+        let __right_items = match __right { $crate::UiNode::Row(f) => f.children, _ => vec![] };
+        $crate::UiNode::status_bar(__left_items, __right_items)
+    }};
+
     // Show with when condition and child
     (Show ( when = $cond:expr ) { $($child:tt)* }) => {{
         let __child = rsx!(@single_child $($child)*);
@@ -280,6 +326,28 @@ macro_rules! rsx {
     // List props
     (@apply_list_prop $node:ident marker = $val:expr) => {
         if let $crate::UiNode::List(ref mut l) = $node { l.marker = $val; }
+    };
+
+    // Input props
+    (@apply_input_prop $node:ident value = $val:expr) => {
+        if let $crate::UiNode::Input(ref mut i) = $node { i.value = $val.to_string(); }
+    };
+    (@apply_input_prop $node:ident placeholder = $val:expr) => {
+        if let $crate::UiNode::Input(ref mut i) = $node { i.placeholder = $val.to_string(); }
+    };
+    (@apply_input_prop $node:ident width = $val:expr) => {
+        if let $crate::UiNode::Input(ref mut i) = $node { i.width = Some($val); }
+    };
+    (@apply_input_prop $node:ident focused) => {
+        if let $crate::UiNode::Input(ref mut i) = $node { i.focused = true; }
+    };
+    (@apply_input_prop $node:ident cursor = $val:expr) => {
+        if let $crate::UiNode::Input(ref mut i) = $node { i.cursor = $val; }
+    };
+
+    // TabBar props
+    (@apply_tabbar_prop $node:ident active = $val:expr) => {
+        if let $crate::UiNode::TabBar(ref mut t) = $node { t.active = $val; }
     };
 
     // ── Text content ──
@@ -492,6 +560,49 @@ mod tests {
         match &node {
             UiNode::For { children } => assert_eq!(children.len(), 3),
             _ => panic!("expected For"),
+        }
+    }
+
+    #[test]
+    fn test_rsx_input() {
+        let node = rsx!(Input(value = "hello", placeholder = "type", width = 20, focused));
+        match &node {
+            UiNode::Input(i) => {
+                assert_eq!(i.value, "hello");
+                assert_eq!(i.placeholder, "type");
+                assert_eq!(i.width, Some(20));
+                assert!(i.focused);
+            }
+            _ => panic!("expected Input"),
+        }
+    }
+
+    #[test]
+    fn test_rsx_split() {
+        // SplitPane uses builder API; rsx Split is for top-level use
+        let node = UiNode::split(
+            Orientation::Horizontal,
+            UiNode::text("left"),
+            UiNode::text("right"),
+        );
+        match &node {
+            UiNode::SplitPane(s) => {
+                assert_eq!(s.orientation, Orientation::Horizontal);
+            }
+            _ => panic!("expected SplitPane"),
+        }
+    }
+
+    #[test]
+    fn test_rsx_canvas() {
+        let node = rsx!(Canvas(width = 100, height = 50, id = "preview"));
+        match &node {
+            UiNode::Canvas(c) => {
+                assert_eq!(c.width, 100);
+                assert_eq!(c.height, 50);
+                assert_eq!(c.frame_id, "preview");
+            }
+            _ => panic!("expected Canvas"),
         }
     }
 }

@@ -263,6 +263,126 @@ fn layout_node(
             result.height = cy - offset_y;
         }
 
+        // ── Editor / IDE / Agent widgets ──
+
+        UiNode::Input(i) => {
+            let w = i.width.unwrap_or(available_width);
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = w as f32;
+            result.height = 1.0;
+        }
+
+        UiNode::TextArea(t) => {
+            let visible_lines = t.height;
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = available_width as f32;
+            result.height = visible_lines as f32;
+        }
+
+        UiNode::TabBar(t) => {
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = available_width as f32;
+            result.height = 1.0;
+            let _ = t;
+        }
+
+        UiNode::TreeView(tv) => {
+            let count: usize = tv.items.iter().map(|item| item.visible_count()).sum();
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = available_width as f32;
+            result.height = count as f32;
+        }
+
+        UiNode::SplitPane(s) => {
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = available_width as f32;
+            result.height = available_height as f32;
+
+            let (first_w, first_h, second_w, second_h) = match s.orientation {
+                Orientation::Horizontal => {
+                    let first_w = (available_width as f32 * s.ratio) as u16;
+                    let second_w = available_width.saturating_sub(first_w).saturating_sub(1);
+                    (first_w, available_height, second_w, available_height)
+                }
+                Orientation::Vertical => {
+                    let first_h = (available_height as f32 * s.ratio) as u16;
+                    let second_h = available_height.saturating_sub(first_h).saturating_sub(1);
+                    (available_width, first_h, available_width, second_h)
+                }
+            };
+
+            let mut first_result = LayoutResult {
+                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
+            };
+            layout_node(&s.first, &mut first_result, first_w, first_h, offset_x, offset_y);
+            result.children.push(first_result);
+
+            let (second_ox, second_oy) = match s.orientation {
+                Orientation::Horizontal => (offset_x + first_w as f32 + 1.0, offset_y),
+                Orientation::Vertical => (offset_x, offset_y + first_h as f32 + 1.0),
+            };
+
+            let mut second_result = LayoutResult {
+                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
+            };
+            layout_node(&s.second, &mut second_result, second_w, second_h, second_ox, second_oy);
+            result.children.push(second_result);
+        }
+
+        UiNode::StatusBar(sb) => {
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = available_width as f32;
+            result.height = 1.0;
+
+            // Layout left items
+            let mut lx = offset_x;
+            for child in &sb.left {
+                let mut child_result = LayoutResult {
+                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
+                };
+                layout_node(child, &mut child_result, available_width, 1, lx, offset_y);
+                lx += child_result.width;
+                result.children.push(child_result);
+            }
+            // Layout right items (from right edge)
+            let mut rx = offset_x + available_width as f32;
+            for child in &sb.right {
+                let mut child_result = LayoutResult {
+                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
+                };
+                layout_node(child, &mut child_result, available_width, 1, rx, offset_y);
+                rx -= child_result.width;
+                result.children.push(child_result);
+            }
+        }
+
+        // ── WGPU-only widgets ──
+
+        UiNode::Canvas(c) => {
+            result.x = offset_x;
+            result.y = offset_y;
+            result.width = c.width as f32;
+            result.height = c.height as f32;
+        }
+
+        UiNode::Overlay(o) => {
+            let mut child_result = LayoutResult {
+                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
+            };
+            layout_node(&o.child, &mut child_result, available_width, available_height, 0.0, 0.0);
+            result.x = o.x as f32;
+            result.y = o.y as f32;
+            result.width = child_result.width;
+            result.height = child_result.height;
+            result.children.push(child_result);
+        }
+
         UiNode::None => {
             result.x = offset_x;
             result.y = offset_y;
@@ -284,11 +404,19 @@ fn measure_child_fixed_width(node: &UiNode) -> (f32, f32) {
         UiNode::List(_) => (0.0, 1.0),
         UiNode::ListItem(c) => measure_child_fixed_width(c),
         UiNode::Table(_) => (0.0, 1.0),
-        UiNode::ScrollView(s) => (0.0, 1.0),
+        UiNode::ScrollView(_) => (0.0, 1.0),
         UiNode::Show { when, child } => {
             if *when { measure_child_fixed_width(child) } else { (0.0, 0.0) }
         }
         UiNode::For { .. } => (0.0, 1.0),
+        UiNode::Input(i) => (i.width.map(|w| w as f32).unwrap_or(0.0), 0.0),
+        UiNode::TextArea(_) => (0.0, 1.0),
+        UiNode::TabBar(_) => (0.0, 1.0),
+        UiNode::TreeView(_) => (0.0, 1.0),
+        UiNode::SplitPane(_) => (0.0, 1.0),
+        UiNode::StatusBar(_) => (0.0, 1.0),
+        UiNode::Canvas(c) => (c.width as f32, 0.0),
+        UiNode::Overlay(_) => (0.0, 0.0),
         UiNode::None => (0.0, 0.0),
     }
 }

@@ -4,6 +4,11 @@ use crate::types::{Color, Style};
 ///
 /// Like React's virtual DOM or storm-rs's RsxNode, UiNode represents
 /// a declarative description of UI that can be rendered to any backend.
+///
+/// # Backend rendering rules
+/// - **TUI**: All nodes render to character cells. `Canvas` nodes leave their
+///   rect blank (reserved space, no content). `Overlay` nodes paint on top.
+/// - **WGPU**: All nodes render fully, including Canvas pixel content.
 #[derive(Debug, Clone)]
 pub enum UiNode {
     /// A text leaf node.
@@ -32,6 +37,32 @@ pub enum UiNode {
     Show { when: bool, child: Box<UiNode> },
     /// Iteration — renders children from an iterator.
     For { children: Vec<UiNode> },
+
+    // ── Editor / IDE / Agent widgets ──
+
+    /// Single-line text input with cursor.
+    Input(InputNode),
+    /// Multi-line text editor with cursor, selection, scrolling.
+    TextArea(TextAreaNode),
+    /// Tab bar (for editor tabs, browser tabs, etc).
+    TabBar(TabBarNode),
+    /// Collapsible tree view (file explorer, AST, etc).
+    TreeView(TreeViewNode),
+    /// Split pane with draggable divider (horizontal or vertical).
+    SplitPane(SplitPaneNode),
+    /// Bottom/top status bar with left/right sections.
+    StatusBar(StatusBarNode),
+
+    // ── WGPU-only widgets (TUI leaves rect blank) ──
+
+    /// Canvas for custom pixel-level drawing.
+    /// TUI: reserves the rect but leaves it blank.
+    /// WGPU: renders the frame data (images, graphs, rich content).
+    Canvas(CanvasNode),
+    /// Absolutely-positioned overlay (popup, tooltip, dropdown menu).
+    /// Stacked by `z_index`. TUI paints on top of existing content.
+    Overlay(OverlayNode),
+
     /// Empty / null node.
     None,
 }
@@ -124,6 +155,138 @@ pub struct ScrollNode {
     pub child: Box<UiNode>,
     pub scroll_top: u16,
     pub height: u16,
+}
+
+/// Single-line text input field.
+///
+/// TUI: renders the value with a cursor indicator (█ or underline).
+/// WGPU: renders a native-feel input with selection highlight.
+#[derive(Debug, Clone)]
+pub struct InputNode {
+    pub value: String,
+    pub placeholder: String,
+    pub cursor: u16,
+    pub style: Style,
+    pub cursor_style: Style,
+    pub width: Option<u16>,
+    pub focused: bool,
+}
+
+/// Multi-line text area / editor buffer.
+///
+/// TUI: renders lines with a cursor block and scroll offset.
+/// WGPU: renders with selection highlight, gutter, minimap, etc.
+#[derive(Debug, Clone)]
+pub struct TextAreaNode {
+    pub lines: Vec<String>,
+    pub cursor_line: u16,
+    pub cursor_col: u16,
+    pub scroll_top: u16,
+    pub scroll_left: u16,
+    pub height: u16,
+    pub style: Style,
+    pub cursor_style: Style,
+    pub gutter: bool,
+    pub focused: bool,
+}
+
+/// Tab bar (editor tabs, browser tabs, terminal tabs).
+///
+/// TUI: renders as a row of `[ title ]` segments with active underline.
+/// WGPU: can render close buttons, icons, drag handles.
+#[derive(Debug, Clone)]
+pub struct TabBarNode {
+    pub items: Vec<TabItem>,
+    pub active: usize,
+    pub style: Style,
+    pub active_style: Style,
+}
+
+/// A single tab item.
+#[derive(Debug, Clone)]
+pub struct TabItem {
+    pub title: String,
+    pub icon: Option<String>,
+    pub modified: bool,
+}
+
+/// Collapsible tree view (file explorer, AST viewer, nested menus).
+///
+/// TUI: renders as indented lines with expand/collapse indicators (▶/▼).
+/// WGPU: can render file icons, hover highlights, drag-and-drop.
+#[derive(Debug, Clone)]
+pub struct TreeViewNode {
+    pub items: Vec<TreeItem>,
+    pub selected: Option<usize>,
+    pub style: Style,
+    pub selected_style: Style,
+    pub indent: u16,
+}
+
+/// A single tree item with optional children.
+#[derive(Debug, Clone)]
+pub struct TreeItem {
+    pub label: String,
+    pub icon: Option<String>,
+    pub children: Vec<TreeItem>,
+    pub expanded: bool,
+}
+
+/// Split pane with horizontal or vertical divider.
+///
+/// TUI: renders both children with a `│` or `─` divider line.
+/// WGPU: adds a draggable resize handle.
+#[derive(Debug, Clone)]
+pub struct SplitPaneNode {
+    pub orientation: Orientation,
+    pub ratio: f32,
+    pub first: Box<UiNode>,
+    pub second: Box<UiNode>,
+    pub divider_style: Style,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Orientation {
+    #[default]
+    Horizontal,
+    Vertical,
+}
+
+/// Canvas for custom pixel-level drawing (WGPU-only in spirit).
+///
+/// TUI backend: reserves the given width×height rect but leaves cells blank.
+/// WGPU backend: reads `frame_data` and renders pixels, images, graphs, etc.
+#[derive(Debug, Clone)]
+pub struct CanvasNode {
+    pub width: u16,
+    pub height: u16,
+    pub frame_id: String,
+    pub bg: Color,
+}
+
+/// Absolutely-positioned overlay for popups, tooltips, context menus.
+///
+/// Positioned relative to the viewport. Stacked by `z_index` (higher = on top).
+/// TUI: paints over existing cell content.
+/// WGPU: renders with full alpha compositing.
+#[derive(Debug, Clone)]
+pub struct OverlayNode {
+    pub child: Box<UiNode>,
+    pub x: u16,
+    pub y: u16,
+    pub z_index: i32,
+    pub style: Style,
+}
+
+/// Status bar with left and right sections.
+///
+/// TUI: renders left-aligned and right-aligned sections on one line.
+/// WGPU: same, with richer styling.
+#[derive(Debug, Clone)]
+pub struct StatusBarNode {
+    pub left: Vec<UiNode>,
+    pub right: Vec<UiNode>,
+    pub style: Style,
 }
 
 // ── Layout types ──
@@ -301,9 +464,97 @@ impl UiNode {
         UiNode::For { children: items.into_iter().map(|item| f(item)).collect() }
     }
 
+    pub fn input(value: impl Into<String>) -> Self {
+        UiNode::Input(InputNode {
+            value: value.into(),
+            placeholder: String::new(),
+            cursor: 0,
+            style: Style::default(),
+            cursor_style: Style::default(),
+            width: None,
+            focused: false,
+        })
+    }
+
+    pub fn textarea(lines: Vec<String>) -> Self {
+        UiNode::TextArea(TextAreaNode {
+            lines,
+            cursor_line: 0,
+            cursor_col: 0,
+            scroll_top: 0,
+            scroll_left: 0,
+            height: 10,
+            style: Style::default(),
+            cursor_style: Style::default(),
+            gutter: false,
+            focused: false,
+        })
+    }
+
+    pub fn tab_bar(items: Vec<TabItem>) -> Self {
+        UiNode::TabBar(TabBarNode {
+            items,
+            active: 0,
+            style: Style::default(),
+            active_style: Style::default().underline(),
+        })
+    }
+
+    pub fn tree_view(items: Vec<TreeItem>) -> Self {
+        UiNode::TreeView(TreeViewNode {
+            items,
+            selected: None,
+            style: Style::default(),
+            selected_style: Style::default().reverse(),
+            indent: 2,
+        })
+    }
+
+    pub fn split(orientation: Orientation, first: UiNode, second: UiNode) -> Self {
+        UiNode::SplitPane(SplitPaneNode {
+            orientation,
+            ratio: 0.5,
+            first: Box::new(first),
+            second: Box::new(second),
+            divider_style: Style::default(),
+        })
+    }
+
+    pub fn canvas(width: u16, height: u16, frame_id: impl Into<String>) -> Self {
+        UiNode::Canvas(CanvasNode {
+            width,
+            height,
+            frame_id: frame_id.into(),
+            bg: Color::BLACK,
+        })
+    }
+
+    pub fn overlay(child: UiNode, x: u16, y: u16) -> Self {
+        UiNode::Overlay(OverlayNode {
+            child: Box::new(child),
+            x,
+            y,
+            z_index: 0,
+            style: Style::default(),
+        })
+    }
+
+    pub fn status_bar(left: Vec<UiNode>, right: Vec<UiNode>) -> Self {
+        UiNode::StatusBar(StatusBarNode {
+            left,
+            right,
+            style: Style::default(),
+        })
+    }
+
     /// Check if this node is None/empty.
     pub fn is_none(&self) -> bool {
         matches!(self, UiNode::None)
+    }
+
+    /// Returns true if this node type is WGPU-only (TUI should leave rect blank).
+    pub fn is_wgpu_only(&self) -> bool {
+        matches!(self, UiNode::Canvas(_))
     }
 }
 
@@ -461,6 +712,55 @@ impl UiNode {
             other => other,
         }
     }
+    pub fn placeholder(self, p: impl Into<String>) -> Self {
+        match self {
+            UiNode::Input(i) => UiNode::Input(i.placeholder(p)),
+            other => other,
+        }
+    }
+    pub fn cursor_pos(self, pos: u16) -> Self {
+        match self {
+            UiNode::Input(i) => UiNode::Input(i.cursor_pos(pos)),
+            other => other,
+        }
+    }
+    pub fn focused(self, f: bool) -> Self {
+        match self {
+            UiNode::Input(i) => UiNode::Input(i.focused(f)),
+            UiNode::TextArea(t) => UiNode::TextArea(t.focused(f)),
+            other => other,
+        }
+    }
+    pub fn gutter(self, show: bool) -> Self {
+        match self {
+            UiNode::TextArea(t) => UiNode::TextArea(t.gutter(show)),
+            other => other,
+        }
+    }
+    pub fn active_tab(self, idx: usize) -> Self {
+        match self {
+            UiNode::TabBar(t) => UiNode::TabBar(t.active(idx)),
+            other => other,
+        }
+    }
+    pub fn selected(self, idx: Option<usize>) -> Self {
+        match self {
+            UiNode::TreeView(t) => UiNode::TreeView(t.selected(idx)),
+            other => other,
+        }
+    }
+    pub fn ratio(self, r: f32) -> Self {
+        match self {
+            UiNode::SplitPane(s) => UiNode::SplitPane(s.ratio(r)),
+            other => other,
+        }
+    }
+    pub fn z_index(self, z: i32) -> Self {
+        match self {
+            UiNode::Overlay(o) => UiNode::Overlay(o.z_index(z)),
+            other => other,
+        }
+    }
 }
 
 impl std::fmt::Display for UiNode {
@@ -468,6 +768,7 @@ impl std::fmt::Display for UiNode {
         match self {
             UiNode::Text(t) => write!(f, "{}", t.content),
             UiNode::Span(s) => write!(f, "{}", s.content),
+            UiNode::Input(i) => write!(f, "{}", i.value),
             UiNode::None => Ok(()),
             other => write!(f, "<{:?}>", std::mem::discriminant(other)),
         }
@@ -535,6 +836,73 @@ impl TableNode {
     pub fn header_style(mut self, style: Style) -> Self { self.header_style = style; self }
 }
 
+impl InputNode {
+    pub fn placeholder(mut self, p: impl Into<String>) -> Self { self.placeholder = p.into(); self }
+    pub fn cursor_pos(mut self, pos: u16) -> Self { self.cursor = pos; self }
+    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn width(mut self, w: u16) -> Self { self.width = Some(w); self }
+    pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
+}
+
+impl TextAreaNode {
+    pub fn cursor(mut self, line: u16, col: u16) -> Self { self.cursor_line = line; self.cursor_col = col; self }
+    pub fn scroll(mut self, top: u16, left: u16) -> Self { self.scroll_top = top; self.scroll_left = left; self }
+    pub fn height(mut self, h: u16) -> Self { self.height = h; self }
+    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn gutter(mut self, show: bool) -> Self { self.gutter = show; self }
+    pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
+}
+
+impl TabBarNode {
+    pub fn active(mut self, idx: usize) -> Self { self.active = idx; self }
+    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn active_style(mut self, style: Style) -> Self { self.active_style = style; self }
+}
+
+impl TabItem {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self { title: title.into(), icon: None, modified: false }
+    }
+    pub fn icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
+    pub fn modified(mut self, m: bool) -> Self { self.modified = m; self }
+}
+
+impl TreeViewNode {
+    pub fn selected(mut self, idx: Option<usize>) -> Self { self.selected = idx; self }
+    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn selected_style(mut self, style: Style) -> Self { self.selected_style = style; self }
+    pub fn indent(mut self, indent: u16) -> Self { self.indent = indent; self }
+}
+
+impl TreeItem {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self { label: label.into(), icon: None, children: Vec::new(), expanded: false }
+    }
+    pub fn children(mut self, children: Vec<TreeItem>) -> Self { self.children = children; self }
+    pub fn expanded(mut self, e: bool) -> Self { self.expanded = e; self }
+    pub fn icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
+    /// Recursively count visible items (expanded children only).
+    pub fn visible_count(&self) -> usize {
+        1 + if self.expanded {
+            self.children.iter().map(|c| c.visible_count()).sum::<usize>()
+        } else { 0 }
+    }
+}
+
+impl SplitPaneNode {
+    pub fn ratio(mut self, r: f32) -> Self { self.ratio = r.clamp(0.0, 1.0); self }
+    pub fn divider_style(mut self, style: Style) -> Self { self.divider_style = style; self }
+}
+
+impl CanvasNode {
+    pub fn bg(mut self, bg: Color) -> Self { self.bg = bg; self }
+}
+
+impl OverlayNode {
+    pub fn z_index(mut self, z: i32) -> Self { self.z_index = z; self }
+    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+}
+
 // ── Into<UiNode> conversions ──
 
 impl From<&str> for UiNode {
@@ -555,6 +923,38 @@ impl From<BoxNode> for UiNode {
 
 impl From<FlexNode> for UiNode {
     fn from(f: FlexNode) -> Self { UiNode::Row(f) }
+}
+
+impl From<InputNode> for UiNode {
+    fn from(i: InputNode) -> Self { UiNode::Input(i) }
+}
+
+impl From<TextAreaNode> for UiNode {
+    fn from(t: TextAreaNode) -> Self { UiNode::TextArea(t) }
+}
+
+impl From<TabBarNode> for UiNode {
+    fn from(t: TabBarNode) -> Self { UiNode::TabBar(t) }
+}
+
+impl From<TreeViewNode> for UiNode {
+    fn from(t: TreeViewNode) -> Self { UiNode::TreeView(t) }
+}
+
+impl From<SplitPaneNode> for UiNode {
+    fn from(s: SplitPaneNode) -> Self { UiNode::SplitPane(s) }
+}
+
+impl From<CanvasNode> for UiNode {
+    fn from(c: CanvasNode) -> Self { UiNode::Canvas(c) }
+}
+
+impl From<OverlayNode> for UiNode {
+    fn from(o: OverlayNode) -> Self { UiNode::Overlay(o) }
+}
+
+impl From<StatusBarNode> for UiNode {
+    fn from(s: StatusBarNode) -> Self { UiNode::StatusBar(s) }
 }
 
 impl Default for UiNode {
