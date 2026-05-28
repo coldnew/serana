@@ -102,7 +102,7 @@ fn covers_all_ui_node_variants() {
         jsx!(<Divider char={'-'} style={Style::default().dim()} />),
         jsx!(<Progress value={1.0} max={2.0} width={8} />),
         jsx!(<Table headers={vec!["h".to_string()]} rows={vec![vec!["v".to_string()]]} border />),
-        jsx!(<ScrollView scroll_top={1} height={4}><Text>{"scroll"}</Text></ScrollView>),
+        jsx!(<ScrollView viewport_height={4} viewport_width={80}><Text>{"scroll"}</Text></ScrollView>),
         jsx!(<Show when={true}><Text>{"show"}</Text></Show>),
         jsx!(<For><Text>{"for"}</Text></For>),
         jsx!(<Input value="input" placeholder="p" cursor={1} style={Style::default().bold()} cursor_style={Style::default().reverse()} focused />),

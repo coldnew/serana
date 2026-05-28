@@ -488,15 +488,32 @@ impl JsxElement {
             Ok(child) => child,
             Err(err) => return err.to_compile_error(),
         };
-        let scroll_top = self.attr_expr("scroll_top").unwrap_or_else(|| quote!(0));
-        let height = self.attr_expr("height").unwrap_or_else(|| quote!(10));
-        if let Err(err) = self.reject_attrs(&["scroll_top", "height"]) {
+        let scroll_y = self.attr_expr("scroll_y").unwrap_or_else(|| quote!(0u32));
+        let scroll_x = self.attr_expr("scroll_x").unwrap_or_else(|| quote!(0u32));
+        let viewport_height = self.attr_expr("viewport_height").unwrap_or_else(|| quote!(24u16));
+        let viewport_width = self.attr_expr("viewport_width").unwrap_or_else(|| quote!(80u16));
+        let content_height = optional_attr(self.attr_expr("content_height"));
+        let content_width = optional_attr(self.attr_expr("content_width"));
+        let virtual_scroll = self.bool_attr("virtual_scroll", false);
+        let scroll_policy = self
+            .attr_expr("scroll_policy")
+            .unwrap_or_else(|| quote!(::display_protocol::ScrollPolicy::Auto));
+        if let Err(err) = self.reject_attrs(&[
+            "scroll_y", "scroll_x", "viewport_height", "viewport_width",
+            "content_height", "content_width", "virtual_scroll", "scroll_policy",
+        ]) {
             return err.to_compile_error();
         }
         quote!(::display_protocol::UiNode::ScrollView(::display_protocol::ScrollNode {
             child: Box::new(#child),
-            scroll_top: #scroll_top,
-            height: #height,
+            scroll_y: #scroll_y,
+            scroll_x: #scroll_x,
+            viewport_height: #viewport_height,
+            viewport_width: #viewport_width,
+            content_height: #content_height,
+            content_width: #content_width,
+            virtual_scroll: #virtual_scroll,
+            scroll_policy: #scroll_policy,
         }))
     }
 
