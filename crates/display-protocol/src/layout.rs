@@ -223,8 +223,8 @@ fn layout_node(
         UiNode::ScrollView(s) => {
             result.x = offset_x;
             result.y = offset_y;
-            result.width = available_width as f32;
-            result.height = s.height as f32;
+            result.width = s.viewport_width as f32;
+            result.height = s.viewport_height as f32;
 
             let mut child_result = LayoutResult {
                 x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),

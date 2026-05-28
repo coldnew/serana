@@ -216,21 +216,22 @@ fn paint_table(node: &TableNode, layout: &LayoutResult, buf: &mut ScreenBuffer) 
 fn paint_scroll_view(node: &ScrollNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
     let x = layout.x as u16;
     let y = layout.y as u16;
-    let h = layout.height as u16;
+    let w = node.viewport_width;
+    let h = node.viewport_height;
 
     if let Some(child_layout) = layout.children.first() {
-        // Offset child by scroll_top
         let mut adjusted = child_layout.clone();
-        adjusted.y -= node.scroll_top as f32;
+        adjusted.x -= node.scroll_x as f32;
+        adjusted.y -= node.scroll_y as f32;
         paint_node(&node.child, &adjusted, buf);
     }
 
-    // Draw scroll indicator
-    let total_h = layout.children.first().map(|c| c.height as u16).unwrap_or(h);
-    if total_h > h {
-        let ratio = node.scroll_top as f32 / total_h as f32;
+    // Draw vertical scroll indicator
+    let total_h = node.content_height.unwrap_or(h as u32);
+    if total_h > h as u32 && node.scroll_policy != ScrollPolicy::Never {
+        let ratio = node.scroll_y as f32 / total_h as f32;
         let indicator_y = y + (ratio * h as f32) as u16;
-        buf.set_char(x + layout.width as u16 - 1, indicator_y, '▐', Color::WHITE, Color::BLACK, false, false, false, false, false, false);
+        buf.set_char(x + w - 1, indicator_y, '▐', Color::WHITE, Color::BLACK, false, false, false, false, false, false);
     }
 }
 

@@ -151,11 +151,30 @@ pub struct TableNode {
 }
 
 /// Scrollable view.
+///
+/// Supports virtual scrolling: when `virtual_scroll` is true, the child
+/// is not laid out entirely — only the visible portion (determined by
+/// viewport and scroll offset) is rendered. This enables efficient
+/// display of very large content (100k+ lines in editors, log viewers).
 #[derive(Debug, Clone)]
 pub struct ScrollNode {
     pub child: Box<UiNode>,
-    pub scroll_top: u16,
-    pub height: u16,
+    /// Vertical scroll offset (0-based, in lines/units).
+    pub scroll_y: u32,
+    /// Horizontal scroll offset (0-based, in columns/units).
+    pub scroll_x: u32,
+    /// Visible viewport height in lines/units.
+    pub viewport_height: u16,
+    /// Visible viewport width in columns.
+    pub viewport_width: u16,
+    /// Total content height. None = unknown (streaming/infinite).
+    pub content_height: Option<u32>,
+    /// Total content width. None = auto.
+    pub content_width: Option<u32>,
+    /// Whether to use virtual scrolling (only paint visible portion).
+    pub virtual_scroll: bool,
+    /// When/how to show scrollbars.
+    pub scroll_policy: ScrollPolicy,
 }
 
 /// Single-line text input field.
@@ -818,6 +837,10 @@ impl UiNode {
         })
     }
 
+    pub fn scroll_view(child: UiNode) -> Self {
+        UiNode::ScrollView(ScrollNode::new(child))
+    }
+
     pub fn status_bar(left: Vec<UiNode>, right: Vec<UiNode>) -> Self {
         UiNode::StatusBar(StatusBarNode {
             left,
@@ -1197,6 +1220,28 @@ impl OverlayNode {
     pub fn style(mut self, style: Style) -> Self { self.style = style; self }
 }
 
+impl ScrollNode {
+    pub fn new(child: UiNode) -> Self {
+        Self {
+            child: Box::new(child),
+            scroll_y: 0,
+            scroll_x: 0,
+            viewport_height: 24,
+            viewport_width: 80,
+            content_height: None,
+            content_width: None,
+            virtual_scroll: false,
+            scroll_policy: ScrollPolicy::Auto,
+        }
+    }
+
+    pub fn scroll_y(mut self, y: u32) -> Self { self.scroll_y = y; self }
+    pub fn scroll_x(mut self, x: u32) -> Self { self.scroll_x = x; self }
+    pub fn viewport(mut self, w: u16, h: u16) -> Self { self.viewport_width = w; self.viewport_height = h; self }
+    pub fn content_size(mut self, w: u32, h: u32) -> Self { self.content_width = Some(w); self.content_height = Some(h); self }
+    pub fn virtual_scroll(mut self, on: bool) -> Self { self.virtual_scroll = on; self }
+    pub fn scroll_policy(mut self, p: ScrollPolicy) -> Self { self.scroll_policy = p; self }
+}
 // ── Into<UiNode> conversions ──
 
 impl From<&str> for UiNode {
