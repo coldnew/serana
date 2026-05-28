@@ -59,20 +59,38 @@ fn bench_highlight(c: &mut Criterion) {
 fn bench_execute(c: &mut Criterion) {
     c.bench_function("execute_echo", |b| {
         b.iter(|| {
-            let mut shell = Shell::new(false).unwrap();
+            let mut shell = Shell::new().unwrap();
             shell.execute(black_box("echo hello world"))
         })
     });
     c.bench_function("execute_pipeline", |b| {
         b.iter(|| {
-            let mut shell = Shell::new(false).unwrap();
+            let mut shell = Shell::new().unwrap();
             shell.execute(black_box("echo hello | tr a-z A-Z"))
         })
     });
     c.bench_function("execute_assign", |b| {
         b.iter(|| {
-            let mut shell = Shell::new(false).unwrap();
+            let mut shell = Shell::new().unwrap();
             shell.execute(black_box("FOO=bar"))
+        })
+    });
+    c.bench_function("execute_true", |b| {
+        b.iter(|| {
+            let mut shell = Shell::new().unwrap();
+            shell.execute(black_box("true"))
+        })
+    });
+    c.bench_function("execute_false", |b| {
+        b.iter(|| {
+            let mut shell = Shell::new().unwrap();
+            shell.execute(black_box("false"))
+        })
+    });
+    c.bench_function("execute_pwd", |b| {
+        b.iter(|| {
+            let mut shell = Shell::new().unwrap();
+            shell.execute(black_box("pwd"))
         })
     });
 }

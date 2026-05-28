@@ -227,84 +227,104 @@ impl Shell {
         // Get command name
         let cmd_name = self.expand_word(&cmd.words[0]);
 
-        // Check for builtins
-        match cmd_name.as_str() {
-            "cd" => return self.builtin_cd(&cmd.words[1..]),
-            "export" => {
-                let mut args: Vec<Word> = cmd.words[1..].to_vec();
-                for assign in &cmd.assignments {
-                    args.push(Word {
-                        parts: vec![WordPart::Literal(format!(
-                            "{}={}",
-                            assign.name,
-                            self.expand_word(&assign.value)
-                        ))],
-                    });
+        // If redirects are present, fall through to sh -c for proper handling
+        // (builtins use println!() which bypasses stdio redirection)
+        if !cmd.redirects.is_empty() {
+            // Fall through to external command path below
+        } else {
+            // Check for builtins
+            match cmd_name.as_str() {
+                "cd" => return self.builtin_cd(&cmd.words[1..]),
+                "export" => {
+                    let mut args: Vec<Word> = cmd.words[1..].to_vec();
+                    for assign in &cmd.assignments {
+                        args.push(Word {
+                            parts: vec![WordPart::Literal(format!(
+                                "{}={}",
+                                assign.name,
+                                self.expand_word(&assign.value)
+                            ))],
+                        });
+                    }
+                    return self.builtin_export(&args);
                 }
-                return self.builtin_export(&args);
-            }
-            "alias" => return self.builtin_alias(&cmd.words[1..]),
-            "set" => {
-                // For set builtin, pass assignments as words too
-                // For set builtin, pass assignments as words too
-                let mut all_args: Vec<Word> = cmd.words[1..].to_vec();
-                for assign in &cmd.assignments {
-                    all_args.push(Word {
-                        parts: vec![WordPart::Literal(format!(
-                            "{}={}",
-                            assign.name,
-                            self.expand_word(&assign.value)
-                        ))],
-                    });
+                "alias" => return self.builtin_alias(&cmd.words[1..]),
+                "set" => {
+                    // For set builtin, pass assignments as words too
+                    // For set builtin, pass assignments as words too
+                    let mut all_args: Vec<Word> = cmd.words[1..].to_vec();
+                    for assign in &cmd.assignments {
+                        all_args.push(Word {
+                            parts: vec![WordPart::Literal(format!(
+                                "{}={}",
+                                assign.name,
+                                self.expand_word(&assign.value)
+                            ))],
+                        });
+                    }
+                    return self.builtin_set(&all_args);
                 }
-                return self.builtin_set(&all_args);
+                "exit" => {
+                    let code = cmd
+                        .words
+                        .get(1)
+                        .map(|w| self.expand_word(w).parse::<i32>().unwrap_or(0))
+                        .unwrap_or(0);
+                    std::process::exit(code);
+                }
+                "pushd" => return self.builtin_pushd(&cmd.words[1..]),
+                "popd" => return self.builtin_popd(),
+                "dirs" => return self.builtin_dirs(),
+                "history" => return self.builtin_history(&cmd.words[1..]),
+                "jobs" => return self.builtin_jobs(),
+                "fg" => return self.builtin_fg(&cmd.words[1..]),
+                "bg" => return self.builtin_bg(&cmd.words[1..]),
+                "and" => return self.builtin_and(&cmd.words[1..]),
+                "or" => return self.builtin_or(&cmd.words[1..]),
+                "not" => return self.builtin_not(&cmd.words[1..]),
+                "type" => return self.builtin_type(&cmd.words[1..]),
+                "count" => return self.builtin_count(&cmd.words[1..]),
+                "printf" => return self.builtin_printf(&cmd.words[1..]),
+                "source" | "." => return self.builtin_source(&cmd.words[1..]),
+                "read" => return self.builtin_read(&cmd.words[1..]),
+                "string" => return self.builtin_string(&cmd.words[1..]),
+                "math" => return self.builtin_math(&cmd.words[1..]),
+                "status" => return self.builtin_status(&cmd.words[1..]),
+                "command" => return self.builtin_command(&cmd.words[1..]),
+                "builtin" => return self.builtin_builtin_cmd(&cmd.words[1..]),
+                "random" => return self.builtin_random(&cmd.words[1..]),
+                "edit" => return self.builtin_edit(&cmd.words[1..]),
+                "file" => return self.builtin_file(&cmd.words[1..]),
+                "head" => return self.builtin_head(&cmd.words[1..]),
+                "tail" => return self.builtin_tail(&cmd.words[1..]),
+                "try" => return self.builtin_try(&cmd.words[1..]),
+                "test" | "[" => return self.builtin_test(&cmd.words[1..]),
+                "eval" => return self.builtin_eval(&cmd.words[1..]),
+                "realpath" => return self.builtin_realpath(&cmd.words[1..]),
+                "complete" => return self.builtin_complete(&cmd.words[1..]),
+                "commandline" => return self.builtin_commandline(&cmd.words[1..]),
+                "echo" => return self.builtin_echo(&cmd.words[1..]),
+                "true" => {
+                    self.last_exit_code = 0;
+                    return Ok(());
+                }
+                "false" => {
+                    self.last_exit_code = 1;
+                    return Ok(());
+                }
+                "pwd" => {
+                    match std::env::current_dir() {
+                        Ok(dir) => println!("{}", dir.display()),
+                        Err(e) => eprintln!("pwd: {}", e),
+                    }
+                    return Ok(());
+                }
+                "begin" => {
+                    return Ok(());
+                }
+                _ => {}
             }
-            "exit" => {
-                let code = cmd
-                    .words
-                    .get(1)
-                    .map(|w| self.expand_word(w).parse::<i32>().unwrap_or(0))
-                    .unwrap_or(0);
-                std::process::exit(code);
-            }
-            "pushd" => return self.builtin_pushd(&cmd.words[1..]),
-            "popd" => return self.builtin_popd(),
-            "dirs" => return self.builtin_dirs(),
-            "history" => return self.builtin_history(&cmd.words[1..]),
-            "jobs" => return self.builtin_jobs(),
-            "fg" => return self.builtin_fg(&cmd.words[1..]),
-            "bg" => return self.builtin_bg(&cmd.words[1..]),
-            "and" => return self.builtin_and(&cmd.words[1..]),
-            "or" => return self.builtin_or(&cmd.words[1..]),
-            "not" => return self.builtin_not(&cmd.words[1..]),
-            "type" => return self.builtin_type(&cmd.words[1..]),
-            "count" => return self.builtin_count(&cmd.words[1..]),
-            "printf" => return self.builtin_printf(&cmd.words[1..]),
-            "source" | "." => return self.builtin_source(&cmd.words[1..]),
-            "read" => return self.builtin_read(&cmd.words[1..]),
-            "string" => return self.builtin_string(&cmd.words[1..]),
-            "math" => return self.builtin_math(&cmd.words[1..]),
-            "status" => return self.builtin_status(&cmd.words[1..]),
-            "command" => return self.builtin_command(&cmd.words[1..]),
-            "builtin" => return self.builtin_builtin_cmd(&cmd.words[1..]),
-            "random" => return self.builtin_random(&cmd.words[1..]),
-            "edit" => return self.builtin_edit(&cmd.words[1..]),
-            "file" => return self.builtin_file(&cmd.words[1..]),
-            "head" => return self.builtin_head(&cmd.words[1..]),
-            "tail" => return self.builtin_tail(&cmd.words[1..]),
-            "try" => return self.builtin_try(&cmd.words[1..]),
-            "test" | "[" => return self.builtin_test(&cmd.words[1..]),
-            "eval" => return self.builtin_eval(&cmd.words[1..]),
-            "realpath" => return self.builtin_realpath(&cmd.words[1..]),
-            "complete" => return self.builtin_complete(&cmd.words[1..]),
-            "commandline" => return self.builtin_commandline(&cmd.words[1..]),
-            "begin" => {
-                // begin ... end is handled at parser level as Group,
-                // but treat bare 'begin' as echo (no-op if no args)
-                return Ok(());
-            }
-            _ => {}
-        }
+        } // end redirect guard
 
         // Check for user-defined functions
         if let Some(func) = self.functions.get(&cmd_name).cloned() {
@@ -1424,6 +1444,22 @@ impl Shell {
         Ok(())
     }
 
+    fn builtin_echo(&mut self, args: &[Word]) -> Result<()> {
+        self.last_exit_code = 0;
+        if args.is_empty() {
+            println!();
+            return Ok(());
+        }
+        let mut output = String::with_capacity(64);
+        for (j, arg) in args.iter().enumerate() {
+            if j > 0 {
+                output.push(' ');
+            }
+            output.push_str(&self.expand_word(arg));
+        }
+        println!("{}", output);
+        Ok(())
+    }
     fn builtin_count(&self, args: &[Word]) -> Result<()> {
         println!("{}", args.len());
         Ok(())
@@ -3031,9 +3067,12 @@ pub fn is_builtin(name: &str) -> bool {
         name,
         "cd" | "export"
             | "alias"
-            | "abbr"
             | "set"
             | "exit"
+            | "echo"
+            | "true"
+            | "false"
+            | "pwd"
             | "pushd"
             | "popd"
             | "dirs"
@@ -3055,12 +3094,7 @@ pub fn is_builtin(name: &str) -> bool {
             | "status"
             | "command"
             | "builtin"
-            | "contains"
             | "random"
-            | "emit"
-            | "funced"
-            | "funcsave"
-            | "functions"
             | "edit"
             | "file"
             | "head"
@@ -3190,7 +3224,7 @@ mod tests {
         assert!(is_builtin("set"));
         assert!(is_builtin("exit"));
         // echo is NOT in the builtin list (handled by sh -c)
-        assert!(!is_builtin("echo"));
+        assert!(is_builtin("echo"));
     }
 
     #[test]
