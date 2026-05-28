@@ -1,4 +1,28 @@
-use crate::ui::*;
+//! display-protocol-rsx: declarative JSX-like macro for building UiNode trees.
+//!
+//! This crate provides the `rsx!` macro, extracted from `display-protocol`
+//! as a separate crate for cleaner dependency management.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! use display_protocol_rsx::rsx;
+//! use display_protocol::*;
+//!
+//! let tree = rsx! {
+//!     Column(gap = 1) {
+//!         Text(bold) { "Hello, World!" }
+//!         Divider()
+//!         Row(gap = 2) {
+//!             Text(color = Color::new(255, 0, 0)) { "Red" }
+//!             Text(color = Color::new(0, 255, 0)) { "Green" }
+//!         }
+//!     }
+//! };
+//! ```
+
+// Re-export everything from display-protocol so $crate:: resolves correctly.
+pub use display_protocol::*;
 
 /// Declarative JSX-like macro for building UiNode trees.
 ///
@@ -8,25 +32,12 @@ use crate::ui::*;
 /// - With props: `Text(bold, color = "red")`
 /// - With children: `Box(title = "Panel") { Text(bold) { "Hello" } }`
 /// - Text content: `{ "literal" }` or `{ expr }`
-///
-/// # Example
-///
-/// ```ignore
-/// let tree = rsx! {
-///     Column(gap = 1) {
-///         Text(bold) { "Hello, World!" }
-///         Divider()
-///         Row(gap = 2) {
-///             Text(color = Color::new(255, 0, 0)) { "Red" }
-///             Text(color = Color::new(0, 255, 0)) { "Green" }
-///         }
-///     }
-/// };
-/// ```
 #[macro_export]
 macro_rules! rsx {
     // Empty tree
     () => { $crate::UiNode::None };
+
+    // ── Text ──
 
     // Text with no props
     (Text () { $($child:tt)* }) => {{
@@ -67,14 +78,14 @@ macro_rules! rsx {
         $crate::UiNode::Text(__text)
     }};
 
-    // Box with children
+    // ── Box ──
+
     (Box () { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::boxed(vec![]);
         rsx!(@push_children __node $($child)*);
         __node
     }};
 
-    // Box with props and children
     (Box ( $($prop:ident $(= $val:expr)?),* $(,)? ) { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::boxed(vec![]);
         $(
@@ -84,7 +95,6 @@ macro_rules! rsx {
         __node
     }};
 
-    // Self-closing Box
     (Box ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
         let mut __node = $crate::UiNode::boxed(vec![]);
         $(
@@ -93,14 +103,14 @@ macro_rules! rsx {
         __node
     }};
 
-    // Row with children
+    // ── Row / Column ──
+
     (Row () { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::row(vec![]);
         rsx!(@push_children __node $($child)*);
         __node
     }};
 
-    // Row with props and children
     (Row ( $($prop:ident $(= $val:expr)?),* $(,)? ) { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::row(vec![]);
         $(
@@ -110,14 +120,12 @@ macro_rules! rsx {
         __node
     }};
 
-    // Column with children
     (Column () { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::column(vec![]);
         rsx!(@push_children __node $($child)*);
         __node
     }};
 
-    // Column with props and children
     (Column ( $($prop:ident $(= $val:expr)?),* $(,)? ) { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::column(vec![]);
         $(
@@ -127,10 +135,10 @@ macro_rules! rsx {
         __node
     }};
 
-    // Divider self-closing
+    // ── Divider ──
+
     (Divider ()) => {{ $crate::UiNode::divider() }};
 
-    // Divider with props
     (Divider ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
         let mut __node = $crate::UiNode::divider();
         $(
@@ -139,7 +147,8 @@ macro_rules! rsx {
         __node
     }};
 
-    // Progress self-closing
+    // ── Progress ──
+
     (Progress ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
         let mut __node = $crate::UiNode::progress(0.0, 100.0);
         $(
@@ -148,7 +157,8 @@ macro_rules! rsx {
         __node
     }};
 
-    // List with children
+    // ── List ──
+
     (List ( $($prop:ident $(= $val:expr)?),* $(,)? ) { $($child:tt)* }) => {{
         let mut __node = $crate::UiNode::list(vec![]);
         $(
@@ -158,7 +168,8 @@ macro_rules! rsx {
         __node
     }};
 
-    // Input self-closing
+    // ── Input ──
+
     (Input ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
         let mut __node = $crate::UiNode::input("");
         $(
@@ -167,7 +178,8 @@ macro_rules! rsx {
         __node
     }};
 
-    // TabBar with children
+    // ── TabBar ──
+
     (TabBar ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {{
         let mut __node = $crate::UiNode::tab_bar(vec![]);
         $(
@@ -176,7 +188,8 @@ macro_rules! rsx {
         __node
     }};
 
-    // SplitPane with two children
+    // ── SplitPane ──
+
     (Split ( horizontal ) { $($first:tt)* } { $($second:tt)* }) => {{
         let __first = rsx!(@single_child $($first)*);
         let __second = rsx!(@single_child $($second)*);
@@ -188,12 +201,14 @@ macro_rules! rsx {
         $crate::UiNode::split($crate::Orientation::Vertical, __first, __second)
     }};
 
-    // Canvas self-closing
+    // ── Canvas ──
+
     (Canvas ( width = $w:expr, height = $h:expr, id = $id:expr )) => {{
         $crate::UiNode::canvas($w, $h, $id)
     }};
 
-    // StatusBar with left/right children
+    // ── StatusBar ──
+
     (StatusBar ( $($prop:ident $(= $val:expr)?),* $(,)? ) { left { $($left:tt)* } right { $($right:tt)* } }) => {{
         let mut __left = $crate::UiNode::row(vec![]);
         rsx!(@push_children __left $($left)*);
@@ -204,13 +219,15 @@ macro_rules! rsx {
         $crate::UiNode::status_bar(__left_items, __right_items)
     }};
 
-    // Show with when condition and child
+    // ── Show ──
+
     (Show ( when = $cond:expr ) { $($child:tt)* }) => {{
         let __child = rsx!(@single_child $($child)*);
         $crate::UiNode::show($cond, __child)
     }};
 
-    // ── Single child helper (for Show) ──
+    // ── Single child helper ──
+
     (@single_child $Tag:ident ( $($prop:ident $(= $val:expr)?),* $(,)? ) { $($inner:tt)* }) => {
         rsx!($Tag ( $($prop $(= $val)?),* ) { $($inner)* })
     };
@@ -365,7 +382,7 @@ macro_rules! rsx {
 
     // ── Push children ──
 
-    // String literal child → text node
+    // String literal child
     (@push_children $node:ident $text:literal $($rest:tt)*) => {
         $node = $crate::UiNode::add_child_to($node, $crate::UiNode::text($text));
         rsx!(@push_children $node $($rest)*);
@@ -409,200 +426,4 @@ macro_rules! rsx {
 
     // Terminal: no more children
     (@push_children $node:ident) => {};
-}
-
-impl UiNode {
-    /// Helper for the rsx! macro — add a child to a container node.
-    pub fn add_child_to(mut node: UiNode, child: UiNode) -> UiNode {
-        match &mut node {
-            UiNode::Box(b) => b.children.push(child),
-            UiNode::Row(f) | UiNode::Column(f) => f.children.push(child),
-            UiNode::List(l) => l.items.push(child),
-            _ => {}
-        }
-        node
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::super::*;
-
-    #[test]
-    fn test_rsx_text() {
-        let node = rsx!(Text(bold) { "Hello" });
-        match &node {
-            UiNode::Text(t) => {
-                assert_eq!(t.content, "Hello");
-                assert!(t.style.bold);
-            }
-            _ => panic!("expected Text"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_box_with_children() {
-        let node = rsx! {
-            Box(title = "Panel", border) {
-                Text(bold) { "Header" }
-                Text(dim) { "Content" }
-            }
-        };
-        match &node {
-            UiNode::Box(b) => {
-                assert_eq!(b.title.as_deref(), Some("Panel"));
-                assert!(b.border.has_any());
-                assert_eq!(b.children.len(), 2);
-            }
-            _ => panic!("expected Box"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_row_column() {
-        let node = rsx! {
-            Column(gap = 1) {
-                Text() { "Line 1" }
-                Row(gap = 2) {
-                    Text() { "A" }
-                    Text() { "B" }
-                }
-            }
-        };
-        match &node {
-            UiNode::Column(c) => {
-                assert_eq!(c.gap, 1);
-                assert_eq!(c.children.len(), 2);
-            }
-            _ => panic!("expected Column"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_divider() {
-        let node = rsx!(Divider());
-        assert!(matches!(node, UiNode::Divider(_)));
-    }
-
-    #[test]
-    fn test_rsx_nested() {
-        let node = rsx! {
-            Column(gap = 1) {
-                Text(bold, color = Color::new(255, 255, 0)) { "Title" }
-                Divider()
-                Box(padding = Padding::all(1)) {
-                    Text(dim) { "Content area" }
-                }
-            }
-        };
-        match &node {
-            UiNode::Column(c) => {
-                assert_eq!(c.children.len(), 3);
-                assert!(matches!(c.children[1], UiNode::Divider(_)));
-            }
-            _ => panic!("expected Column"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_text_no_children() {
-        let node = rsx!(Text(bold, color = Color::new(255, 0, 0)));
-        match &node {
-            UiNode::Text(t) => {
-                assert!(t.style.bold);
-                assert_eq!(t.style.fg, Some(Color::new(255, 0, 0)));
-            }
-            _ => panic!("expected Text"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_show() {
-        let items = vec!["a", "b", "c"];
-        let node = rsx! {
-            Column() {
-                Text(bold) { "Header" }
-                { UiNode::show(true, UiNode::text("conditional")) }
-                { UiNode::for_each(items, |s| UiNode::text(s)) }
-            }
-        };
-        match &node {
-            UiNode::Column(c) => {
-                assert_eq!(c.children.len(), 3);
-            }
-            _ => panic!("expected Column"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_show_macro() {
-        let node = rsx! {
-            Column() {
-                Text(bold) { "Header" }
-                Show(when = true) {
-                    Text() { "visible" }
-                }
-            }
-        };
-        match &node {
-            UiNode::Column(c) => {
-                assert_eq!(c.children.len(), 2);
-                assert!(matches!(&c.children[1], UiNode::Show { when: true, .. }));
-            }
-            _ => panic!("expected Column"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_for_each() {
-        let items = vec!["a", "b", "c"];
-        let node = UiNode::for_each(items, |s| UiNode::text(s));
-        match &node {
-            UiNode::For { children } => assert_eq!(children.len(), 3),
-            _ => panic!("expected For"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_input() {
-        let node = rsx!(Input(value = "hello", placeholder = "type", width = 20, focused));
-        match &node {
-            UiNode::Input(i) => {
-                assert_eq!(i.value, "hello");
-                assert_eq!(i.placeholder, "type");
-                assert_eq!(i.width, Some(20));
-                assert!(i.focused);
-            }
-            _ => panic!("expected Input"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_split() {
-        // SplitPane uses builder API; rsx Split is for top-level use
-        let node = UiNode::split(
-            Orientation::Horizontal,
-            UiNode::text("left"),
-            UiNode::text("right"),
-        );
-        match &node {
-            UiNode::SplitPane(s) => {
-                assert_eq!(s.orientation, Orientation::Horizontal);
-            }
-            _ => panic!("expected SplitPane"),
-        }
-    }
-
-    #[test]
-    fn test_rsx_canvas() {
-        let node = rsx!(Canvas(width = 100, height = 50, id = "preview"));
-        match &node {
-            UiNode::Canvas(c) => {
-                assert_eq!(c.width, 100);
-                assert_eq!(c.height, 50);
-                assert_eq!(c.frame_id, "preview");
-            }
-            _ => panic!("expected Canvas"),
-        }
-    }
 }

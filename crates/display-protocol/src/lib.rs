@@ -8,7 +8,6 @@
 //!                  ◄──[InputEvent]──
 //!                  ──[DisplayCmd]──►
 //! ```
-//!
 //! ## Declarative UI System
 //!
 //! In addition to the grid-based protocol, this crate provides a declarative
@@ -16,6 +15,7 @@
 //!
 //! ```ignore
 //! use display_protocol::*;
+//! use display_protocol_rsx::rsx;
 //!
 //! let tree = rsx! {
 //!     Column(gap = 1) {
@@ -30,6 +30,9 @@
 //!
 //! let buf = paint(&tree, 80, 24);
 //! ```
+//!
+//! The `rsx!` macro is provided by the `display-protocol-rsx` crate.
+//! The `jsx!` proc-macro is provided by `display-protocol-jsx`.
 
 mod types;
 mod frame;
@@ -39,7 +42,6 @@ pub mod wire;
 
 // Declarative UI system
 pub mod ui;
-pub mod rsx;
 pub mod buffer;
 pub mod layout;
 pub mod paint;

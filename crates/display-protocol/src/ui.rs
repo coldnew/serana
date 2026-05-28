@@ -858,6 +858,18 @@ impl UiNode {
     pub fn is_wgpu_only(&self) -> bool {
         matches!(self, UiNode::Canvas(_))
     }
+
+    /// Add a child to a container node (Box, Row, Column, List).
+    /// Used by the rsx! macro. Returns the node unchanged if not a container.
+    pub fn add_child_to(mut node: UiNode, child: UiNode) -> UiNode {
+        match &mut node {
+            UiNode::Box(b) => b.children.push(child),
+            UiNode::Row(f) | UiNode::Column(f) => f.children.push(child),
+            UiNode::List(l) => l.items.push(child),
+            _ => {}
+        }
+        node
+    }
 }
 
 // ── Delegating builder methods on UiNode ──

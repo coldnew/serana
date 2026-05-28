@@ -278,11 +278,7 @@ impl MoraLispBridge {
 
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
         let forms = self.evaluator.read_cached(code)?;
-        let mut result = Value::Nil;
-        for form in forms {
-            result = self.evaluator.eval(&form)?;
-        }
-        Ok(result)
+        Ok(mora_lisp::vm::compile_and_run(&mut self.evaluator, &forms)?)
     }
 
     pub fn load_init_file(&mut self) {
@@ -1152,8 +1148,14 @@ pub fn lisp_value_to_uinode(val: &Value) -> display_protocol::UiNode {
                     }
                     display_protocol::UiNode::ScrollView(display_protocol::ScrollNode {
                         child: Box::new(child),
-                        scroll_top,
-                        height,
+                        scroll_y: scroll_top as u32,
+                        scroll_x: 0,
+                        viewport_width: 80,
+                        viewport_height: height,
+                        content_height: None,
+                        content_width: None,
+                        virtual_scroll: false,
+                        scroll_policy: display_protocol::ScrollPolicy::Auto,
                     })
                 }
                 "button" => {
