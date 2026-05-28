@@ -138,3 +138,89 @@ fn covers_all_ui_node_variants() {
     assert!(matches!(cases[19], UiNode::Overlay(_)));
     assert!(matches!(cases[20], UiNode::None));
 }
+
+#[test]
+fn test_scroll_view_virtual_scrolling() {
+    let node = jsx!(
+        <ScrollView
+            scroll_y={100}
+            scroll_x={0}
+            viewport_height={30}
+            viewport_width={120}
+            content_height={10000u32}
+            virtual_scroll={true}
+            scroll_policy={ScrollPolicy::Always}
+        >
+            <Text>{"content"}</Text>
+        </ScrollView>
+    );
+    match node {
+        UiNode::ScrollView(s) => {
+            assert_eq!(s.scroll_y, 100);
+            assert_eq!(s.viewport_height, 30);
+            assert_eq!(s.content_height, Some(10000));
+            assert!(s.virtual_scroll);
+            assert_eq!(s.scroll_policy, ScrollPolicy::Always);
+        }
+        _ => panic!("expected ScrollView"),
+    }
+}
+
+#[test]
+fn test_textarea_with_selection() {
+    use display_protocol::{Selection, SelectionMode};
+    let sel = Selection::range(1, 0, 1, 5, SelectionMode::Char);
+    let node = jsx!(
+        <TextArea
+            lines={vec![StyledLine::plain("hello"), StyledLine::plain("world")]}
+            cursor_line={1}
+            cursor_col={3}
+            selection={sel}
+            gutter
+            focused
+        />
+    );
+    match node {
+        UiNode::TextArea(t) => {
+            assert_eq!(t.lines.len(), 2);
+            assert_eq!(t.cursor_line, 1);
+            assert!(t.gutter);
+            assert!(t.focused);
+            assert!(t.selection.is_some());
+        }
+        _ => panic!("expected TextArea"),
+    }
+}
+
+#[test]
+fn test_new_data_types_constructors() {
+    // GutterAnnotation
+    let bp = GutterAnnotation::breakpoint(5);
+    assert_eq!(bp.line, 5);
+    assert_eq!(bp.kind, AnnotationKind::Breakpoint);
+
+    let err = GutterAnnotation::error(10, "undefined var");
+    assert_eq!(err.kind, AnnotationKind::DiagnosticError);
+    assert_eq!(err.tooltip.as_deref(), Some("undefined var"));
+
+    // MenuItem
+    let item = MenuItem::new("Copy").shortcut("Ctrl+C");
+    assert_eq!(item.label, "Copy");
+    assert!(item.enabled);
+    assert_eq!(item.shortcut.as_deref(), Some("Ctrl+C"));
+
+    // MenuNode
+    let menu = MenuNode::new(vec![
+        MenuItem::new("Cut"),
+        MenuItem::new("Copy"),
+        MenuNode::separator(),
+        MenuItem::new("Paste").disabled(),
+    ]);
+    assert_eq!(menu.items.len(), 4);
+    assert!(!menu.items[3].enabled);
+
+    // FocusOrder
+    let fo = FocusOrder::focusable(1);
+    assert!(fo.focusable);
+    assert_eq!(fo.tab_index, 1);
+}
