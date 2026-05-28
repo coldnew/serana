@@ -1,4 +1,4 @@
-use crate::types::{Color, Style};
+use crate::types::{Color, Style, StyledLine};
 
 /// A declarative UI node — the building block of the component tree.
 ///
@@ -178,7 +178,7 @@ pub struct InputNode {
 /// WGPU: renders with selection highlight, gutter, minimap, etc.
 #[derive(Debug, Clone)]
 pub struct TextAreaNode {
-    pub lines: Vec<String>,
+    pub lines: Vec<StyledLine>,
     pub cursor_line: u16,
     pub cursor_col: u16,
     pub scroll_top: u16,
@@ -476,7 +476,7 @@ impl UiNode {
         })
     }
 
-    pub fn textarea(lines: Vec<String>) -> Self {
+    pub fn textarea(lines: Vec<StyledLine>) -> Self {
         UiNode::TextArea(TextAreaNode {
             lines,
             cursor_line: 0,
@@ -490,6 +490,12 @@ impl UiNode {
             focused: false,
         })
     }
+
+    /// Convenience: build a TextAreaNode from plain strings (no styling).
+    pub fn textarea_plain(lines: Vec<String>) -> Self {
+        Self::textarea(lines.into_iter().map(StyledLine::plain).collect())
+    }
+
 
     pub fn tab_bar(items: Vec<TabItem>) -> Self {
         UiNode::TabBar(TabBarNode {

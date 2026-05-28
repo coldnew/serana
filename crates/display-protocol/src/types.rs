@@ -25,7 +25,7 @@ impl Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Self::WHITE
+        Self::BLACK
     }
 }
 
@@ -45,25 +45,6 @@ pub struct Style {
 }
 
 impl Style {
-    pub const fn default() -> Self {
-        Self {
-            fg: None,
-            bg: None,
-            bold: false,
-            italic: false,
-            underline: false,
-            strikethrough: false,
-            dim: false,
-            reverse: false,
-            blink: false,
-            underline_color: None,
-        }
-    }
-
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn fg(mut self, c: Color) -> Self {
         self.fg = Some(c);
         self
@@ -74,37 +55,37 @@ impl Style {
         self
     }
 
-    pub const fn bold(mut self) -> Self {
+    pub fn bold(mut self) -> Self {
         self.bold = true;
         self
     }
 
-    pub const fn italic(mut self) -> Self {
+    pub fn italic(mut self) -> Self {
         self.italic = true;
         self
     }
 
-    pub const fn underline(mut self) -> Self {
+    pub fn underline(mut self) -> Self {
         self.underline = true;
         self
     }
 
-    pub const fn strikethrough(mut self) -> Self {
+    pub fn strikethrough(mut self) -> Self {
         self.strikethrough = true;
         self
     }
 
-    pub const fn dim(mut self) -> Self {
+    pub fn dim(mut self) -> Self {
         self.dim = true;
         self
     }
 
-    pub const fn reverse(mut self) -> Self {
+    pub fn reverse(mut self) -> Self {
         self.reverse = true;
         self
     }
 
-    pub const fn blink(mut self) -> Self {
+    pub fn blink(mut self) -> Self {
         self.blink = true;
         self
     }
@@ -112,6 +93,21 @@ impl Style {
     pub fn underline_color(mut self, c: Color) -> Self {
         self.underline_color = Some(c);
         self
+    }
+
+    pub fn merge(&self, other: &Style) -> Style {
+        Style {
+            fg: other.fg.or(self.fg),
+            bg: other.bg.or(self.bg),
+            bold: self.bold || other.bold,
+            italic: self.italic || other.italic,
+            underline: self.underline || other.underline,
+            strikethrough: self.strikethrough || other.strikethrough,
+            dim: self.dim || other.dim,
+            reverse: self.reverse || other.reverse,
+            blink: self.blink || other.blink,
+            underline_color: other.underline_color.or(self.underline_color),
+        }
     }
 }
 
@@ -165,5 +161,47 @@ impl StyledLine {
 
     pub fn width(&self) -> usize {
         self.spans.iter().map(|s| s.width()).sum()
+    }
+
+    /// Get the character at a column index (0-based), crossing span boundaries.
+    pub fn char_at(&self, col: usize) -> Option<char> {
+        let mut offset = 0;
+        for span in &self.spans {
+            let span_len = span.text.chars().count();
+            if col < offset + span_len {
+                return span.text.chars().nth(col - offset);
+            }
+            offset += span_len;
+        }
+        None
+    }
+
+    /// Extract a character-range substring as a new StyledLine.
+    /// `start` is 0-based character offset, `len` is max characters to keep.
+    pub fn substr(&self, start: usize, len: usize) -> StyledLine {
+        let mut spans = Vec::new();
+        let mut offset = 0;
+        for span in &self.spans {
+            let span_len = span.text.chars().count();
+            let span_end = offset + span_len;
+            if span_end <= start {
+                offset = span_end;
+                continue;
+            }
+            if offset >= start + len {
+                break;
+            }
+            let skip = start.saturating_sub(offset);
+            let take = (len + start).saturating_sub(offset).min(span_len) - skip;
+            let text: String = span.text.chars().skip(skip).take(take).collect();
+            if !text.is_empty() {
+                spans.push(StyledSpan {
+                    text,
+                    style: span.style,
+                });
+            }
+            offset = span_end;
+        }
+        StyledLine { spans }
     }
 }

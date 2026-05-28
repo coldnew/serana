@@ -305,10 +305,10 @@ fn paint_textarea(node: &TextAreaNode, layout: &LayoutResult, buf: &mut ScreenBu
             buf.write_str(x, ry, &line_num, gutter_fg, bg, false, false);
         }
 
-        // Line content (scroll left)
+        // Line content with syntax highlighting, respecting scroll_left
         let line = &node.lines[line_idx];
-        let visible: String = line.chars().skip(node.scroll_left as usize).take(text_w as usize).collect();
-        buf.write_str(x + gutter_w, ry, &visible, fg, bg, node.style.bold, node.style.dim);
+        let visible = line.substr(node.scroll_left as usize, text_w as usize);
+        buf.write_styled_line(x + gutter_w, ry, &visible, fg, bg);
     }
 
     // Draw cursor
@@ -322,7 +322,7 @@ fn paint_textarea(node: &TextAreaNode, layout: &LayoutResult, buf: &mut ScreenBu
             let cursor_bg = node.cursor_style.bg.unwrap_or(Color::WHITE);
             let ch = node.lines
                 .get(node.cursor_line as usize)
-                .and_then(|l| l.chars().nth(node.cursor_col as usize))
+                .and_then(|l| l.char_at(node.cursor_col as usize))
                 .unwrap_or(' ');
             buf.set_char(cx, cy, ch, cursor_fg, cursor_bg, false, false, false, false, false, false);
         }
@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_paint_textarea() {
-        let node = UiNode::textarea(vec![
+        let node = UiNode::textarea_plain(vec![
             "line one".into(),
             "line two".into(),
         ]).height(3).focused(true);
@@ -600,7 +600,7 @@ mod tests {
 
     #[test]
     fn test_paint_textarea_with_gutter() {
-        let node = UiNode::textarea(vec!["code".into()])
+        let node = UiNode::textarea_plain(vec!["code".into()])
             .height(2).gutter(true);
         let buf = paint(&node, 20, 2);
         // Gutter shows "1 " for first line
@@ -608,6 +608,31 @@ mod tests {
         assert_eq!(buf.get(1, 0).ch, ' ');
         // Code starts after gutter
         assert_eq!(buf.get(2, 0).ch, 'c');
+    }
+
+    #[test]
+    fn test_paint_textarea_styled_lines() {
+        use crate::types::{StyledLine, StyledSpan, Style};
+
+        // "let x = 5;" with "let" in magenta, rest in white
+        let keyword_style = Style::default().fg(Color::MAGENTA).bold();
+        let plain_style = Style::default().fg(Color::WHITE);
+        let line = StyledLine::new(vec![
+            StyledSpan::new("let ", keyword_style),
+            StyledSpan::new("x = 5;", plain_style),
+        ]);
+        let node = UiNode::textarea(vec![line]).height(1).focused(false);
+        let buf = paint(&node, 20, 1);
+
+        // "let " should be bold magenta
+        assert_eq!(buf.get(0, 0).ch, 'l');
+        assert_eq!(buf.get(0, 0).fg, Color::MAGENTA);
+        assert!(buf.get(0, 0).bold);
+
+        // "x" should be plain white
+        assert_eq!(buf.get(4, 0).ch, 'x');
+        assert_eq!(buf.get(4, 0).fg, Color::WHITE);
+        assert!(!buf.get(4, 0).bold);
     }
 
     #[test]

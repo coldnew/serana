@@ -261,6 +261,39 @@ impl ScreenBuffer {
         self.damage_x2 = 0;
         self.damage_y2 = 0;
     }
+    /// Write a StyledLine starting at (x, y), with fallback fg/bg for unstyled spans.
+    pub fn write_styled_line(
+        &mut self,
+        x: u16,
+        y: u16,
+        line: &crate::types::StyledLine,
+        default_fg: Color,
+        default_bg: Color,
+    ) {
+        let mut cx = x;
+        for span in &line.spans {
+            let fg = span.style.fg.unwrap_or(default_fg);
+            let bg = span.style.bg.unwrap_or(default_bg);
+            for ch in span.text.chars() {
+                if cx >= self.width { return; }
+                self.set(cx, y, ScreenCell {
+                    ch,
+                    fg,
+                    bg,
+                    bold: span.style.bold,
+                    italic: span.style.italic,
+                    underline: span.style.underline,
+                    strikethrough: span.style.strikethrough,
+                    dim: span.style.dim,
+                    reverse: span.style.reverse,
+                    blink: span.style.blink,
+                    underline_color: span.style.underline_color,
+                    hyperlink: None,
+                });
+                cx += 1;
+            }
+        }
+    }
 
     /// Diff against a previous buffer, returning only changed cells.
     pub fn diff(&self, prev: &ScreenBuffer) -> Vec<(u16, u16, ScreenCell)> {
