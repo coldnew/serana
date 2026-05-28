@@ -1,5 +1,24 @@
 # Hermes Agent Refactor
 
+# display-protocol-jsx
+
+Success criteria for this slice:
+- [x] Add a `display-protocol-jsx` proc-macro crate.
+- [x] Implement `jsx!` as a small JSX-like syntax that lowers directly to `display_protocol::UiNode` constructors.
+- [x] Cover basic tags, self-closing tags, boolean props, expression props, string props, text children, and expression children.
+- [x] Add compile/runtime tests against `display-protocol`.
+- [x] Run formatting and targeted tests.
+- [x] Record implementation results.
+
+Review:
+- Added `crates/display-protocol-jsx` as a proc-macro crate and workspace member.
+- `jsx!` parses a constrained XML-like Rust token syntax and emits direct `display_protocol::UiNode` constructor/builder calls instead of expanding through `rsx!`.
+- Supported tags now cover every current `UiNode` variant: `Text`, `Box`, `Row`, `Column`, `Span`, `List`, `ListItem`, `Divider`, `Progress`/`ProgressBar`, `Table`, `ScrollView`, `Show`, `For`, `Input`, `TextArea`, `TabBar`, `TreeView`, `SplitPane`/`Split`, `StatusBar`, `Canvas`, `Overlay`, and `None`.
+- JSX lowering now directly constructs nodes where builder methods do not expose all fields, including `Box`, flex containers, `List`, and `Input`.
+- Initial supported child forms: nested elements, string literal children, and `{expr}` children.
+- Added all-variant coverage so `cargo test -p display-protocol-jsx` compiles every current `UiNode` variant through `jsx!`.
+- Verification passed with `cargo fmt --package display-protocol-jsx`, `cargo test -p display-protocol-jsx`, and `cargo test -p display-protocol`.
+
 Success criteria for this slice:
 - [x] Extract tool-turn execution out of `CodingAgent::execute`.
 - [x] Preserve existing tool execution, persistence, and meta-cognition behavior.

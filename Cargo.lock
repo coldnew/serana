@@ -877,6 +877,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-protocol-jsx"
+version = "0.1.0"
+dependencies = [
+ "display-protocol",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "display-tui"
 version = "0.1.0"
 dependencies = [

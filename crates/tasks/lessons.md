@@ -1,5 +1,7 @@
 # Lessons
 
+- JSX/proc-macro frontends should validate supported props before emitting builder calls; otherwise unsupported attributes turn into confusing downstream Rust type errors instead of clear macro diagnostics.
+- Macro coverage for enum-like UI models should include one compile/runtime test per variant; broad parser support is not enough if a generated constructor path can silently drift.
 - Keep Hermes-agent refactors behavior-preserving and incremental; the current agent loop has several responsibilities, so extracting one lifecycle piece at a time is safer than rewriting the loop.
 - When tests rely on temp directories inside a workspace with a read-only parent lockfile, prefer local test helpers over adding dev-dependencies that force `Cargo.lock` updates outside the writable crate root.
 - Self-evolution tools should resolve paths from the actual workspace root, not from an individual crate manifest directory, otherwise tests and tool behavior diverge depending on the current package.
