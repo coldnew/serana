@@ -335,6 +335,18 @@ impl UiNode {
             other => other,
         }
     }
+    pub fn reverse(self) -> Self {
+        match self {
+            UiNode::Text(mut t) => { t.style = t.style.reverse(); UiNode::Text(t) }
+            other => other,
+        }
+    }
+    pub fn strikethrough(self) -> Self {
+        match self {
+            UiNode::Text(mut t) => { t.style = t.style.strikethrough(); UiNode::Text(t) }
+            other => other,
+        }
+    }
     pub fn color(self, c: Color) -> Self {
         match self {
             UiNode::Text(t) => UiNode::Text(t.color(c)),

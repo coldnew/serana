@@ -158,6 +158,29 @@ macro_rules! rsx {
         __node
     }};
 
+    // Show with when condition and child
+    (Show ( when = $cond:expr ) { $($child:tt)* }) => {{
+        let __child = rsx!(@single_child $($child)*);
+        $crate::UiNode::show($cond, __child)
+    }};
+
+    // ── Single child helper (for Show) ──
+    (@single_child $Tag:ident ( $($prop:ident $(= $val:expr)?),* $(,)? ) { $($inner:tt)* }) => {
+        rsx!($Tag ( $($prop $(= $val)?),* ) { $($inner)* })
+    };
+    (@single_child $Tag:ident ( $($prop:ident $(= $val:expr)?),* $(,)? )) => {
+        rsx!($Tag ( $($prop $(= $val)?),* ))
+    };
+    (@single_child $Tag:ident () { $($inner:tt)* }) => {
+        rsx!($Tag () { $($inner)* })
+    };
+    (@single_child $Tag:ident ()) => {
+        rsx!($Tag ())
+    };
+    (@single_child { $expr:expr }) => {
+        $expr
+    };
+
     // ── Prop application ──
 
     // Text props
@@ -440,6 +463,35 @@ mod tests {
                 assert_eq!(c.children.len(), 3);
             }
             _ => panic!("expected Column"),
+        }
+    }
+
+    #[test]
+    fn test_rsx_show_macro() {
+        let node = rsx! {
+            Column() {
+                Text(bold) { "Header" }
+                Show(when = true) {
+                    Text() { "visible" }
+                }
+            }
+        };
+        match &node {
+            UiNode::Column(c) => {
+                assert_eq!(c.children.len(), 2);
+                assert!(matches!(&c.children[1], UiNode::Show { when: true, .. }));
+            }
+            _ => panic!("expected Column"),
+        }
+    }
+
+    #[test]
+    fn test_rsx_for_each() {
+        let items = vec!["a", "b", "c"];
+        let node = UiNode::for_each(items, |s| UiNode::text(s));
+        match &node {
+            UiNode::For { children } => assert_eq!(children.len(), 3),
+            _ => panic!("expected For"),
         }
     }
 }

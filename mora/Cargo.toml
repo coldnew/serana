@@ -47,7 +47,3 @@ path = "src/bin/mora_server.rs"
 [[bin]]
 name = "mora-client"
 path = "src/bin/mora_client.rs"
-
-[[bin]]
-name = "mishell"
-path = "src/bin/mishell.rs"

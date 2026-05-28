@@ -58,8 +58,6 @@ fn paint_node(node: &UiNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
 fn paint_text(node: &TextNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
     let x = layout.x as u16;
     let y = layout.y as u16;
-    let fg = node.style.fg.unwrap_or(Color::WHITE);
-    let bg = node.style.bg.unwrap_or(Color::BLACK);
 
     match node.wrap {
         Wrap::NoWrap | Wrap::Truncate => {
@@ -69,13 +67,13 @@ fn paint_text(node: &TextNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
             } else {
                 node.content.clone()
             };
-            buf.write_str(x, y, &text, fg, bg, node.style.bold, node.style.dim);
+            buf.write_styled(x, y, &text, &node.style);
         }
         Wrap::Wrap => {
             let lines = wrap_text(&node.content, layout.width as u16);
             for (i, line) in lines.iter().enumerate() {
                 if y + i as u16 >= buf.height { break; }
-                buf.write_str(x, y + i as u16, line, fg, bg, node.style.bold, node.style.dim);
+                buf.write_styled(x, y + i as u16, line, &node.style);
             }
         }
     }
@@ -84,9 +82,7 @@ fn paint_text(node: &TextNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
 fn paint_span(node: &SpanNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
     let x = layout.x as u16;
     let y = layout.y as u16;
-    let fg = node.style.fg.unwrap_or(Color::WHITE);
-    let bg = node.style.bg.unwrap_or(Color::BLACK);
-    buf.write_str(x, y, &node.content, fg, bg, node.style.bold, node.style.dim);
+    buf.write_styled(x, y, &node.content, &node.style);
 }
 
 fn paint_box(node: &BoxNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {

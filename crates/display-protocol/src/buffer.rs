@@ -116,12 +116,23 @@ impl ScreenBuffer {
         self.set(x, y, ScreenCell { ch, fg, bg, bold, italic, underline, strikethrough, dim, reverse });
     }
 
-    /// Write a string starting at (x, y).
+    /// Write a string starting at (x, y) with basic style (bold/dim only).
     pub fn write_str(&mut self, x: u16, y: u16, s: &str, fg: Color, bg: Color, bold: bool, dim: bool) {
         for (i, ch) in s.chars().enumerate() {
             let cx = x + i as u16;
             if cx >= self.width { break; }
             self.set_char(cx, y, ch, fg, bg, bold, dim, false, false, false, false);
+        }
+    }
+
+    /// Write a string with full style attributes.
+    pub fn write_styled(&mut self, x: u16, y: u16, s: &str, style: &crate::types::Style) {
+        let fg = style.fg.unwrap_or(Color::WHITE);
+        let bg = style.bg.unwrap_or(Color::BLACK);
+        for (i, ch) in s.chars().enumerate() {
+            let cx = x + i as u16;
+            if cx >= self.width { break; }
+            self.set_char(cx, y, ch, fg, bg, style.bold, style.dim, style.underline, style.strikethrough, style.italic, style.reverse);
         }
     }
 
@@ -339,5 +350,23 @@ mod tests {
         assert_eq!(buf.get(2, 1).ch, 'X');
         assert_eq!(buf.width, 10);
         assert_eq!(buf.height, 5);
+    }
+
+    #[test]
+    fn test_write_styled() {
+        use crate::types::Style;
+        let mut buf = ScreenBuffer::new(20, 5);
+        let style = Style::default()
+            .bold()
+            .italic()
+            .underline()
+            .fg(Color::new(255, 128, 0));
+        buf.write_styled(1, 1, "Test", &style);
+        let cell = buf.get(1, 1);
+        assert_eq!(cell.ch, 'T');
+        assert!(cell.bold);
+        assert!(cell.italic);
+        assert!(cell.underline);
+        assert_eq!(cell.fg, Color::new(255, 128, 0));
     }
 }

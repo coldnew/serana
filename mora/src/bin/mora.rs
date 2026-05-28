@@ -4,7 +4,7 @@ use mora_bin::mora::display::backend::{DisplayBackend, InputEvent};
 use mora_bin::mora::display::wgpu_backend::WgpuBackend;
 use mora_bin::mora::display::style::MoraStyle;
 use mora_compile::{CompileOptions, CompileTarget};
-use display_protocol::{Color, Grid, WireMessage, PROTOCOL_VERSION, DisplayCmd, InputEvent as ProtoInputEvent};
+use display_protocol::{Color, FrameUpdate, Grid, WireMessage, PROTOCOL_VERSION, DisplayCmd, InputEvent as ProtoInputEvent};
 use display_tui::TuiTerminal;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};

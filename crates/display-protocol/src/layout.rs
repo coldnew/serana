@@ -293,9 +293,44 @@ fn measure_child_fixed_width(node: &UiNode) -> (f32, f32) {
     }
 }
 
-/// Calculate display width of a string (simple: 1 per char).
+/// Calculate display width of a string, accounting for CJK wide characters.
 pub fn text_width(s: &str) -> u16 {
-    s.chars().count() as u16
+    s.chars().map(char_display_width).sum::<usize>() as u16
+}
+
+/// Display width of a single character. CJK ideographs, fullwidth forms,
+/// and certain emoji are 2 cells wide; everything else is 1.
+pub fn char_display_width(ch: char) -> usize {
+    let cp = ch as u32;
+    match cp {
+        // CJK Unified Ideographs
+        0x4E00..=0x9FFF => 2,
+        // CJK Unified Ideographs Extension A
+        0x3400..=0x4DBF => 2,
+        // CJK Unified Ideographs Extension B
+        0x20000..=0x2A6DF => 2,
+        // CJK Compatibility Ideographs
+        0xF900..=0xFAFF => 2,
+        // Fullwidth Forms
+        0xFF01..=0xFF60 => 2,
+        0xFFE0..=0xFFE6 => 2,
+        // CJK Radicals / Kangxi Radicals
+        0x2E80..=0x2FDF => 2,
+        // Hiragana / Katakana (some fonts render wide)
+        0x3040..=0x309F => 2,
+        0x30A0..=0x30FF => 2,
+        // Bopomofo
+        0x3100..=0x312F => 2,
+        // Enclosed CJK
+        0x3200..=0x32FF => 2,
+        // CJK Compatibility Forms
+        0xFE30..=0xFE4F => 2,
+        // Emoji (most are wide)
+        0x1F300..=0x1F9FF => 2,
+        0x2600..=0x26FF => 1, // Misc symbols (some narrow)
+        0x2700..=0x27BF => 1, // Dingbats (some narrow)
+        _ => 1,
+    }
 }
 
 /// Wrap text into lines that fit within the given width.
@@ -395,5 +430,13 @@ mod tests {
         assert_eq!(lines[0], "Hello");
         assert_eq!(lines[1], "World Foo");
         assert_eq!(lines[2], "Bar");
+    }
+
+    #[test]
+    fn test_cjk_text_width() {
+        assert_eq!(text_width("Hello"), 5);
+        assert_eq!(text_width("你好"), 4); // 2 CJK chars = 4 cells
+        assert_eq!(text_width("Hi你好"), 6); // 2 ASCII + 2 CJK = 6
+        assert_eq!(text_width("Ａ"), 2); // Fullwidth A
     }
 }
