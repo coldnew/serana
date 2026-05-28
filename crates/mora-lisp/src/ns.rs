@@ -121,6 +121,7 @@ impl Namespace {
 pub struct NamespaceRegistry {
     namespaces: HashMap<String, Arc<Mutex<Namespace>>>,
     current: Arc<Mutex<Namespace>>,
+    loaded: std::collections::HashSet<String>,
 }
 
 impl NamespaceRegistry {
@@ -132,6 +133,7 @@ impl NamespaceRegistry {
         let mut reg = Self {
             namespaces,
             current: user_ns,
+            loaded: std::collections::HashSet::new(),
         };
 
         // Create core namespace with builtins
@@ -170,6 +172,14 @@ impl NamespaceRegistry {
 
     pub fn find(&self, name: &str) -> Option<Arc<Mutex<Namespace>>> {
         self.namespaces.get(name).cloned()
+    }
+
+    pub fn is_loaded(&self, name: &str) -> bool {
+        self.loaded.contains(name)
+    }
+
+    pub fn mark_loaded(&mut self, name: &str) {
+        self.loaded.insert(name.to_string());
     }
 
     pub fn require(&mut self, ns_name: &str, alias: Option<&str>) -> Result<(), String> {

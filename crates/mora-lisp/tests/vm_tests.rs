@@ -446,4 +446,25 @@ mod tests {
             _ => panic!("expected vector"),
         }
     }
-}
+
+    #[test]
+    fn test_namespace_load_cache() {
+        let mut lisp = MoraLisp::new();
+
+        // First ns declaration populates and marks loaded
+        lisp.eval("(ns cache-test-ns)").unwrap();
+        assert!(lisp.ns().is_loaded("cache-test-ns"));
+
+        // Define a var in the namespace
+        lisp.eval("(def my-var 42)").unwrap();
+
+        // Second ns declaration should skip refer_all but still switch namespace
+        lisp.eval("(ns user)").unwrap();
+        lisp.eval("(ns cache-test-ns)").unwrap();
+        assert!(lisp.ns().is_loaded("cache-test-ns"));
+
+        // The var should still be accessible after re-entering
+        let result = lisp.eval("my-var").unwrap();
+        assert_eq!(result, Value::Int(42));
+    }
+ }

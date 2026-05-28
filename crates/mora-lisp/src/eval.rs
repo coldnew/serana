@@ -975,9 +975,13 @@ impl Evaluator {
         self.ns
             .set_current(&sym.name)
             .map_err(|e| EvalError::SpecialForm(e))?;
+        if self.ns.is_loaded(&sym.name) {
+            return Ok(Value::Nil);
+        }
         self.ns
             .refer_all("mora.core", &sym.name)
             .map_err(|e| EvalError::SpecialForm(e))?;
+        self.ns.mark_loaded(&sym.name);
         Ok(Value::Nil)
     }
 
