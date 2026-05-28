@@ -9,10 +9,7 @@ use super::lisp_ext;
 pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let help_height = 1u16;
     let status_height = 1u16;
-    let cmd_height: u16 = if matches!(
-        editor.mode(),
-        EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward
-    ) {
+    let cmd_height: u16 = if editor.minibuffer_active() {
         1
     } else {
         0
@@ -132,12 +129,7 @@ fn build_status_line(editor: &MoraEditor, width: u16) -> UiNode {
 }
 
 fn build_command_line(editor: &MoraEditor, width: u16) -> UiNode {
-    let prompt = match editor.mode() {
-        EditorMode::Command => ":",
-        EditorMode::SearchForward => "/",
-        EditorMode::SearchBackward => "?",
-        _ => "",
-    };
+    let prompt = editor.minibuffer_prompt();
     let input = editor.command_input();
 
     UiNode::row(vec![

@@ -131,12 +131,7 @@ pub fn render_status_line(editor: &MoraEditor, width: usize) -> StyledLine {
 }
 
 pub fn render_command_line(editor: &MoraEditor, width: usize) -> StyledLine {
-    let prompt = match editor.mode() {
-        EditorMode::Command => ":",
-        EditorMode::SearchForward => "/",
-        EditorMode::SearchBackward => "?",
-        _ => "",
-    };
+    let prompt = editor.minibuffer_prompt();
     let input = editor.command_input();
 
     let style = MoraStyle::new().fg(MoraColor::new(232, 236, 244));

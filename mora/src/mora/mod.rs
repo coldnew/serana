@@ -8,6 +8,7 @@ pub mod lisp_ext;
 mod macro_state;
 pub mod major_mode;
 mod mark;
+mod minibuffer;
 pub mod minor_mode;
 pub mod overlay;
 mod rectangle;
@@ -26,6 +27,7 @@ pub use kill_ring::KillRing;
 pub use macro_state::MacroState;
 pub use major_mode::{BracketPair, CommentStyle, MajorMode, MajorModeKind};
 pub use mark::MarkRing;
+pub use minibuffer::{CompletionResult, Minibuffer};
 pub use minor_mode::{all_minor_mode_names, create_minor_mode, MinorMode, MinorModeRegistry};
 pub use overlay::{Overlay, OverlayFace, OverlayStore};
 pub use rectangle::{

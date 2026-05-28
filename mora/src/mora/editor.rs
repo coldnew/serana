@@ -10,6 +10,7 @@ use super::kill_ring::KillRing;
 use super::lisp_ext::MoraLispBridge;
 use super::macro_state::MacroState;
 use super::mark::MarkRing;
+use super::minibuffer::{CompletionResult, Minibuffer};
 use super::rectangle::{self, RectRegion};
 use super::register::{RegisterValue, Registers};
 use super::view::View;
@@ -27,6 +28,7 @@ pub struct MoraEditor {
     pub mode: EditorMode,
     pub view: View,
     pub command_input: String,
+    pub minibuffer: Minibuffer,
     pub kill_ring: KillRing,
     pub registers: Registers,
     pub mark_ring: MarkRing,
@@ -89,6 +91,7 @@ impl MoraEditor {
             mode: EditorMode::Normal,
             view: View::new(height),
             command_input: String::new(),
+            minibuffer: Minibuffer::default(),
             kill_ring: KillRing::new(),
             registers: Registers::new(),
             mark_ring: MarkRing::new(),
@@ -168,7 +171,32 @@ impl MoraEditor {
         &self.view
     }
     pub fn command_input(&self) -> &str {
-        &self.command_input
+        if self.minibuffer.is_active() {
+            self.minibuffer.input()
+        } else {
+            &self.command_input
+        }
+    }
+
+    pub fn minibuffer_prompt(&self) -> &str {
+        if self.minibuffer.is_active() {
+            self.minibuffer.prompt()
+        } else {
+            match self.mode {
+                EditorMode::Command => ":",
+                EditorMode::SearchForward => "/",
+                EditorMode::SearchBackward => "?",
+                _ => "",
+            }
+        }
+    }
+
+    pub fn minibuffer_active(&self) -> bool {
+        self.minibuffer.is_active()
+            || matches!(
+                self.mode,
+                EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward
+            )
     }
     pub fn status_message(&self) -> &str {
         &self.status_message
@@ -180,6 +208,57 @@ impl MoraEditor {
     pub fn set_height(&mut self, height: usize) {
         self.view.height = height.max(1);
         self.view.ensure_cursor_visible(&self.buffer);
+    }
+
+    fn activate_minibuffer(&mut self, mode: EditorMode) {
+        let prompt = match mode {
+            EditorMode::Command => ":",
+            EditorMode::SearchForward => "/",
+            EditorMode::SearchBackward => "?",
+            _ => "",
+        };
+        self.activate_minibuffer_with_prompt(mode, prompt);
+    }
+
+    fn activate_minibuffer_with_prompt(&mut self, mode: EditorMode, prompt: &str) {
+        self.mode = mode;
+        self.command_input.clear();
+        self.minibuffer.activate(prompt);
+        if mode == EditorMode::Command {
+            let candidates = self.command_candidates();
+            self.minibuffer.set_completions(candidates);
+        }
+    }
+
+    fn clear_minibuffer(&mut self) {
+        self.command_input.clear();
+        self.minibuffer.clear();
+    }
+
+    fn set_minibuffer_input(&mut self, input: impl Into<String>) {
+        let input = input.into();
+        self.command_input = input.clone();
+        if self.minibuffer.is_active() {
+            self.minibuffer.set_input(input);
+        }
+    }
+
+    fn push_minibuffer_char(&mut self, ch: char) {
+        if self.minibuffer.is_active() {
+            self.minibuffer.push(ch);
+            self.command_input = self.minibuffer.input().to_string();
+        } else {
+            self.command_input.push(ch);
+        }
+    }
+
+    fn pop_minibuffer_char(&mut self) {
+        if self.minibuffer.is_active() {
+            self.minibuffer.pop();
+            self.command_input = self.minibuffer.input().to_string();
+        } else {
+            self.command_input.pop();
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
@@ -256,7 +335,7 @@ impl MoraEditor {
                 (_, KeyCode::Char('c')) | (_, KeyCode::Char('k')) => KeyAction::Quit,
                 (_, KeyCode::Char('f')) => KeyAction::SetMode(EditorMode::SearchForward),
                 (_, KeyCode::Char('b')) => {
-                    let cmd = self.command_input.clone();
+                    let cmd = self.command_input().to_string();
                     KeyAction::FindBackward(cmd)
                 }
                 (_, KeyCode::Char('r')) => {
@@ -324,8 +403,7 @@ impl MoraEditor {
             },
             'g' => match key.code {
                 KeyCode::Char('g') => {
-                    self.mode = EditorMode::Command;
-                    self.command_input.clear();
+                    self.activate_minibuffer_with_prompt(EditorMode::Command, "Goto line: ");
                     self.status_message = "Goto line: ".to_string();
                     KeyAction::None
                 }
@@ -857,7 +935,7 @@ impl MoraEditor {
             | (KeyModifiers::CONTROL, KeyCode::Char('_')) => KeyAction::Undo,
             (KeyModifiers::CONTROL, KeyCode::Char('g')) => {
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 KeyAction::None
             }
 
@@ -884,8 +962,7 @@ impl MoraEditor {
             }
             (KeyModifiers::ALT, KeyCode::Char('u')) => KeyAction::UppercaseWord,
             (KeyModifiers::ALT, KeyCode::Char('x')) => {
-                self.mode = EditorMode::Command;
-                self.command_input = String::new();
+                self.activate_minibuffer_with_prompt(EditorMode::Command, "M-x ");
                 KeyAction::None
             }
 
@@ -1745,14 +1822,14 @@ impl MoraEditor {
                     let a = self.mark_ring.peek().copied().unwrap_or(self.buffer.cursor);
                     let b = self.buffer.cursor;
                     let rect = RectRegion::from_corners(a, b);
-                    let input = self.command_input.clone();
+                    let input = self.command_input().to_string();
                     if !input.is_empty() {
                         rectangle::insert_rectangle(&mut self.buffer, &rect, &input);
                         self.status_message = "Inserted rectangle".to_string();
                     }
                     self.mark_ring.set_active(false);
                     self.mode = EditorMode::Normal;
-                    self.command_input.clear();
+                    self.clear_minibuffer();
                 }
             }
             KeyAction::IndentRegion(rect) => {
@@ -1812,9 +1889,16 @@ impl MoraEditor {
                     self.mark_ring.push(self.buffer.cursor);
                     self.mark_ring.set_active(true);
                 }
-                self.mode = mode;
+                if matches!(
+                    mode,
+                    EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward
+                ) {
+                    self.activate_minibuffer(mode);
+                } else {
+                    self.mode = mode;
+                }
                 if mode == EditorMode::Normal {
-                    self.command_input.clear();
+                    self.clear_minibuffer();
                     self.waiting_g = false;
                     self.waiting_op = None;
                     if !self.mark_ring.is_active() {
@@ -1825,17 +1909,15 @@ impl MoraEditor {
 
             KeyAction::Save => self.save_current_buffer(),
             KeyAction::SaveAs => {
-                let path_str = self
-                    .command_input
-                    .strip_prefix("w ")
-                    .unwrap_or(&self.command_input);
+                let command_input = self.command_input().to_string();
+                let path_str = command_input.strip_prefix("w ").unwrap_or(&command_input);
                 let path = PathBuf::from(path_str.trim());
                 match self.buffer.save_as(&path) {
                     Ok(()) => self.status_message = format!("Saved: {}", path.display()),
                     Err(e) => self.status_message = format!("Save error: {}", e),
                 }
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
             }
             KeyAction::Quit => {
                 if self.buffer.modified {
@@ -1849,10 +1931,10 @@ impl MoraEditor {
             }
 
             KeyAction::InputChar(c) => {
-                self.command_input.push(c);
+                self.push_minibuffer_char(c);
             }
             KeyAction::InputBackspace => {
-                self.command_input.pop();
+                self.pop_minibuffer_char();
             }
             KeyAction::ExecuteInput => {
                 self.execute_command();
@@ -1860,7 +1942,7 @@ impl MoraEditor {
             KeyAction::GotoLine(n) => {
                 self.buffer.goto_line(n);
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
             }
 
             KeyAction::FindForward(query) => {
@@ -1869,7 +1951,7 @@ impl MoraEditor {
                     self.status_message = format!("Pattern not found: {}", query);
                 }
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
             }
             KeyAction::FindBackward(query) => {
                 self.last_search_backward = Some(query.clone());
@@ -1877,7 +1959,7 @@ impl MoraEditor {
                     self.status_message = format!("Pattern not found: {}", query);
                 }
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
             }
             KeyAction::RepeatFind(forward) => {
                 if forward {
@@ -1897,13 +1979,13 @@ impl MoraEditor {
                     self.status_message = format!("Not found: {}", old);
                 }
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
             }
             KeyAction::ReplaceAll(old, new) => {
                 let count = self.buffer.replace_all(&old, &new);
                 self.status_message = format!("Replaced {} occurrence(s)", count);
                 self.mode = EditorMode::Normal;
-                self.command_input.clear();
+                self.clear_minibuffer();
             }
 
             KeyAction::YankLine => {
@@ -2541,7 +2623,7 @@ impl MoraEditor {
     }
 
     fn execute_command(&mut self) {
-        let input = self.command_input.clone();
+        let input = self.command_input().to_string();
         let trimmed = input.trim();
 
         if self.lisp_bridge.has_command(trimmed) {
@@ -2563,7 +2645,7 @@ impl MoraEditor {
                 }
             }
             self.mode = EditorMode::Emacs;
-            self.command_input.clear();
+            self.clear_minibuffer();
             return;
         }
 
@@ -2571,12 +2653,12 @@ impl MoraEditor {
         match trimmed {
             "iedit" | "multi-cursor-edit" => {
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 self.start_iedit();
                 return;
             }
             "goto-line" | "goto-line-number" => {
-                self.command_input.clear();
+                self.clear_minibuffer();
                 self.status_message = "Goto line: ".to_string();
                 // Stay in command mode for user to type line number
                 return;
@@ -2586,7 +2668,7 @@ impl MoraEditor {
                 let row = self.buffer.cursor.row;
                 self.view.scroll_top = row.saturating_sub(half);
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 self.status_message = "Recentered".to_string();
                 return;
             }
@@ -2598,7 +2680,7 @@ impl MoraEditor {
                 };
                 self.status_message = desc.to_string();
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 return;
             }
             "what-cursor-position" => {
@@ -2609,7 +2691,7 @@ impl MoraEditor {
                     self.buffer.line_count()
                 );
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 return;
             }
             _ if trimmed.starts_with("switch-mode ") || trimmed.starts_with("set-mode ") => {
@@ -2627,7 +2709,7 @@ impl MoraEditor {
                     self.status_message = format!("Unknown mode: {}", mode_name);
                 }
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 return;
             }
             _ if trimmed.starts_with("eval ") || trimmed.starts_with("eval-expression ") => {
@@ -2682,13 +2764,13 @@ impl MoraEditor {
                     }
                 }
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 return;
             }
             "lisp-repl" | "repl" => {
                 self.status_message = "Mora REPL: type (help) for commands".to_string();
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 return;
             }
             _ if trimmed.starts_with("shell-command ") => {
@@ -2739,7 +2821,7 @@ impl MoraEditor {
                     }
                 }
                 self.mode = EditorMode::Emacs;
-                self.command_input.clear();
+                self.clear_minibuffer();
                 return;
             }
             _ => {}
@@ -2753,7 +2835,7 @@ impl MoraEditor {
                     }
                     self.quit_requested = true;
                     self.mode = EditorMode::Normal;
-                    self.command_input.clear();
+                    self.clear_minibuffer();
                     return;
                 }
                 keymap::parse_command(&input)
@@ -2767,7 +2849,7 @@ impl MoraEditor {
             && self.mode != EditorMode::SearchForward
             && self.mode != EditorMode::SearchBackward
         {
-            self.command_input.clear();
+            self.clear_minibuffer();
         }
     }
 
@@ -2807,7 +2889,7 @@ impl MoraEditor {
         }
     }
 
-    fn mx_complete(&mut self) {
+    fn command_candidates(&self) -> Vec<String> {
         let built_in_commands = [
             "capitalize-word",
             "cleanup-buffer",
@@ -2843,36 +2925,43 @@ impl MoraEditor {
             "what-cursor-position",
             "widen",
         ];
-        let input = self.command_input.trim();
-        if input.is_empty() {
-            return;
-        }
+
         let mut commands: Vec<String> = built_in_commands.iter().map(|c| c.to_string()).collect();
         commands.extend(self.lisp_bridge.command_names());
         commands.sort();
         commands.dedup();
+        commands
+    }
 
-        let matches: Vec<&str> = commands
-            .iter()
-            .map(String::as_str)
-            .filter(|c| c.starts_with(input))
-            .collect();
-        if matches.len() == 1 {
-            self.command_input = matches[0].to_string();
-        } else if matches.len() > 1 {
-            // Find common prefix
-            let common = matches.iter().fold(matches[0].to_string(), |acc, m| {
-                acc.chars()
-                    .zip(m.chars())
-                    .take_while(|(a, b)| a == b)
-                    .map(|(a, _)| a)
-                    .collect()
-            });
-            if common.len() > input.len() {
-                self.command_input = common;
-            } else {
-                self.status_message = matches.join("  ");
+    fn mx_complete(&mut self) {
+        let input = self.command_input().trim();
+        if input.is_empty() {
+            return;
+        }
+
+        if self.minibuffer.is_active() {
+            let candidates = self.command_candidates();
+            self.minibuffer.set_completions(candidates);
+            match self.minibuffer.complete_prefix() {
+                CompletionResult::Completed => {
+                    self.command_input = self.minibuffer.input().to_string();
+                }
+                CompletionResult::Matches(matches) => {
+                    self.status_message = matches.join("  ");
+                }
+                CompletionResult::None => {}
             }
+            return;
+        }
+
+        let mut minibuffer = Minibuffer::default();
+        minibuffer.activate("M-x ");
+        minibuffer.set_input(self.command_input.clone());
+        minibuffer.set_completions(self.command_candidates());
+        match minibuffer.complete_prefix() {
+            CompletionResult::Completed => self.command_input = minibuffer.input().to_string(),
+            CompletionResult::Matches(matches) => self.status_message = matches.join("  "),
+            CompletionResult::None => {}
         }
     }
 
@@ -2949,8 +3038,8 @@ impl MoraEditor {
                 Err(e) => self.status_message = format!("Save error: {}", e),
             }
         } else {
-            self.mode = EditorMode::Command;
-            self.command_input = "w ".to_string();
+            self.activate_minibuffer(EditorMode::Command);
+            self.set_minibuffer_input("w ");
         }
     }
 
@@ -3237,6 +3326,32 @@ mod tests {
         editor.mx_complete();
 
         assert_eq!(editor.command_input, "coldnew-test-command");
+    }
+
+    #[test]
+    fn command_mode_activates_minibuffer() {
+        let mut editor = MoraEditor::new(20);
+
+        editor.execute_action(KeyAction::SetMode(EditorMode::Command));
+        editor.execute_action(KeyAction::InputChar('w'));
+        editor.execute_action(KeyAction::InputBackspace);
+
+        assert!(editor.minibuffer_active());
+        assert_eq!(editor.minibuffer_prompt(), ":");
+        assert_eq!(editor.command_input(), "");
+    }
+
+    #[test]
+    fn mx_uses_minibuffer_prompt_and_completion() {
+        let mut editor = MoraEditor::new(20);
+
+        editor.activate_minibuffer_with_prompt(EditorMode::Command, "M-x ");
+        editor.execute_action(KeyAction::InputChar('s'));
+        editor.execute_action(KeyAction::InputChar('a'));
+        editor.mx_complete();
+
+        assert_eq!(editor.minibuffer_prompt(), "M-x ");
+        assert_eq!(editor.command_input(), "save-");
     }
 }
 
