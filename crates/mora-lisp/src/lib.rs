@@ -44,6 +44,13 @@ impl MoraLisp {
         Ok(result)
     }
 
+    /// Compile to bytecode and run through the VM.
+    /// Falls back to tree-walking if compilation fails for any form.
+    pub fn eval_vm(&mut self, input: &str) -> Result<Value, Error> {
+        let forms = self.evaluator.read_cached(input)?;
+        Ok(vm::compile_and_run(&mut self.evaluator, &forms)?)
+    }
+
     pub fn eval_form(&mut self, form: &Value) -> Result<Value, Error> {
         Ok(self.evaluator.eval(form)?)
     }

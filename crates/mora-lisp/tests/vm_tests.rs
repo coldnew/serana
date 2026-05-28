@@ -824,4 +824,31 @@ mod tests {
         let mut lisp = MoraLisp::new();
         assert_eq!(lisp.eval("(mora.string/word-wrap 10 \"This is too long\")").unwrap(), Value::string("This is\ntoo long"));
     }
-}
+
+    #[test]
+    fn test_eval_vm_arithmetic() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval_vm("(+ 1 2 3)").unwrap();
+        assert_eq!(result, Value::Int(6));
+    }
+
+    #[test]
+    fn test_eval_vm_defn_dispatches_compiled() {
+        let mut lisp = MoraLisp::new();
+        // Defn compiles through VM
+        lisp.eval_vm("(defn square [x] (* x x))").unwrap();
+        // Calling through eval_vm dispatches compiled bytecode
+        let result = lisp.eval_vm("(square 5)").unwrap();
+        assert_eq!(result, Value::Int(25));
+    }
+
+    #[test]
+    fn test_eval_vm_defn_via_tree_walking() {
+        let mut lisp = MoraLisp::new();
+        // Defn compiles through VM, registers compiled body
+        lisp.eval_vm("(defn square [x] (* x x))").unwrap();
+        // Calling through tree-walking eval_fn should dispatch compiled body
+        let result = lisp.eval("(square 5)").unwrap();
+        assert_eq!(result, Value::Int(25));
+    }
+ }

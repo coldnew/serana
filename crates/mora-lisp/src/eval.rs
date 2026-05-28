@@ -562,6 +562,13 @@ impl Evaluator {
     }
 
     pub fn call_fn(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
+        // Check for compiled bytecode dispatch
+        if let Some(ref name) = func.name {
+            if self.compiled_fns.contains_key(name) {
+                return self.run_compiled_fn(name, &args, &func.closure);
+            }
+        }
+
         let mut current_func = func;
         let mut current_args = args;
 
@@ -2117,17 +2124,25 @@ impl Evaluator {
             .expect("mora.core and user namespaces exist");
 
         // Create mora.string namespace and populate from mora.core
-        let string_ns = self.ns.find_or_create("mora.string");
+        self.create_ns_from_core("mora.string");
+
+        // Create mora.math namespace and populate from mora.core
+        self.create_ns_from_core("mora.math");
+    }
+
+    fn create_ns_from_core(&mut self, ns_name: &str) {
+        let target_ns = self.ns.find_or_create(ns_name);
         let core_ns = self.ns.find("mora.core").expect("mora.core exists");
         let core = core_ns.lock();
-        let mut string = string_ns.lock();
+        let mut target = target_ns.lock();
+        let prefix = format!("{}/", ns_name);
         for (name, var) in &core.vars {
-            if name.starts_with("mora.string/") {
-                let short_name = &name["mora.string/".len()..];
-                string.vars.insert(short_name.to_string(), var.clone());
+            if name.starts_with(&prefix) {
+                let short_name = &name[prefix.len()..];
+                target.vars.insert(short_name.to_string(), var.clone());
             }
         }
-        drop(string);
+        drop(target);
         drop(core);
     }
 }

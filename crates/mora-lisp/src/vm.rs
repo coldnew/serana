@@ -7,90 +7,14 @@
 //!
 //! Usage: `vm::compile_and_run(&mut evaluator, &forms)` for a batch of forms,
 //! or use the `BytecodeCompiler` / `BytecodeVm` separately.
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use parking_lot::Mutex;
 
 use crate::bytecode::{CompiledFunction, Op};
 use crate::eval::{EvalError, Evaluator};
 use crate::types::{FnValue, Param, Symbol, Value};
-
-// ── Compiler ──────────────────────────────────────────────────────────────────
-
-// ── Instruction set ──────────────────────────────────────────────────────────
-
-/// Bytecode instruction for the stack-based VM.
-///
-/// Operates on a value stack. Constants and strings are stored in
-/// side tables (pools) indexed by u16.
-#[derive(Debug, Clone)]
-pub enum Op {
-    /// Push constant from the constant pool.
-    PushConst(u16),
-    /// Push nil.
-    PushNil,
-    /// Push true / false.
-    PushTrue,
-    PushFalse,
-    /// Pop and discard top of stack.
-    Pop,
-    /// Duplicate top of stack.
-    Dup,
-
-    /// Resolve a symbol by name index, push its value.
-    ResolveSymbol(u16),
-    /// Define a symbol in current ns: stack = [value], defines `name`.
-    DefineSymbol(u16),
-    /// Switch to namespace.
-    PushNs(u16),
-    /// (require [ns :as alias]) — stack has optional alias string
-    RequireNs(u16),
-
-    /// Local variable access.
-    GetLocal(u16),
-    SetLocal(u16),
-
-    /// Unconditional jump (offset from current ip).
-    Jump(i16),
-    /// Jump if top of stack is falsy.
-    JumpIfFalse(i16),
-    /// Jump if top of stack is truthy.
-    JumpIfTrue(i16),
-
-    /// Call function with N arguments.  Stack: [... fn arg1 ... argN]
-    Call(u8),
-    /// Tail call optimization marker.
-    TailCall(u8),
-    /// Return from current frame.
-    Return,
-
-    /// Create a closure. Index into the function pool.
-    MakeClosure(u16),
-
-    /// Create a collection.
-    MakeList(u16),
-    MakeVector(u16),
-    MakeMap(u16),
-
-    /// Stack: [seq] → seq[i]
-    GetIndex,
-    /// Stack: [seq val] → new_seq with seq[i]=val (not used yet, placeholder)
-
-    /// Invoke a native function. Stack: [arg1 ... argN] → result
-    InvokeNative(u16),
-
-    /// Halt — return top of stack.
-    Halt,
-}
-
-// ── Compiled function ─────────────────────────────────────────────────────────
-
-/// A compiled bytecode function.
-#[derive(Clone)]
-pub struct CompiledFunction {
-    pub name: Option<String>,
-    pub params: Vec<Param>,
-    pub locals: u16,
-    pub ops: Vec<Op>,
-    pub upvalues: Vec<Symbol>,
-}
 
 // ── Compiler ──────────────────────────────────────────────────────────────────
 
@@ -137,7 +61,9 @@ impl BytecodeCompiler {
             params: vec![],
             locals: self.next_local,
             ops: self.ops.clone(),
-            upvalues: vec![],
+            constants: self.constants.clone(),
+            strings: self.strings.clone(),
+            native_fns: self.native_fns.clone(),
         })
     }
 
@@ -401,6 +327,9 @@ impl BytecodeCompiler {
 
        // Merge child pools first (before moving ops)
        self.merge_compiler(&body_compiler);
+       let body_constants = body_compiler.constants.clone();
+       let body_strings = body_compiler.strings.clone();
+       let body_native_fns = body_compiler.native_fns.clone();
 
         let fn_idx = self.functions.len() as u16;
         self.functions.push(CompiledFunction {
@@ -408,7 +337,9 @@ impl BytecodeCompiler {
             params,
             locals: body_compiler.next_local,
             ops: body_compiler.ops,
-            upvalues: vec![],
+            constants: body_constants,
+            strings: body_strings,
+            native_fns: body_native_fns,
         });
         self.ops.push(Op::MakeClosure(fn_idx));
         Ok(())
@@ -424,7 +355,6 @@ impl BytecodeCompiler {
         };
 
         // Compile as (def name (fn params body...))
-        // We compile the fn part, then define it
         let fn_form = Value::list(
             std::iter::once(Value::Symbol(Symbol {
                 ns: None,
@@ -434,6 +364,12 @@ impl BytecodeCompiler {
             .collect(),
         );
         self.compile_expr(&fn_form, false)?;
+
+        // Set the name on the last compiled function so MakeClosure
+        // and call_fn can dispatch through the VM
+        if let Some(last_fn) = self.functions.last_mut() {
+            last_fn.name = Some(name.clone());
+        }
 
         let name_idx = self.add_string(name);
         self.ops.push(Op::DefineSymbol(name_idx));
@@ -822,16 +758,10 @@ impl BytecodeVm {
                             EvalError::Custom(format!("unknown function index: {}", fn_idx))
                         })?;
 
-                    // Build closure from compiled function
-                    let mut closure_env = HashMap::new();
-                    for sym in &compiled_fn.upvalues {
-                        if let Some(val) = eval.ns.resolve_symbol(sym) {
-                            closure_env.insert(sym.clone(), val);
-                        }
-                    }
+                    // Build closure
+                    let closure_env = HashMap::new();
 
-                    // Wrap in an evaluable FnValue — but we store the compiled ops
-                    // For simplicity, we'll store as a constant and dispatch on it
+                    let fn_name = compiled_fn.name.clone().unwrap_or_default();
                     let val = Value::Fn(FnValue {
                         name: compiled_fn.name.clone(),
                         params: compiled_fn.params.clone(),
@@ -840,6 +770,12 @@ impl BytecodeVm {
                         is_macro: false,
                         meta: None,
                     });
+
+                    // Register compiled body so call_fn can dispatch through VM
+                    if !fn_name.is_empty() {
+                        eval.compiled_fns.insert(fn_name, compiled_fn);
+                    }
+
                     self.stack.push(val);
                 }
 
