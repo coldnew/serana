@@ -85,6 +85,7 @@ pub struct Evaluator {
     collector: Option<CollectorHandle>,
     macroexpand_cache: HashMap<Symbol, Value>,
     form_cache: HashMap<u64, Vec<Value>>,
+    pub compiled_fns: HashMap<String, crate::bytecode::CompiledFunction>,
     in_tail_position: bool,
     pending_tail_call: Option<(FnValue, Vec<Value>)>,
 }
@@ -118,6 +119,7 @@ impl Evaluator {
             collector: Some(collector),
             macroexpand_cache: HashMap::new(),
             form_cache: HashMap::new(),
+            compiled_fns: HashMap::new(),
             in_tail_position: false,
             pending_tail_call: None,
         };
@@ -148,6 +150,254 @@ impl Evaluator {
     /// Clear the form cache (useful if memory is a concern or after init).
     pub fn clear_form_cache(&mut self) {
         self.form_cache.clear();
+    }
+
+    /// Run a compiled function's body with bound args.
+    /// Called from `call_fn` when a compiled version exists.
+    pub fn run_compiled_fn(
+        &mut self,
+        fn_name: &str,
+        args: &[Value],
+        closure: &Arc<Mutex<HashMap<Symbol, Value>>>,
+    ) -> Result<Value, EvalError> {
+        use crate::bytecode::{CompiledFunction, Op};
+
+        let compiled = self
+            .compiled_fns
+            .get(fn_name)
+            .cloned()
+            .ok_or_else(|| EvalError::Custom(format!("no compiled body for {}", fn_name)))?;
+
+        let mut locals: Vec<Value> = vec![Value::Nil; compiled.locals as usize];
+
+        // Bind params to locals
+        let mut arg_idx: usize = 0;
+        for (i, param) in compiled.params.iter().enumerate() {
+            match param {
+                crate::types::Param::Named(_) => {
+                    locals[i] = args.get(arg_idx).cloned().unwrap_or(Value::Nil);
+                    arg_idx += 1;
+                }
+                crate::types::Param::Rest(_) => {
+                    let rest: Vec<Value> = args[arg_idx..].to_vec();
+                    locals[i] = Value::list(rest);
+                    arg_idx = args.len();
+                }
+                _ => {
+                    locals[i] = args.get(arg_idx).cloned().unwrap_or(Value::Nil);
+                    arg_idx += 1;
+                }
+            }
+        }
+
+        // Bind closure vars to locals (after params)
+        let closure_env = closure.lock();
+        let mut next_local = compiled.params.len() as u16;
+        for (sym, val) in closure_env.iter() {
+            if (next_local as usize) < locals.len() {
+                locals[next_local as usize] = val.clone();
+                next_local += 1;
+            }
+        }
+        drop(closure_env);
+
+        // Execute bytecode
+        let mut stack: Vec<Value> = Vec::with_capacity(32);
+        let mut ip: usize = 0;
+
+        while ip < compiled.ops.len() {
+            let op = compiled.ops[ip].clone();
+            ip += 1;
+
+            match op {
+                Op::PushConst(idx) => {
+                    let val = compiled.constants.get(idx as usize).cloned().unwrap_or(Value::Nil);
+                    stack.push(val);
+                }
+                Op::PushNil => stack.push(Value::Nil),
+                Op::PushTrue => stack.push(Value::Bool(true)),
+                Op::PushFalse => stack.push(Value::Bool(false)),
+                Op::Pop => { stack.pop(); }
+                Op::Dup => {
+                    if let Some(top) = stack.last().cloned() {
+                        stack.push(top);
+                    }
+                }
+                Op::ResolveSymbol(idx) => {
+                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    if let Some(slash_pos) = name.find('/') {
+                        let ns_name = &name[..slash_pos];
+                        let var_name = &name[slash_pos + 1..];
+                        let sym = Symbol {
+                            ns: Some(Arc::new(ns_name.to_string())),
+                            name: Arc::new(var_name.to_string()),
+                        };
+                        let val = self.ns.resolve_symbol(&sym)
+                            .ok_or_else(|| EvalError::Undefined(name.clone()))?;
+                        stack.push(val);
+                    } else {
+                        let sym = Symbol {
+                            ns: None,
+                            name: Arc::new(name.clone()),
+                        };
+                        let val = self.ns.resolve_symbol(&sym)
+                            .ok_or_else(|| EvalError::Undefined(name))?;
+                        stack.push(val);
+                    }
+                }
+                Op::DefineSymbol(idx) => {
+                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    let val = stack.pop().unwrap_or(Value::Nil);
+                    let current_ns = self.ns.current_name();
+                    let (ns_name, var_name) = if let Some(slash_pos) = name.find('/') {
+                        (name[..slash_pos].to_string(), name[slash_pos + 1..].to_string())
+                    } else {
+                        (current_ns, name)
+                    };
+                    let ns = self.ns.find_or_create(&ns_name);
+                    ns.lock().intern(&var_name, val);
+                }
+                Op::PushNs(idx) => {
+                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    self.ns.find_or_create(&name);
+                    self.ns.set_current(&name)
+                        .map_err(|e| EvalError::SpecialForm(e))?;
+                    if !self.ns.is_loaded(&name) {
+                        self.ns.refer_all("mora.core", &name)
+                            .map_err(|e| EvalError::SpecialForm(e))?;
+                        self.ns.mark_loaded(&name);
+                    }
+                }
+                Op::RequireNs(idx) => {
+                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    let _alias = stack.pop();
+                    self.ns.require(&name, None)
+                        .map_err(|e| EvalError::SpecialForm(e))?;
+                }
+                Op::GetLocal(idx) => {
+                    let val = locals.get(idx as usize).cloned().unwrap_or(Value::Nil);
+                    stack.push(val);
+                }
+                Op::SetLocal(idx) => {
+                    let val = stack.last().cloned().unwrap_or(Value::Nil);
+                    if (idx as usize) < locals.len() {
+                        locals[idx as usize] = val;
+                    }
+                }
+                Op::Jump(offset) => {
+                    ip = (ip as isize - 1 + offset as isize) as usize;
+                }
+                Op::JumpIfFalse(offset) => {
+                    let cond = stack.last().cloned().unwrap_or(Value::Nil);
+                    if matches!(cond, Value::Nil | Value::Bool(false)) {
+                        ip = (ip as isize - 1 + offset as isize) as usize;
+                    }
+                }
+                Op::JumpIfTrue(offset) => {
+                    let cond = stack.last().cloned().unwrap_or(Value::Nil);
+                    if !matches!(cond, Value::Nil | Value::Bool(false)) {
+                        ip = (ip as isize - 1 + offset as isize) as usize;
+                    }
+                }
+                Op::Call(argc) => {
+                    let argc = argc as usize;
+                    let args_start = stack.len() - argc;
+                    let callee = if args_start > 0 {
+                        stack[args_start - 1].clone()
+                    } else {
+                        Value::Nil
+                    };
+                    let call_args: Vec<Value> = stack.drain(args_start..).collect();
+                    if args_start > 0 { stack.pop(); }
+                    let result = match callee {
+                        Value::Native(f) => f(&call_args).map_err(EvalError::Custom)?,
+                        Value::Fn(f) => self.call_fn(f, call_args)?,
+                        other => return Err(EvalError::NotAFunction(other.type_name().to_string())),
+                    };
+                    stack.push(result);
+                }
+                Op::TailCall(argc) => {
+                    // Same as Call for now
+                    let argc = argc as usize;
+                    let args_start = stack.len() - argc;
+                    let callee = if args_start > 0 {
+                        stack[args_start - 1].clone()
+                    } else {
+                        Value::Nil
+                    };
+                    let call_args: Vec<Value> = stack.drain(args_start..).collect();
+                    if args_start > 0 { stack.pop(); }
+                    let result = match callee {
+                        Value::Native(f) => f(&call_args).map_err(EvalError::Custom)?,
+                        Value::Fn(f) => self.call_fn(f, call_args)?,
+                        other => return Err(EvalError::NotAFunction(other.type_name().to_string())),
+                    };
+                    stack.push(result);
+                }
+                Op::Return | Op::Halt => break,
+                Op::MakeClosure(fn_idx) => {
+                    let val = compiled
+                        .constants
+                        .get(fn_idx as usize)
+                        .cloned()
+                        .unwrap_or(Value::Nil);
+                    stack.push(val);
+                }
+                Op::MakeList(count_idx) => {
+                    let count = match compiled.constants.get(count_idx as usize) {
+                        Some(Value::Int(n)) => *n as usize,
+                        _ => 0,
+                    };
+                    let start = stack.len().saturating_sub(count);
+                    let items: Vec<Value> = stack.drain(start..).collect();
+                    stack.push(Value::list(items));
+                }
+                Op::MakeVector(count_idx) => {
+                    let count = match compiled.constants.get(count_idx as usize) {
+                        Some(Value::Int(n)) => *n as usize,
+                        _ => 0,
+                    };
+                    let start = stack.len().saturating_sub(count);
+                    let items: Vec<Value> = stack.drain(start..).collect();
+                    stack.push(Value::vector(items));
+                }
+                Op::MakeMap(count_idx) => {
+                    let count = match compiled.constants.get(count_idx as usize) {
+                        Some(Value::Int(n)) => *n as usize,
+                        _ => 0,
+                    };
+                    let start = stack.len().saturating_sub(count * 2);
+                    let items: Vec<Value> = stack.drain(start..).collect();
+                    let mut pairs = Vec::new();
+                    for chunk in items.chunks(2) {
+                        if chunk.len() == 2 {
+                            pairs.push((chunk[0].clone(), chunk[1].clone()));
+                        }
+                    }
+                    stack.push(Value::map(pairs));
+                }
+                Op::GetIndex => {
+                    let idx = stack.pop().unwrap_or(Value::Int(0));
+                    let seq = stack.pop().unwrap_or(Value::Nil);
+                    match (&seq, &idx) {
+                        (Value::Vector(v), Value::Int(i)) => {
+                            let val = v.get(*i as usize).cloned().unwrap_or(Value::Nil);
+                            stack.push(val);
+                        }
+                        _ => stack.push(Value::Nil),
+                    }
+                }
+                Op::InvokeNative(native_idx) => {
+                    let f = compiled.native_fns.get(native_idx as usize).copied()
+                        .ok_or_else(|| EvalError::Custom(format!("unknown native fn index: {}", native_idx)))?;
+                    let result = f(&stack).map_err(EvalError::Custom)?;
+                    stack.clear();
+                    stack.push(result);
+                }
+            }
+        }
+
+        Ok(stack.pop().unwrap_or(Value::Nil))
     }
 
     pub fn eval_in(&mut self, env: Env, form: &Value) -> Result<Value, EvalError> {
@@ -1865,5 +2115,19 @@ impl Evaluator {
         self.ns
             .refer_all("mora.core", "user")
             .expect("mora.core and user namespaces exist");
+
+        // Create mora.string namespace and populate from mora.core
+        let string_ns = self.ns.find_or_create("mora.string");
+        let core_ns = self.ns.find("mora.core").expect("mora.core exists");
+        let core = core_ns.lock();
+        let mut string = string_ns.lock();
+        for (name, var) in &core.vars {
+            if name.starts_with("mora.string/") {
+                let short_name = &name["mora.string/".len()..];
+                string.vars.insert(short_name.to_string(), var.clone());
+            }
+        }
+        drop(string);
+        drop(core);
     }
 }

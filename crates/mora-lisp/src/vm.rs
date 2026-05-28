@@ -8,13 +8,11 @@
 //! Usage: `vm::compile_and_run(&mut evaluator, &forms)` for a batch of forms,
 //! or use the `BytecodeCompiler` / `BytecodeVm` separately.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use parking_lot::Mutex;
-
+use crate::bytecode::{CompiledFunction, Op};
 use crate::eval::{EvalError, Evaluator};
 use crate::types::{FnValue, Param, Symbol, Value};
+
+// ── Compiler ──────────────────────────────────────────────────────────────────
 
 // ── Instruction set ──────────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+pub mod bytecode;
 pub mod eval;
 pub mod gc;
 pub mod host;

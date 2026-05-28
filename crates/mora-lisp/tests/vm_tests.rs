@@ -487,4 +487,341 @@ mod tests {
         let result = lisp.eval("other-val").unwrap();
         assert_eq!(result, Value::Int(10));
     }
- }
+
+    // --- mora.string tests ---
+
+    #[test]
+    fn test_mora_string_blank() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/blank? \"\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/blank? \"  \")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/blank? \"hello\")").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/blank? nil)").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_mora_string_capitalize() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/capitalize \"hello\")").unwrap(), Value::string("Hello"));
+        assert_eq!(lisp.eval("(mora.string/capitalize \"HELLO\")").unwrap(), Value::string("Hello"));
+        assert_eq!(lisp.eval("(mora.string/capitalize \"hELLO\")").unwrap(), Value::string("Hello"));
+        assert_eq!(lisp.eval("(mora.string/capitalize \"\")").unwrap(), Value::string(""));
+    }
+
+    #[test]
+    fn test_mora_string_case_conversions() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/lower-case \"HELLO\")").unwrap(), Value::string("hello"));
+        assert_eq!(lisp.eval("(mora.string/upper-case \"hello\")").unwrap(), Value::string("HELLO"));
+    }
+
+    #[test]
+    fn test_mora_string_trim() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/trim \"  hello  \")").unwrap(), Value::string("hello"));
+        assert_eq!(lisp.eval("(mora.string/triml \"  hello  \")").unwrap(), Value::string("hello  "));
+        assert_eq!(lisp.eval("(mora.string/trimr \"  hello  \")").unwrap(), Value::string("  hello"));
+    }
+
+    #[test]
+    fn test_mora_string_trim_newline() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/trim-newline \"hello\\n\")").unwrap(), Value::string("hello"));
+        assert_eq!(lisp.eval("(mora.string/trim-newline \"hello\\r\\n\")").unwrap(), Value::string("hello"));
+        assert_eq!(lisp.eval("(mora.string/trim-newline \"hello\")").unwrap(), Value::string("hello"));
+    }
+
+    #[test]
+    fn test_mora_string_starts_ends_includes() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/starts-with? \"hello world\" \"hello\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/starts-with? \"hello world\" \"world\")").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/ends-with? \"hello world\" \"world\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/ends-with? \"hello world\" \"hello\")").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/includes? \"hello world\" \"lo wo\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/includes? \"hello world\" \"xyz\")").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_mora_string_index_of() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/index-of \"hello world\" \"world\")").unwrap(), Value::Int(6));
+        assert_eq!(lisp.eval("(mora.string/index-of \"hello world\" \"xyz\")").unwrap(), Value::Nil);
+        assert_eq!(lisp.eval("(mora.string/index-of \"hello world\" \"o\")").unwrap(), Value::Int(4));
+        assert_eq!(lisp.eval("(mora.string/index-of \"hello world\" \"o\" 5)").unwrap(), Value::Int(7));
+    }
+
+    #[test]
+    fn test_mora_string_last_index_of() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/last-index-of \"hello world\" \"o\")").unwrap(), Value::Int(7));
+        assert_eq!(lisp.eval("(mora.string/last-index-of \"hello world\" \"o\" 5)").unwrap(), Value::Int(4));
+        assert_eq!(lisp.eval("(mora.string/last-index-of \"hello world\" \"xyz\")").unwrap(), Value::Nil);
+    }
+
+    #[test]
+    fn test_mora_string_split() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval("(mora.string/split \"a,b,c\" \",\")").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[0], Value::string("a"));
+                assert_eq!(v[1], Value::string("b"));
+                assert_eq!(v[2], Value::string("c"));
+            }
+            _ => panic!("expected vector"),
+        }
+        // With limit
+        let result = lisp.eval("(mora.string/split \"a,b,c,d\" \",\" 2)").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::string("a"));
+                assert_eq!(v[1], Value::string("b,c,d"));
+            }
+            _ => panic!("expected vector"),
+        }
+    }
+
+    #[test]
+    fn test_mora_string_split_lines() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval("(mora.string/split-lines \"a\\nb\\nc\")").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert_eq!(v.len(), 3);
+                assert_eq!(v[0], Value::string("a"));
+            }
+            _ => panic!("expected vector"),
+        }
+        // With \r\n
+        let result = lisp.eval("(mora.string/split-lines \"a\\r\\nb\\r\\nc\")").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert_eq!(v.len(), 3);
+            }
+            _ => panic!("expected vector"),
+        }
+    }
+
+    #[test]
+    fn test_mora_string_join() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/join \",\" [\"a\" \"b\" \"c\"])").unwrap(), Value::string("a,b,c"));
+        assert_eq!(lisp.eval("(mora.string/join [\"a\" \"b\" \"c\"])").unwrap(), Value::string("abc"));
+    }
+
+    #[test]
+    fn test_mora_string_replace() {
+        let mut lisp = MoraLisp::new();
+        // String replacement
+        assert_eq!(lisp.eval("(mora.string/replace \"hello world\" \"world\" \"there\")").unwrap(), Value::string("hello there"));
+        // Regex replacement
+        assert_eq!(lisp.eval("(mora.string/replace \"foo123bar\" \"[0-9]+\" \"NUM\")").unwrap(), Value::string("fooNUMbar"));
+    }
+
+    #[test]
+    fn test_mora_string_replace_first() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/replace-first \"aaa\" \"a\" \"b\")").unwrap(), Value::string("baa"));
+    }
+
+    #[test]
+    fn test_mora_string_reverse() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/reverse \"hello\")").unwrap(), Value::string("olleh"));
+        assert_eq!(lisp.eval("(mora.string/reverse \"\")").unwrap(), Value::string(""));
+    }
+
+    #[test]
+    fn test_mora_string_escape() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(
+            lisp.eval("(mora.string/escape \"<hello>\" {\\< \"&lt;\" \\> \"&gt;\"})").unwrap(),
+            Value::string("&lt;hello&gt;")
+        );
+    }
+
+    #[test]
+    fn test_mora_string_re_find() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/re-find \"[0-9]+\" \"abc123def\")").unwrap(), Value::string("123"));
+        assert_eq!(lisp.eval("(mora.string/re-find \"[0-9]+\" \"abcdef\")").unwrap(), Value::Nil);
+    }
+
+    #[test]
+    fn test_mora_string_re_seq() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval("(mora.string/re-seq \"[0-9]+\" \"abc123def456\")").unwrap();
+        match result {
+            Value::List(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::string("123"));
+                assert_eq!(v[1], Value::string("456"));
+            }
+            _ => panic!("expected list"),
+        }
+        assert_eq!(lisp.eval("(mora.string/re-seq \"[0-9]+\" \"abcdef\")").unwrap(), Value::Nil);
+    }
+
+    #[test]
+    fn test_mora_string_re_matches() {
+        let mut lisp = MoraLisp::new();
+        // Full match
+        assert_eq!(lisp.eval("(mora.string/re-matches \"[0-9]+\" \"123\")").unwrap(), Value::string("123"));
+        assert_eq!(lisp.eval("(mora.string/re-matches \"[0-9]+\" \"123abc\")").unwrap(), Value::Nil);
+        // Capture groups
+        let result = lisp.eval("(mora.string/re-matches \"([0-9]+)-([a-z]+)\" \"123-abc\")").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::string("123"));
+                assert_eq!(v[1], Value::string("abc"));
+            }
+            _ => panic!("expected vector of capture groups"),
+        }
+    }
+
+    #[test]
+    fn test_mora_string_with_require() {
+        let mut lisp = MoraLisp::new();
+        // Debug: check if mora.string/blank? works as qualified name
+        assert_eq!(lisp.eval("(mora.string/blank? \"\")").unwrap(), Value::Bool(true));
+        // Require with alias
+        lisp.eval("(require [mora.string :as str])").unwrap();
+        assert_eq!(lisp.eval("(str/blank? \"\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(str/upper-case \"hello\")").unwrap(), Value::string("HELLO"));
+        assert_eq!(lisp.eval("(str/reverse \"hello\")").unwrap(), Value::string("olleh"));
+    }
+
+    #[test]
+    fn test_mora_string_collapse_whitespace() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/collapse-whitespace \"only   one space   please\")").unwrap(), Value::string("only one space please"));
+        assert_eq!(lisp.eval("(mora.string/collapse-whitespace \"collapse \\n all \\t sorts of \\r whitespace\")").unwrap(), Value::string("collapse all sorts of whitespace"));
+    }
+
+    #[test]
+    fn test_mora_string_center() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/center 5 \"a\")").unwrap(), Value::string("  a  "));
+        assert_eq!(lisp.eval("(mora.string/center 5 \"ab\")").unwrap(), Value::string("  ab "));
+        assert_eq!(lisp.eval("(mora.string/center 1 \"abc\")").unwrap(), Value::string("abc"));
+    }
+
+    #[test]
+    fn test_mora_string_pad() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/pad-left 3 \"0\" \"3\")").unwrap(), Value::string("003"));
+        assert_eq!(lisp.eval("(mora.string/pad-right 3 \".\" \"3\")").unwrap(), Value::string("3.."));
+    }
+
+    #[test]
+    fn test_mora_string_truncate() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/truncate 6 \"This is too long\")").unwrap(), Value::string("Thi..."));
+        assert_eq!(lisp.eval("(mora.string/truncate 16 \"But this is not!\")").unwrap(), Value::string("But this is not!"));
+    }
+
+    #[test]
+    fn test_mora_string_left_right() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/left 3 \"lib/file.js\")").unwrap(), Value::string("lib"));
+        assert_eq!(lisp.eval("(mora.string/right 3 \"lib/file.js\")").unwrap(), Value::string(".js"));
+    }
+
+    #[test]
+    fn test_mora_string_chop() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/chop-left 3 \"lib/file.js\")").unwrap(), Value::string("/file.js"));
+        assert_eq!(lisp.eval("(mora.string/chop-right 3 \"lib/file.js\")").unwrap(), Value::string("lib/file"));
+        assert_eq!(lisp.eval("(mora.string/chop-suffix \"-test.js\" \"penguin-test.js\")").unwrap(), Value::string("penguin"));
+        assert_eq!(lisp.eval("(mora.string/chop-prefix \"/tmp\" \"/tmp/file.js\")").unwrap(), Value::string("/file.js"));
+        assert_eq!(lisp.eval("(mora.string/chop-suffixes [\"_test.js\" \"-test.js\"] \"penguin-test.js\")").unwrap(), Value::string("penguin"));
+        assert_eq!(lisp.eval("(mora.string/chop-prefixes [\"/tmp\" \"/my\"] \"/tmp/my/file.js\")").unwrap(), Value::string("/file.js"));
+    }
+
+    #[test]
+    fn test_mora_string_shared() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/shared-start \"bar\" \"baz\")").unwrap(), Value::string("ba"));
+        assert_eq!(lisp.eval("(mora.string/shared-start \"bar\" \"foo\")").unwrap(), Value::string(""));
+        assert_eq!(lisp.eval("(mora.string/shared-end \"bar\" \"var\")").unwrap(), Value::string("ar"));
+    }
+
+    #[test]
+    fn test_mora_string_repeat_prepend_append() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/repeat 3 \"ab\")").unwrap(), Value::string("ababab"));
+        assert_eq!(lisp.eval("(mora.string/prepend \"abc\" \"def\")").unwrap(), Value::string("abcdef"));
+        assert_eq!(lisp.eval("(mora.string/append \"abc\" \"def\")").unwrap(), Value::string("defabc"));
+    }
+
+    #[test]
+    fn test_mora_string_predicates() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/equals? \"abc\" \"abc\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/equals? \"abc\" \"ABC\")").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/less? \"abc\" \"abd\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/present? \" \")").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/present? \"x\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/present? nil)").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/lowercase? \"file\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/lowercase? \"File\")").unwrap(), Value::Bool(false));
+        assert_eq!(lisp.eval("(mora.string/uppercase? \"HULK SMASH\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/mixedcase? \"hELLO\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/capitalized? \"Hello\")").unwrap(), Value::Bool(true));
+        assert_eq!(lisp.eval("(mora.string/numeric? \"123\")").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_mora_string_presence_lines() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/presence \"hello\")").unwrap(), Value::string("hello"));
+        assert_eq!(lisp.eval("(mora.string/presence \"  \")").unwrap(), Value::Nil);
+        assert_eq!(lisp.eval("(mora.string/presence nil)").unwrap(), Value::Nil);
+        let result = lisp.eval("(mora.string/lines \"a\\nb\\nc\")").unwrap();
+        match result {
+            Value::Vector(v) => assert_eq!(v.len(), 3),
+            _ => panic!("expected vector"),
+        }
+    }
+
+    #[test]
+    fn test_mora_string_word_case_conversions() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/snake-case \"camelCase\")").unwrap(), Value::string("camel_case"));
+        assert_eq!(lisp.eval("(mora.string/dashed-words \"camelCase\")").unwrap(), Value::string("camel-case"));
+        assert_eq!(lisp.eval("(mora.string/upper-camel-case \"camel-case\")").unwrap(), Value::string("CamelCase"));
+        assert_eq!(lisp.eval("(mora.string/lower-camel-case \"camel-case\")").unwrap(), Value::string("camelCase"));
+        assert_eq!(lisp.eval("(mora.string/word-initials \"camel case\")").unwrap(), Value::string("cc"));
+        assert_eq!(lisp.eval("(mora.string/titleize \"hello world\")").unwrap(), Value::string("Hello World"));
+    }
+
+    #[test]
+    fn test_mora_string_count_matches() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/count-matches \"[0-9]+\" \"a1b2c3\")").unwrap(), Value::Int(3));
+    }
+
+    #[test]
+    fn test_mora_string_wrap() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/wrap \"hello\" \"<\" \">\")").unwrap(), Value::string("<hello>"));
+        assert_eq!(lisp.eval("(mora.string/wrap \"hello\" \"*\")").unwrap(), Value::string("*hello*"));
+    }
+
+    #[test]
+    fn test_mora_string_format() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/format \"Hello %s\" \"world\")").unwrap(), Value::string("Hello world"));
+        assert_eq!(lisp.eval("(mora.string/format \"%s + %s\" 1 2)").unwrap(), Value::string("1 + 2"));
+    }
+
+    #[test]
+    fn test_mora_string_word_wrap() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.string/word-wrap 10 \"This is too long\")").unwrap(), Value::string("This is\ntoo long"));
+    }
+}

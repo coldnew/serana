@@ -231,10 +231,15 @@ impl NamespaceRegistry {
                 .to_string();
             drop(current);
 
-            return self
-                .namespaces
-                .get(&resolved_ns)
-                .and_then(|ns| ns.lock().find_var(sym.name.as_str()).map(|v| v.deref()));
+            // Try resolving from the target namespace
+            if let Some(ns) = self.namespaces.get(&resolved_ns) {
+                return ns.lock().find_var(sym.name.as_str()).map(|v| v.deref());
+            }
+
+            // Fallback: check current namespace's vars with qualified name
+            let current = self.current.lock();
+            let qualified = format!("{}/{}", ns_name, sym.name);
+            return current.vars.get(&qualified).map(|v| v.deref());
         }
 
         current.find_var(sym.name.as_str()).map(|v| v.deref())
