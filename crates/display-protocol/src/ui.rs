@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use crate::types::{Color, Style, StyledLine, Selection};
 
 /// A declarative UI node — the building block of the component tree.
@@ -372,6 +373,274 @@ pub enum ListMarker {
     Bullet,
     Number,
     Dash,
+}
+
+// ── Widget event model ──
+
+/// Per-widget events from frontend to core.
+///
+/// Unlike InputEvent (raw key/mouse), WidgetEvent carries semantic meaning
+/// about what the user did to a specific widget.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WidgetEvent {
+    /// A button or clickable element was activated.
+    Click { x: u16, y: u16 },
+    /// A double-click occurred.
+    DoubleClick { x: u16, y: u16 },
+    /// Mouse entered the widget area.
+    Hover,
+    /// Mouse left the widget area.
+    HoverEnd,
+    /// A text input's value changed.
+    ValueChanged { value: String },
+    /// A selection changed (editor, tree view, list).
+    SelectionChanged { selection: Selection },
+    /// Widget received keyboard focus.
+    Focus,
+    /// Widget lost keyboard focus.
+    Blur,
+    /// Form was submitted (e.g. pressing Enter in an input).
+    Submit,
+    /// Scroll position changed.
+    Scroll { x: u32, y: u32 },
+    /// A tree item was expanded.
+    Expand { item_index: usize },
+    /// A tree item was collapsed.
+    Collapse { item_index: usize },
+    /// A tab was closed.
+    TabClose { tab_index: usize },
+    /// A split pane was resized.
+    Resize { ratio: f32 },
+    /// A menu item was selected.
+    MenuSelect { item_index: usize },
+}
+
+// ── Gutter annotations ──
+
+/// Kind of gutter annotation (line markers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AnnotationKind {
+    LineNumber,
+    Breakpoint,
+    DiagnosticError,
+    DiagnosticWarning,
+    DiagnosticInfo,
+    DiagnosticHint,
+    GitAdded,
+    GitModified,
+    GitDeleted,
+    Fold,
+    CodeLens,
+}
+
+/// A single gutter annotation on a line.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GutterAnnotation {
+    /// 0-based line number.
+    pub line: u32,
+    /// Optional icon/emoji to display (e.g. "●" for breakpoint, "▲" for git).
+    pub icon: Option<String>,
+    /// Style for the annotation.
+    pub style: Style,
+    /// What kind of annotation.
+    pub kind: AnnotationKind,
+    /// Optional hover tooltip text.
+    pub tooltip: Option<String>,
+}
+
+impl GutterAnnotation {
+    pub fn breakpoint(line: u32) -> Self {
+        Self {
+            line,
+            icon: Some("●".into()),
+            style: Style::default().fg(Color::RED),
+            kind: AnnotationKind::Breakpoint,
+            tooltip: None,
+        }
+    }
+
+    pub fn error(line: u32, msg: impl Into<String>) -> Self {
+        Self {
+            line,
+            icon: Some("✖".into()),
+            style: Style::default().fg(Color::RED),
+            kind: AnnotationKind::DiagnosticError,
+            tooltip: Some(msg.into()),
+        }
+    }
+
+    pub fn warning(line: u32, msg: impl Into<String>) -> Self {
+        Self {
+            line,
+            icon: Some("⚠".into()),
+            style: Style::default().fg(Color::YELLOW),
+            kind: AnnotationKind::DiagnosticWarning,
+            tooltip: Some(msg.into()),
+        }
+    }
+
+    pub fn git_added(line: u32) -> Self {
+        Self {
+            line,
+            icon: Some("▲".into()),
+            style: Style::default().fg(Color::GREEN),
+            kind: AnnotationKind::GitAdded,
+            tooltip: None,
+        }
+    }
+
+    pub fn git_modified(line: u32) -> Self {
+        Self {
+            line,
+            icon: Some("●".into()),
+            style: Style::default().fg(Color::YELLOW),
+            kind: AnnotationKind::GitModified,
+            tooltip: None,
+        }
+    }
+
+    pub fn git_deleted(line: u32) -> Self {
+        Self {
+            line,
+            icon: Some("▼".into()),
+            style: Style::default().fg(Color::RED),
+            kind: AnnotationKind::GitDeleted,
+            tooltip: None,
+        }
+    }
+}
+
+// ── Scroll policy ──
+
+/// How scrollbars are displayed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ScrollPolicy {
+    /// Show scrollbar only when content overflows.
+    #[default]
+    Auto,
+    /// Always show scrollbar.
+    Always,
+    /// Never show scrollbar.
+    Never,
+}
+
+// ── Menu system ──
+
+/// A dropdown or context menu.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MenuNode {
+    pub items: Vec<MenuItem>,
+    pub selected: usize,
+    pub anchor: MenuAnchor,
+}
+
+/// A single menu item.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MenuItem {
+    pub label: String,
+    pub shortcut: Option<String>,
+    pub enabled: bool,
+    pub icon: Option<String>,
+    pub submenu: Option<MenuNode>,
+    pub checked: Option<bool>,
+}
+
+impl MenuItem {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            shortcut: None,
+            enabled: true,
+            icon: None,
+            submenu: None,
+            checked: None,
+        }
+    }
+
+    pub fn shortcut(mut self, s: impl Into<String>) -> Self {
+        self.shortcut = Some(s.into());
+        self
+    }
+
+    pub fn disabled(mut self) -> Self {
+        self.enabled = false;
+        self
+    }
+
+    pub fn icon(mut self, i: impl Into<String>) -> Self {
+        self.icon = Some(i.into());
+        self
+    }
+
+    pub fn checked(mut self, v: bool) -> Self {
+        self.checked = Some(v);
+        self
+    }
+
+    pub fn submenu(mut self, menu: MenuNode) -> Self {
+        self.submenu = Some(menu);
+        self
+    }
+}
+
+/// Where a menu is positioned relative to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MenuAnchor {
+    /// Below a widget by screen coordinates.
+    BelowPoint { x: u16, y: u16 },
+    /// At the cursor position.
+    AtCursor,
+    /// Centered in the viewport.
+    Centered,
+}
+
+impl Default for MenuAnchor {
+    fn default() -> Self { Self::AtCursor }
+}
+
+impl MenuNode {
+    pub fn new(items: Vec<MenuItem>) -> Self {
+        Self { items, selected: 0, anchor: MenuAnchor::default() }
+    }
+
+    pub fn with_anchor(mut self, anchor: MenuAnchor) -> Self {
+        self.anchor = anchor;
+        self
+    }
+
+    pub fn separator() -> MenuItem {
+        MenuItem::new("").disabled()
+    }
+}
+
+// ── Focus model ──
+
+/// Focus traversal order hint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct FocusOrder {
+    /// Tab index for ordering. Lower values first. -1 = not focusable.
+    pub tab_index: i32,
+    /// Whether this widget is focusable.
+    pub focusable: bool,
+}
+
+impl FocusOrder {
+    pub fn focusable(tab_index: i32) -> Self {
+        Self { tab_index, focusable: true }
+    }
+
+    pub fn not_focusable() -> Self {
+        Self { tab_index: -1, focusable: false }
+    }
+}
+
+/// Direction for focus traversal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FocusDirection {
+    Forward,
+    Backward,
+    Into,  // Enter a container (e.g. press Right on a tree node to enter children)
+    OutOf, // Leave a container (e.g. press Left to go to parent)
 }
 
 // ── Constructor helpers (builder API) ──

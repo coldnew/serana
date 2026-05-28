@@ -61,6 +61,8 @@ pub use ui::{
     InputNode, TextAreaNode, TabBarNode, TabItem, TreeViewNode, TreeItem,
     SplitPaneNode, CanvasNode, OverlayNode, StatusBarNode, Orientation,
     Padding, Border, Wrap, Align, Justify, ListMarker,
+    WidgetEvent, AnnotationKind, GutterAnnotation, ScrollPolicy,
+    MenuNode, MenuItem, MenuAnchor, FocusOrder, FocusDirection,
 };
 pub use buffer::{ScreenBuffer, ScreenCell};
 pub use layout::{LayoutResult, compute_layout};
