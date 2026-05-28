@@ -5,6 +5,7 @@ pub mod ns;
 pub mod reader;
 pub mod thread;
 pub mod types;
+pub mod vm;
 pub mod wasm;
 
 use eval::EvalError;
