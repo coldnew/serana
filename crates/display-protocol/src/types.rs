@@ -41,6 +41,7 @@ pub struct Style {
     pub dim: bool,
     pub reverse: bool,
     pub blink: bool,
+    pub underline_color: Option<Color>,
 }
 
 impl Style {
@@ -55,6 +56,7 @@ impl Style {
             dim: false,
             reverse: false,
             blink: false,
+            underline_color: None,
         }
     }
 
@@ -104,6 +106,11 @@ impl Style {
 
     pub const fn blink(mut self) -> Self {
         self.blink = true;
+        self
+    }
+
+    pub fn underline_color(mut self, c: Color) -> Self {
+        self.underline_color = Some(c);
         self
     }
 }

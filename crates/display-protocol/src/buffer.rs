@@ -12,6 +12,9 @@ pub struct ScreenCell {
     pub strikethrough: bool,
     pub dim: bool,
     pub reverse: bool,
+    pub blink: bool,
+    pub underline_color: Option<Color>,
+    pub hyperlink: Option<u32>,
 }
 
 impl ScreenCell {
@@ -25,6 +28,9 @@ impl ScreenCell {
         strikethrough: false,
         dim: false,
         reverse: false,
+        blink: false,
+        underline_color: None,
+        hyperlink: None,
     };
 
     pub fn new(ch: char, fg: Color, bg: Color) -> Self {
@@ -113,7 +119,10 @@ impl ScreenBuffer {
         italic: bool,
         reverse: bool,
     ) {
-        self.set(x, y, ScreenCell { ch, fg, bg, bold, italic, underline, strikethrough, dim, reverse });
+        self.set(x, y, ScreenCell {
+            ch, fg, bg, bold, italic, underline, strikethrough, dim, reverse,
+            blink: false, underline_color: None, hyperlink: None,
+        });
     }
 
     /// Write a string starting at (x, y) with basic style (bold/dim only).
@@ -132,7 +141,20 @@ impl ScreenBuffer {
         for (i, ch) in s.chars().enumerate() {
             let cx = x + i as u16;
             if cx >= self.width { break; }
-            self.set_char(cx, y, ch, fg, bg, style.bold, style.dim, style.underline, style.strikethrough, style.italic, style.reverse);
+            self.set(cx, y, ScreenCell {
+                ch,
+                fg,
+                bg,
+                bold: style.bold,
+                italic: style.italic,
+                underline: style.underline,
+                strikethrough: style.strikethrough,
+                dim: style.dim,
+                reverse: style.reverse,
+                blink: style.blink,
+                underline_color: style.underline_color,
+                hyperlink: None,
+            });
         }
     }
 

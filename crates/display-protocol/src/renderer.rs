@@ -160,6 +160,7 @@ fn cell_to_sgr(cell: &crate::buffer::ScreenCell) -> String {
     if cell.dim { sgr.push_str(";2"); }
     if cell.italic { sgr.push_str(";3"); }
     if cell.underline { sgr.push_str(";4"); }
+    if cell.blink { sgr.push_str(";5"); }
     if cell.reverse { sgr.push_str(";7"); }
     if cell.strikethrough { sgr.push_str(";9"); }
 
@@ -167,6 +168,11 @@ fn cell_to_sgr(cell: &crate::buffer::ScreenCell) -> String {
     sgr.push_str(&format!(";38;2;{};{};{}", cell.fg.r, cell.fg.g, cell.fg.b));
     // Background
     sgr.push_str(&format!(";48;2;{};{};{}", cell.bg.r, cell.bg.g, cell.bg.b));
+
+    // Underline color (OSC 58)
+    if let Some(uc) = cell.underline_color {
+        sgr.push_str(&format!(";58;2;{};{};{}", uc.r, uc.g, uc.b));
+    }
 
     sgr.push('m');
     sgr

@@ -87,6 +87,7 @@ impl From<ratatui::style::Style> for Style {
             dim: s.add_modifier.contains(ratatui::style::Modifier::DIM),
             reverse: s.add_modifier.contains(ratatui::style::Modifier::REVERSED),
             blink: s.add_modifier.contains(ratatui::style::Modifier::SLOW_BLINK),
+            underline_color: None,
         }
     }
 }

@@ -269,6 +269,7 @@ fn run_editor_wgpu(file: Option<String>) -> anyhow::Result<()> {
                         dim: cell.style.dim,
                         reverse: cell.style.reverse,
                         blink: cell.style.blink,
+                        underline_color: None,
                     };
                     cell_buf.set_cell(x, y, cell.ch, style);
                 }
