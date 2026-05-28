@@ -1,4 +1,4 @@
-use crate::types::{Color, Style, StyledLine};
+use crate::types::{Color, Style, StyledLine, Selection};
 
 /// A declarative UI node — the building block of the component tree.
 ///
@@ -181,11 +181,13 @@ pub struct TextAreaNode {
     pub lines: Vec<StyledLine>,
     pub cursor_line: u16,
     pub cursor_col: u16,
+    pub selection: Option<Selection>,
     pub scroll_top: u16,
     pub scroll_left: u16,
     pub height: u16,
     pub style: Style,
     pub cursor_style: Style,
+    pub selection_style: Style,
     pub gutter: bool,
     pub focused: bool,
 }
@@ -481,11 +483,13 @@ impl UiNode {
             lines,
             cursor_line: 0,
             cursor_col: 0,
+            selection: None,
             scroll_top: 0,
             scroll_left: 0,
             height: 10,
             style: Style::default(),
             cursor_style: Style::default(),
+            selection_style: Style::default().bg(Color::new(50, 100, 180)),
             gutter: false,
             focused: false,
         })
@@ -743,6 +747,18 @@ impl UiNode {
             other => other,
         }
     }
+    pub fn selection(self, sel: Selection) -> Self {
+        match self {
+            UiNode::TextArea(t) => UiNode::TextArea(t.selection(sel)),
+            other => other,
+        }
+    }
+    pub fn clear_selection(self) -> Self {
+        match self {
+            UiNode::TextArea(t) => UiNode::TextArea(t.clear_selection()),
+            other => other,
+        }
+    }
     pub fn active_tab(self, idx: usize) -> Self {
         match self {
             UiNode::TabBar(t) => UiNode::TabBar(t.active(idx)),
@@ -852,9 +868,12 @@ impl InputNode {
 
 impl TextAreaNode {
     pub fn cursor(mut self, line: u16, col: u16) -> Self { self.cursor_line = line; self.cursor_col = col; self }
+    pub fn selection(mut self, sel: Selection) -> Self { self.selection = Some(sel); self }
+    pub fn clear_selection(mut self) -> Self { self.selection = None; self }
     pub fn scroll(mut self, top: u16, left: u16) -> Self { self.scroll_top = top; self.scroll_left = left; self }
     pub fn height(mut self, h: u16) -> Self { self.height = h; self }
     pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn selection_style(mut self, style: Style) -> Self { self.selection_style = style; self }
     pub fn gutter(mut self, show: bool) -> Self { self.gutter = show; self }
     pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
 }

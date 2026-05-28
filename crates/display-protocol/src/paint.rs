@@ -309,9 +309,26 @@ fn paint_textarea(node: &TextAreaNode, layout: &LayoutResult, buf: &mut ScreenBu
         let line = &node.lines[line_idx];
         let visible = line.substr(node.scroll_left as usize, text_w as usize);
         buf.write_styled_line(x + gutter_w, ry, &visible, fg, bg);
+
+        // Overlay selection highlighting
+        if let Some(ref sel) = node.selection {
+            let sel_bg = node.selection_style.bg.unwrap_or(Color::new(50, 100, 180));
+            let sel_fg = node.selection_style.fg;
+            let line_u32 = line_idx as u32;
+            let scroll_left = node.scroll_left as u32;
+            for col in 0..text_w {
+                let doc_col = scroll_left + col as u32;
+                if sel.contains(line_u32, doc_col) {
+                    let mut cell = buf.get(x + gutter_w + col, ry);
+                    cell.bg = sel_bg;
+                    if let Some(sfg) = sel_fg { cell.fg = sfg; }
+                    buf.set(x + gutter_w + col, ry, cell);
+                }
+            }
+        }
     }
 
-    // Draw cursor
+    // Draw cursor (on top of selection)
     if node.focused {
         let cursor_row = node.cursor_line.saturating_sub(node.scroll_top);
         let cursor_col = node.cursor_col.saturating_sub(node.scroll_left);
@@ -633,6 +650,39 @@ mod tests {
         assert_eq!(buf.get(4, 0).ch, 'x');
         assert_eq!(buf.get(4, 0).fg, Color::WHITE);
         assert!(!buf.get(4, 0).bold);
+    }
+    #[test]
+    fn test_paint_textarea_selection() {
+        use crate::types::{Selection, SelectionMode, StyledLine};
+
+        // Three lines, select line 1 col 2 to line 1 col 5
+        let lines = vec![
+            StyledLine::plain("abcdef"),
+            StyledLine::plain("ghijkl"),
+            StyledLine::plain("mnopqr"),
+        ];
+        let sel = Selection::range(1, 2, 1, 5, SelectionMode::Char);
+        let node = UiNode::textarea(lines)
+            .height(3)
+            .selection(sel)
+            .focused(false);
+        let buf = paint(&node, 10, 3);
+
+        // Line 1 col 0,1 should NOT have selection bg
+        assert_ne!(buf.get(0, 1).bg, Color::new(50, 100, 180));
+        assert_ne!(buf.get(1, 1).bg, Color::new(50, 100, 180));
+
+        // Line 1 col 2,3,4 should have selection bg
+        assert_eq!(buf.get(2, 1).bg, Color::new(50, 100, 180));
+        assert_eq!(buf.get(3, 1).bg, Color::new(50, 100, 180));
+        assert_eq!(buf.get(4, 1).bg, Color::new(50, 100, 180));
+
+        // Line 1 col 5 should NOT (end exclusive)
+        assert_ne!(buf.get(5, 1).bg, Color::new(50, 100, 180));
+
+        // Other lines should not have selection bg
+        assert_ne!(buf.get(3, 0).bg, Color::new(50, 100, 180));
+        assert_ne!(buf.get(3, 2).bg, Color::new(50, 100, 180));
     }
 
     #[test]

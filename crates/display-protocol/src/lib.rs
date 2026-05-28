@@ -48,7 +48,7 @@ pub mod renderer;
 #[cfg(feature = "tui")]
 mod conversions;
 
-pub use types::{Color, Style, StyledSpan, StyledLine};
+pub use types::{Color, Style, StyledSpan, StyledLine, Selection, SelectionMode, MultiSelection};
 pub use frame::{Cell, Grid, CursorState, CursorStyle, StatusLine, FrameUpdate};
 pub use input::{KeyEvent, KeyCode, KeyModifiers, InputEvent, MouseEventKind};
 pub use command::{DisplayCmd, PopupItem, PopupItemKind};
