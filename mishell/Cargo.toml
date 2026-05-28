@@ -23,7 +23,7 @@ serde_json = "1"
 criterion = "0.5"
 
 [[bin]]
-name = "mishell"
+name = "msh"
 path = "src/main.rs"
 
 [[bench]]
