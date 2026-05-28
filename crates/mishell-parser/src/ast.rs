@@ -24,16 +24,20 @@ pub enum CommandBody {
     Subshell(Box<CommandBody>),
     /// Group: `{ cmd; }`
     Group(Box<CommandBody>),
-    /// Function definition: `function name; body; end` or `name() { body; }`
+    /// Function definition: `name() { body; }` or `function name { body; }`
     FunctionDef(FunctionDef),
-    /// For loop: `for var in list; body; end`
+    /// For loop: `for var in list; do body; done`
     ForLoop(ForLoop),
-    /// While loop: `while cond; body; end`
+    /// While loop: `while cond; do body; done`
     WhileLoop(WhileLoop),
-    /// If statement: `if cond; then body; elif cond; else body; end`
+    /// Until loop: `until cond; do body; done`
+    UntilLoop(UntilLoop),
+    /// If statement: `if cond; then body; elif cond; then body; else body; fi`
     If(IfStatement),
-    /// Switch statement: `switch $var; case pattern; body; end`
-    Switch(SwitchStatement),
+    /// Case statement: `case word in pattern) body ;; esac`
+    Case(CaseStatement),
+    /// Return statement
+    Return(Option<Word>),
 }
 
 /// A simple command with redirects
@@ -57,13 +61,57 @@ pub struct Word {
     pub parts: Vec<WordPart>,
 }
 
+/// Parameter expansion operation type
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParamOp {
+    /// `${var:-default}` - use default if unset or null
+    UseDefault(String),
+    /// `${var:=default}` - assign default if unset or null
+    AssignDefault(String),
+    /// `${var:+value}` - use alternative value if set and non-null
+    UseAlternative(String),
+    /// `${var:?error}` - error if unset or null
+    ShowError(String),
+    /// `${var:+value}` with no colon - use alternative if set (even if null)
+    UseAlternativeIfSet(String),
+    /// `${#var}` - string length
+    StringLength,
+    /// `${var#pattern}` - remove shortest prefix match
+    RemovePrefixShortest(String),
+    /// `${var##pattern}` - remove longest prefix match
+    RemovePrefixLongest(String),
+    /// `${var%pattern}` - remove shortest suffix match
+    RemoveSuffixShortest(String),
+    /// `${var%%pattern}` - remove longest suffix match
+    RemoveSuffixLongest(String),
+    /// `${var/pattern/replacement}` - replace first match
+    ReplaceFirst(String, String),
+    /// `${var//pattern/replacement}` - replace all matches
+    ReplaceAll(String, String),
+    /// `${var,}` - lowercase first char
+    LowercaseFirst,
+    /// `${var,,}` - lowercase all
+    LowercaseAll,
+    /// `${var^}` - uppercase first char
+    UppercaseFirst,
+    /// `${var^^}` - uppercase all
+    UppercaseAll,
+    /// `${var:start:length}` - substring
+    Substring(usize, Option<usize>),
+}
+
 /// Parts of a word
 #[derive(Debug, Clone, PartialEq)]
 pub enum WordPart {
     /// Literal text
     Literal(String),
-    /// Variable expansion: `$VAR` or `${VAR}`
+    /// Variable expansion: `$VAR`
     Variable(String),
+    /// Parameter expansion: `${var:-default}`, `${#var}`, etc.
+    ParamExpansion {
+        name: String,
+        op: ParamOp,
+    },
     /// Command substitution: `$(cmd)` or `` `cmd` ``
     CommandSub(CommandBody),
     /// Arithmetic expansion: `$((expr))`
@@ -149,8 +197,6 @@ pub struct Assignment {
 pub struct FunctionDef {
     pub name: String,
     pub body: Vec<Command>,
-    pub on_event: Option<String>,
-    pub on_variable: Option<String>,
 }
 
 /// For loop
@@ -164,6 +210,13 @@ pub struct ForLoop {
 /// While loop
 #[derive(Debug, Clone, PartialEq)]
 pub struct WhileLoop {
+    pub condition: Vec<Command>,
+    pub body: Vec<Command>,
+}
+
+/// Until loop
+#[derive(Debug, Clone, PartialEq)]
+pub struct UntilLoop {
     pub condition: Vec<Command>,
     pub body: Vec<Command>,
 }
@@ -184,16 +237,16 @@ pub struct ElifBranch {
     pub body: Vec<Command>,
 }
 
-/// Switch statement
+/// Case statement (bash `case ... esac`)
 #[derive(Debug, Clone, PartialEq)]
-pub struct SwitchStatement {
+pub struct CaseStatement {
     pub value: Word,
-    pub cases: Vec<CaseBranch>,
+    pub cases: Vec<CaseItem>,
 }
 
-/// Case branch in switch
+/// Case item in case statement
 #[derive(Debug, Clone, PartialEq)]
-pub struct CaseBranch {
+pub struct CaseItem {
     pub patterns: Vec<Word>,
     pub body: Vec<Command>,
 }
@@ -203,7 +256,7 @@ impl fmt::Display for Word {
         for part in &self.parts {
             match part {
                 WordPart::Literal(s) => write!(f, "{}", s)?,
-                WordPart::Variable(v) => write!(f, "${{{}}}", v)?,
+                WordPart::Variable(v) => write!(f, "${}", v)?,
                 WordPart::SingleQuoted(s) => write!(f, "'{}'", s)?,
                 _ => write!(f, "...")?,
             }

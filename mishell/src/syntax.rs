@@ -228,7 +228,6 @@ impl SyntaxHighlighter {
             word,
             "cd" | "export"
                 | "alias"
-                | "abbr"
                 | "set"
                 | "exit"
                 | "pushd"
@@ -265,25 +264,20 @@ impl SyntaxHighlighter {
                 | "fg"
                 | "bg"
                 | "status"
-                | "contains"
                 | "random"
-                | "emit"
                 | "begin"
                 | "edit"
                 | "file"
                 | "head"
                 | "tail"
                 | "try"
-                | "funced"
-                | "funcsave"
-                | "functions"
                 | "realpath"
                 | "complete"
                 | "commandline"
         )
     }
 
-    /// Get autosuggestion based on input and history (fish-like feature)
+    /// Get autosuggestion based on input and history (autosuggestion from history)
     pub fn get_autosuggestion(&self, input: &str, history: &[String]) -> Option<String> {
         if input.is_empty() {
             return None;
@@ -312,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn test_is_builtin_fish() {
+    fn test_is_builtin_shell() {
         let h = SyntaxHighlighter::new();
         assert!(h.is_builtin("and"));
         assert!(h.is_builtin("or"));
@@ -321,9 +315,9 @@ mod tests {
         assert!(h.is_builtin("string"));
         assert!(h.is_builtin("math"));
         assert!(h.is_builtin("status"));
-        assert!(h.is_builtin("contains"));
+
         assert!(h.is_builtin("random"));
-        assert!(h.is_builtin("emit"));
+
         assert!(h.is_builtin("begin"));
     }
 

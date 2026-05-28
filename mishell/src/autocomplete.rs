@@ -716,13 +716,58 @@ impl AutoCompleter {
         // Add builtins
         commands.extend(
             [
-                "cd", "export", "alias", "abbr", "set", "exit", "pushd", "popd", "dirs", "history",
-                "echo", "printf", "read", "test", "[", "true", "false", "pwd", "type", "hash",
-                "help", "source", ".", "eval", "exec",
-                "and", "or", "not", "count", "string", "math", "status", "command", "builtin",
-                "contains", "random", "emit", "funced", "funcsave", "functions",
-                "edit", "file", "head", "tail", "try", "begin", "realpath",
-                "complete", "commandline", "jobs", "fg", "bg",
+                "cd",
+                "export",
+                "alias",
+                "abbr",
+                "set",
+                "exit",
+                "pushd",
+                "popd",
+                "dirs",
+                "history",
+                "echo",
+                "printf",
+                "read",
+                "test",
+                "[",
+                "true",
+                "false",
+                "pwd",
+                "type",
+                "hash",
+                "help",
+                "source",
+                ".",
+                "eval",
+                "exec",
+                "and",
+                "or",
+                "not",
+                "count",
+                "string",
+                "math",
+                "status",
+                "command",
+                "builtin",
+                "contains",
+                "random",
+                "emit",
+                "funced",
+                "funcsave",
+                "functions",
+                "edit",
+                "file",
+                "head",
+                "tail",
+                "try",
+                "begin",
+                "realpath",
+                "complete",
+                "commandline",
+                "jobs",
+                "fg",
+                "bg",
             ]
             .iter()
             .map(|s| s.to_string()),
@@ -746,7 +791,11 @@ impl AutoCompleter {
 
         // Check programmatically-registered completions from `complete` builtin
         if !parts.is_empty() {
-            let prefix = if before_cursor.ends_with(' ') { "" } else { parts.last().unwrap_or(&"") };
+            let prefix = if before_cursor.ends_with(' ') {
+                ""
+            } else {
+                parts.last().unwrap_or(&"")
+            };
             if let Some(entries) = shell.completions().get(cmd_name) {
                 let mut completions: Vec<String> = entries
                     .iter()
@@ -1410,7 +1459,7 @@ mod tests {
     #[test]
     fn test_complete_command_prefix() {
         let ac = AutoCompleter::new();
-        let shell = Shell::new(false).unwrap();
+        let shell = Shell::new().unwrap();
         let results = ac.complete("ec", 2, &shell);
         assert!(results.iter().any(|r| r == "echo"));
     }
@@ -1418,7 +1467,7 @@ mod tests {
     #[test]
     fn test_complete_builtin_command() {
         let ac = AutoCompleter::new();
-        let shell = Shell::new(false).unwrap();
+        let shell = Shell::new().unwrap();
         let results = ac.complete("str", 3, &shell);
         assert!(results.iter().any(|r| r == "string"));
     }
@@ -1426,9 +1475,11 @@ mod tests {
     #[test]
     fn test_complete_registered_completions() {
         let ac = AutoCompleter::new();
-        let mut shell = Shell::new(false).unwrap();
+        let mut shell = Shell::new().unwrap();
         // Register completions via complete builtin
-        shell.execute("complete -c mycmd -a 'start stop restart'").unwrap();
+        shell
+            .execute("complete -c mycmd -a 'start stop restart'")
+            .unwrap();
         let results = ac.complete("mycmd s", 7, &shell);
         assert!(results.contains(&"start".to_string()));
         assert!(results.contains(&"stop".to_string()));
@@ -1437,8 +1488,10 @@ mod tests {
     #[test]
     fn test_complete_registered_completions_after_space() {
         let ac = AutoCompleter::new();
-        let mut shell = Shell::new(false).unwrap();
-        shell.execute("complete -c mytool -a 'build test deploy'").unwrap();
+        let mut shell = Shell::new().unwrap();
+        shell
+            .execute("complete -c mytool -a 'build test deploy'")
+            .unwrap();
         let results = ac.complete("mytool ", 7, &shell);
         assert!(results.contains(&"build".to_string()));
         assert!(results.contains(&"test".to_string()));
@@ -1448,7 +1501,7 @@ mod tests {
     #[test]
     fn test_complete_registered_overrides_subcommands() {
         let ac = AutoCompleter::new();
-        let mut shell = Shell::new(false).unwrap();
+        let mut shell = Shell::new().unwrap();
         // Register custom completions for git (should override hardcoded subcommands)
         shell.execute("complete -c git -a 'my-custom-cmd'").unwrap();
         let results = ac.complete("git my", 6, &shell);
@@ -1458,7 +1511,7 @@ mod tests {
     #[test]
     fn test_complete_variable() {
         let ac = AutoCompleter::new();
-        let mut shell = Shell::new(false).unwrap();
+        let mut shell = Shell::new().unwrap();
         shell.set_var("MY_TEST_VAR", "hello");
         let results = ac.complete("echo $MY_T", 10, &shell);
         assert!(results.iter().any(|r| r == "$MY_TEST_VAR"));
@@ -1467,7 +1520,20 @@ mod tests {
     #[test]
     fn test_load_commands_has_all_builtins() {
         let ac = AutoCompleter::new();
-        let builtins = ["and", "or", "not", "string", "math", "status", "emit", "functions", "edit", "file", "head", "tail"];
+        let builtins = [
+            "and",
+            "or",
+            "not",
+            "string",
+            "math",
+            "status",
+            "emit",
+            "functions",
+            "edit",
+            "file",
+            "head",
+            "tail",
+        ];
         for b in builtins {
             assert!(ac.commands.iter().any(|c| c == b), "Missing builtin: {}", b);
         }

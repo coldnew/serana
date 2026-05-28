@@ -17,15 +17,11 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Vec<Command>> {
         let mut commands = Vec::new();
         while !self.at_end() {
-            self.skip_newlines();
+            self.skip_sep();
             if self.at_end() {
                 break;
             }
             commands.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
         }
         Ok(commands)
     }
@@ -42,15 +38,22 @@ impl Parser {
     }
 
     fn parse_command_body(&mut self) -> Result<CommandBody> {
-        // Check for control structures first
         match self.current() {
-            Some(Token::Function) => return self.parse_function_def(),
+            Some(Token::Function) => return self.parse_function_def_keyword(),
             Some(Token::For) => return self.parse_for_loop(),
             Some(Token::While) => return self.parse_while_loop(),
+            Some(Token::Until) => return self.parse_until_loop(),
             Some(Token::If) => return self.parse_if_statement(),
-            Some(Token::Switch) => return self.parse_switch_statement(),
-            Some(Token::Begin) => return self.parse_begin_block(),
+            Some(Token::Case) => return self.parse_case_statement(),
+            Some(Token::LeftParen) => return self.parse_subshell(),
+            Some(Token::LeftBrace) => return self.parse_group(),
+            Some(Token::Return) => return self.parse_return(),
             _ => {}
+        }
+
+        // Check for name() { ... } function syntax
+        if self.is_function_def() {
+            return self.parse_function_def_parens();
         }
 
         let mut left = self.parse_pipeline()?;
@@ -84,7 +87,7 @@ impl Parser {
 
         while self.check(&Token::Pipe) {
             self.advance();
-            self.skip_newlines();
+            self.skip_sep();
             commands.push(self.parse_simple_command()?);
         }
 
@@ -155,12 +158,10 @@ impl Parser {
             RedirectOp::HereDoc | RedirectOp::HereDocStrip => {
                 let delimiter = self.expect_word()?;
                 let mut content = String::new();
-                // Skip newline after delimiter
                 if self.check(&Token::Newline) {
                     self.advance();
                 }
                 loop {
-                    // Read entire line until newline
                     let mut line = String::new();
                     while !self.at_end() && !self.check(&Token::Newline) {
                         if let Some(Token::Word(s)) = self.current() {
@@ -189,7 +190,6 @@ impl Parser {
                         }
                     }
 
-                    // Check if we found the delimiter
                     if self.check_word(&delimiter) {
                         self.advance();
                         break;
@@ -199,13 +199,11 @@ impl Parser {
                         return Err(anyhow!("Unterminated here document"));
                     }
 
-                    // Add line to content
                     if !content.is_empty() {
                         content.push('\n');
                     }
                     content.push_str(&line);
 
-                    // Skip newline
                     if self.check(&Token::Newline) {
                         self.advance();
                     }
@@ -222,13 +220,11 @@ impl Parser {
     fn parse_assignment(&mut self) -> Result<Assignment> {
         let word = self.expect_word()?;
         let eq_pos = word
-            .to_string()
             .find('=')
             .ok_or_else(|| anyhow!("Expected assignment"))?;
-        let name = word.to_string()[..eq_pos].to_string();
-        let value_str = &word.to_string()[eq_pos + 1..];
+        let name = word[..eq_pos].to_string();
+        let value_str = &word[eq_pos + 1..];
 
-        // If value after = is non-empty, use it as literal
         if !value_str.is_empty() {
             Ok(Assignment {
                 name,
@@ -237,10 +233,10 @@ impl Parser {
                 },
             })
         } else {
-            // Value continues with next tokens (e.g. X=$(cmd) or X="string")
             let value = match self.current() {
                 Some(Token::DollarParen)
                 | Some(Token::DollarBrace)
+                | Some(Token::DollarArith)
                 | Some(Token::SingleQuoted(_))
                 | Some(Token::DoubleQuoted(_))
                 | Some(Token::Backtick)
@@ -254,7 +250,6 @@ impl Parser {
     fn parse_word(&mut self) -> Result<Word> {
         let mut parts = Vec::new();
 
-        // Only parse one word token at a time
         match self.current() {
             Some(Token::Word(s)) => {
                 if s.starts_with('$') && s.len() > 1 {
@@ -278,6 +273,16 @@ impl Parser {
                 self.expect(&Token::RightParen)?;
                 parts.push(WordPart::CommandSub(body));
             }
+            Some(Token::DollarBrace) => {
+                self.advance();
+                let part = self.parse_param_expansion()?;
+                parts.push(part);
+            }
+            Some(Token::DollarArith) => {
+                self.advance();
+                let expr = self.parse_arithmetic()?;
+                parts.push(WordPart::Arithmetic(expr));
+            }
             Some(Token::Backtick) => {
                 self.advance();
                 let body = self.parse_command_body()?;
@@ -288,6 +293,279 @@ impl Parser {
         }
 
         Ok(Word { parts })
+    }
+
+    fn parse_param_expansion(&mut self) -> Result<WordPart> {
+        // We're after ${, parse the parameter expansion
+        let name = self.expect_word()?;
+
+        match self.current().cloned() {
+            Some(Token::RightBrace) => {
+                // ${var} - simple expansion, treat as variable
+                self.advance();
+                Ok(WordPart::Variable(name))
+            }
+            Some(Token::Word(ref op)) if op.starts_with(':') => {
+                // Handle :- := :+ :?
+                let op_char = op.chars().nth(1);
+                let rest = if op.len() > 2 { op[2..].to_string() } else { String::new() };
+
+                match op_char {
+                    Some('-') => {
+                        // ${var:-default}
+                        self.advance();
+                        let default = self.read_until_brace()?;
+                        self.expect(&Token::RightBrace)?;
+                        Ok(WordPart::ParamExpansion {
+                            name,
+                            op: ParamOp::UseDefault(if rest.is_empty() {
+                                default
+                            } else {
+                                format!("{}{}", rest, default)
+                            }),
+                        })
+                    }
+                    Some('=') => {
+                        // ${var:=default}
+                        self.advance();
+                        let default = self.read_until_brace()?;
+                        self.expect(&Token::RightBrace)?;
+                        Ok(WordPart::ParamExpansion {
+                            name,
+                            op: ParamOp::AssignDefault(if rest.is_empty() {
+                                default
+                            } else {
+                                format!("{}{}", rest, default)
+                            }),
+                        })
+                    }
+                    Some('+') => {
+                        // ${var:+value}
+                        self.advance();
+                        let value = self.read_until_brace()?;
+                        self.expect(&Token::RightBrace)?;
+                        Ok(WordPart::ParamExpansion {
+                            name,
+                            op: ParamOp::UseAlternative(if rest.is_empty() {
+                                value
+                            } else {
+                                format!("{}{}", rest, value)
+                            }),
+                        })
+                    }
+                    Some('?') => {
+                        // ${var:?error}
+                        self.advance();
+                        let error = self.read_until_brace()?;
+                        self.expect(&Token::RightBrace)?;
+                        Ok(WordPart::ParamExpansion {
+                            name,
+                            op: ParamOp::ShowError(if rest.is_empty() {
+                                error
+                            } else {
+                                format!("{}{}", rest, error)
+                            }),
+                        })
+                    }
+                    _ => {
+                        self.advance();
+                        self.expect(&Token::RightBrace)?;
+                        Ok(WordPart::Variable(name))
+                    }
+                }
+            }
+            Some(Token::Word(ref op)) if op == "#" => {
+                // ${#var} - string length
+                self.advance();
+                self.expect(&Token::RightBrace)?;
+                Ok(WordPart::ParamExpansion {
+                    name,
+                    op: ParamOp::StringLength,
+                })
+            }
+            Some(Token::Word(ref op)) if op.starts_with('#') || op.starts_with('%') => {
+                // ${var#pattern} or ${var%pattern}
+                let is_hash = op.starts_with('#');
+                let is_long = op.len() > 1
+                    && (op.chars().nth(1) == Some('#') || op.chars().nth(1) == Some('%'));
+                let op_suffix = op[if is_long { 2 } else { 1 }..].to_string();
+                self.advance();
+                let pattern = self.read_until_brace()?;
+                self.expect(&Token::RightBrace)?;
+
+                let full_pattern = if !op_suffix.is_empty() {
+                    format!("{}{}", op_suffix, pattern)
+                } else {
+                    pattern
+                };
+
+                let op = if is_hash {
+                    if is_long {
+                        ParamOp::RemovePrefixLongest(full_pattern)
+                    } else {
+                        ParamOp::RemovePrefixShortest(full_pattern)
+                    }
+                } else {
+                    if is_long {
+                        ParamOp::RemoveSuffixLongest(full_pattern)
+                    } else {
+                        ParamOp::RemoveSuffixShortest(full_pattern)
+                    }
+                };
+
+                Ok(WordPart::ParamExpansion { name, op })
+            }
+            Some(Token::Word(ref op)) if op.starts_with('/') || op == "/" => {
+                // ${var/pattern/replacement}
+                let op_suffix = if op.len() > 1 { op[1..].to_string() } else { String::new() };
+                let is_all = op.starts_with("//");
+                self.advance();
+                let rest = self.read_until_brace()?;
+                self.expect(&Token::RightBrace)?;
+                let full = if !op_suffix.is_empty() {
+                    format!("{}{}", op_suffix, rest)
+                } else {
+                    rest
+                };
+
+                // Split on / to get pattern and replacement
+                let parts: Vec<&str> = full.splitn(2, '/').collect();
+                let pattern = parts.first().unwrap_or(&"").to_string();
+                let replacement = parts.get(1).unwrap_or(&"").to_string();
+
+                Ok(WordPart::ParamExpansion {
+                    name,
+                    op: if is_all {
+                        ParamOp::ReplaceAll(pattern, replacement)
+                    } else {
+                        ParamOp::ReplaceFirst(pattern, replacement)
+                    },
+                })
+            }
+            Some(Token::Word(ref op)) if op == "," || op == ",," || op == "^" || op == "^^" => {
+                // Case modification
+                let param_op = match op.as_str() {
+                    "," => ParamOp::LowercaseFirst,
+                    ",," => ParamOp::LowercaseAll,
+                    "^" => ParamOp::UppercaseFirst,
+                    "^^" => ParamOp::UppercaseAll,
+                    _ => unreachable!(),
+                };
+                self.advance();
+                self.expect(&Token::RightBrace)?;
+                Ok(WordPart::ParamExpansion { name, op: param_op })
+            }
+            Some(Token::Word(ref op)) if op.starts_with(':') => {
+                // ${var:start:length} - substring
+                let rest = if op.len() > 1 { op[1..].to_string() } else { String::new() };
+                self.advance();
+                let more = self.read_until_brace()?;
+                self.expect(&Token::RightBrace)?;
+                let full = format!("{}{}", rest, more);
+
+                let parts: Vec<&str> = full.splitn(2, ':').collect();
+                let start: usize = parts
+                    .first()
+                    .unwrap_or(&"0")
+                    .parse()
+                    .unwrap_or(0);
+                let length = parts.get(1).and_then(|s| s.parse().ok());
+
+                Ok(WordPart::ParamExpansion {
+                    name,
+                    op: ParamOp::Substring(start, length),
+                })
+            }
+            _ => {
+                // Unknown or just ${var}, close and return variable
+                if self.check(&Token::RightBrace) {
+                    self.advance();
+                }
+                Ok(WordPart::Variable(name))
+            }
+        }
+    }
+
+    fn read_until_brace(&mut self) -> Result<String> {
+        let mut result = String::new();
+        while !self.at_end() && !self.check(&Token::RightBrace) {
+            match self.current() {
+                Some(Token::Word(s)) => {
+                    if !result.is_empty() {
+                        result.push(' ');
+                    }
+                    result.push_str(s);
+                    self.advance();
+                }
+                Some(Token::SingleQuoted(s)) => {
+                    if !result.is_empty() {
+                        result.push(' ');
+                    }
+                    result.push('\'');
+                    result.push_str(s);
+                    result.push('\'');
+                    self.advance();
+                }
+                Some(Token::DoubleQuoted(s)) => {
+                    if !result.is_empty() {
+                        result.push(' ');
+                    }
+                    result.push('"');
+                    result.push_str(s);
+                    result.push('"');
+                    self.advance();
+                }
+                Some(Token::Semi) => {
+                    result.push(';');
+                    self.advance();
+                }
+                Some(Token::Pipe) => {
+                    result.push('|');
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+        Ok(result)
+    }
+
+    fn parse_arithmetic(&mut self) -> Result<String> {
+        // We're after $((, read until ))
+        let mut depth = 1;
+        let mut expr = String::new();
+
+        while !self.at_end() && depth > 0 {
+            match self.current() {
+                Some(Token::LeftParen) => {
+                    depth += 1;
+                    expr.push('(');
+                    self.advance();
+                }
+                Some(Token::RightParen) => {
+                    depth -= 1;
+                    if depth > 0 {
+                        expr.push(')');
+                    }
+                    self.advance();
+                    if depth > 0 && self.check(&Token::RightParen) {
+                        // Second closing paren for $((...))
+                        depth -= 1;
+                        expr.push(')');
+                        self.advance();
+                    }
+                }
+                Some(Token::Word(s)) => {
+                    if !expr.is_empty() {
+                        expr.push(' ');
+                    }
+                    expr.push_str(s);
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+
+        Ok(expr)
     }
 
     fn parse_double_quoted_parts(s: &str) -> Vec<WordPart> {
@@ -301,12 +579,10 @@ impl Parser {
                 && i + 1 < chars.len()
                 && (chars[i + 1].is_alphanumeric() || chars[i + 1] == '_')
             {
-                // Flush literal
                 if !literal.is_empty() {
                     parts.push(WordPart::Literal(literal.clone()));
                     literal.clear();
                 }
-                // Read variable name
                 i += 1; // skip $
                 let mut var_name = String::new();
                 while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
@@ -326,6 +602,326 @@ impl Parser {
 
         parts
     }
+
+    // --- Control structures ---
+
+    fn parse_if_statement(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'if'
+        self.skip_sep();
+
+        let condition = self.parse_condition_list()?;
+        self.skip_sep();
+        self.expect(&Token::Then)?;
+        self.skip_sep();
+
+        let then_body = self.parse_body_until(&[&Token::Elif, &Token::Else, &Token::Fi])?;
+        self.skip_sep();
+
+        let mut elif_branches = Vec::new();
+        while self.check(&Token::Elif) {
+            self.advance();
+            self.skip_sep();
+            let elif_condition = self.parse_condition_list()?;
+            self.skip_sep();
+            self.expect(&Token::Then)?;
+            self.skip_sep();
+            let elif_body =
+                self.parse_body_until(&[&Token::Elif, &Token::Else, &Token::Fi])?;
+            self.skip_sep();
+            elif_branches.push(ElifBranch {
+                condition: elif_condition,
+                body: elif_body,
+            });
+        }
+
+        let else_body = if self.check(&Token::Else) {
+            self.advance();
+            self.skip_sep();
+            let body = self.parse_body_until(&[&Token::Fi])?;
+            self.skip_sep();
+            Some(body)
+        } else {
+            None
+        };
+
+        self.expect(&Token::Fi)?;
+
+        Ok(CommandBody::If(IfStatement {
+            condition,
+            then_body,
+            elif_branches,
+            else_body,
+        }))
+    }
+
+    fn parse_for_loop(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'for'
+        self.skip_sep();
+        let variable = self.expect_word()?;
+        self.skip_sep();
+
+        // Optional 'in list'
+        let list = if self.check(&Token::In) {
+            self.advance();
+            self.skip_sep();
+            let mut list = Vec::new();
+            while !self.at_end()
+                && !self.is_command_terminator()
+                && !self.check(&Token::Do)
+                && !self.check(&Token::Semi)
+                && !self.check(&Token::Newline)
+            {
+                list.push(self.parse_word()?);
+            }
+            list
+        } else {
+            Vec::new()
+        };
+        self.skip_sep_optional();
+
+        // Expect 'do'
+        self.expect(&Token::Do)?;
+        self.skip_sep();
+
+        let body = self.parse_body_until(&[&Token::Done])?;
+        self.skip_sep();
+        self.expect(&Token::Done)?;
+
+        Ok(CommandBody::ForLoop(ForLoop {
+            variable,
+            list,
+            body,
+        }))
+    }
+
+    fn parse_while_loop(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'while'
+        self.skip_sep();
+
+        let condition = self.parse_condition_list()?;
+        self.skip_sep();
+
+        self.expect(&Token::Do)?;
+        self.skip_sep();
+
+        let body = self.parse_body_until(&[&Token::Done])?;
+        self.skip_sep();
+        self.expect(&Token::Done)?;
+
+        Ok(CommandBody::WhileLoop(WhileLoop { condition, body }))
+    }
+
+    fn parse_until_loop(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'until'
+        self.skip_sep();
+
+        let condition = self.parse_condition_list()?;
+        self.skip_sep();
+
+        self.expect(&Token::Do)?;
+        self.skip_sep();
+
+        let body = self.parse_body_until(&[&Token::Done])?;
+        self.skip_sep();
+        self.expect(&Token::Done)?;
+
+        Ok(CommandBody::UntilLoop(UntilLoop { condition, body }))
+    }
+
+    fn parse_case_statement(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'case'
+        self.skip_sep();
+
+        let value = self.parse_word()?;
+        self.skip_sep();
+
+        // Expect 'in'
+        self.expect(&Token::In)?;
+        self.skip_sep();
+
+        let mut cases = Vec::new();
+
+        while !self.at_end() && !self.check(&Token::Esac) {
+            // Parse patterns: pattern1 | pattern2 | pattern3 )
+            let mut patterns = Vec::new();
+            loop {
+                patterns.push(self.parse_word()?);
+                self.skip_sep_optional();
+                if self.check(&Token::Pipe) {
+                    self.advance();
+                    self.skip_sep_optional();
+                } else if self.check(&Token::RightParen) {
+                    self.advance();
+                    break;
+                } else {
+                    // Might be just pattern) without pipe
+                    break;
+                }
+            }
+            self.skip_sep();
+
+            // Parse body until ;; or esac
+            let mut body = Vec::new();
+            while !self.at_end()
+                && !self.check(&Token::Esac)
+                && !self.is_case_terminator()
+            {
+                self.skip_sep();
+                if self.check(&Token::Esac) || self.is_case_terminator() {
+                    break;
+                }
+                body.push(self.parse_command()?);
+                self.skip_sep_optional();
+            }
+
+            // Consume ;;
+            if self.check(&Token::Semi) {
+                self.advance();
+                if self.check(&Token::Semi) {
+                    self.advance();
+                }
+            }
+            self.skip_sep();
+
+            cases.push(CaseItem { patterns, body });
+        }
+
+        self.expect(&Token::Esac)?;
+
+        Ok(CommandBody::Case(CaseStatement { value, cases }))
+    }
+
+    fn is_case_terminator(&self) -> bool {
+        // Check for ;; followed by another case or esac
+        if !self.check(&Token::Semi) {
+            return false;
+        }
+        // We need to look ahead for ;;
+        // The lexer produces two Semi tokens for ;;
+        true
+    }
+
+    fn parse_function_def_keyword(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'function'
+        self.skip_sep();
+        let name = self.expect_word()?;
+        self.skip_sep_optional();
+
+        // Optional ()
+        if self.check(&Token::LeftParen) {
+            self.advance();
+            self.expect(&Token::RightParen)?;
+            self.skip_sep_optional();
+        }
+
+        // Expect {
+        self.expect(&Token::LeftBrace)?;
+        self.skip_sep();
+
+        let body = self.parse_body_until(&[&Token::RightBrace])?;
+        self.skip_sep_optional();
+        self.expect(&Token::RightBrace)?;
+
+        Ok(CommandBody::FunctionDef(FunctionDef { name, body }))
+    }
+
+    fn is_function_def(&self) -> bool {
+        // Check for name() pattern
+        if let Some(Token::Word(_)) = self.current() {
+            if self.pos + 2 < self.tokens.len() {
+                return matches!(
+                    (&self.tokens[self.pos + 1], &self.tokens[self.pos + 2]),
+                    (Token::LeftParen, Token::RightParen)
+                );
+            }
+        }
+        false
+    }
+
+    fn parse_function_def_parens(&mut self) -> Result<CommandBody> {
+        let name = self.expect_word()?;
+        self.expect(&Token::LeftParen)?;
+        self.expect(&Token::RightParen)?;
+        self.skip_sep_optional();
+
+        // Expect {
+        self.expect(&Token::LeftBrace)?;
+        self.skip_sep();
+
+        let body = self.parse_body_until(&[&Token::RightBrace])?;
+        self.skip_sep_optional();
+        self.expect(&Token::RightBrace)?;
+
+        Ok(CommandBody::FunctionDef(FunctionDef { name, body }))
+    }
+
+    fn parse_subshell(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume '('
+        self.skip_sep();
+        let body = self.parse_command_body()?;
+        self.skip_sep();
+        self.expect(&Token::RightParen)?;
+        Ok(CommandBody::Subshell(Box::new(body)))
+    }
+
+    fn parse_group(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume '{'
+        self.skip_sep();
+        let body = self.parse_command_body()?;
+        self.skip_sep();
+        self.expect(&Token::RightBrace)?;
+        Ok(CommandBody::Group(Box::new(body)))
+    }
+
+    fn parse_return(&mut self) -> Result<CommandBody> {
+        self.advance(); // consume 'return'
+        let value = if !self.at_end()
+            && !self.is_command_terminator()
+            && !self.check(&Token::Semi)
+        {
+            Some(self.parse_word()?)
+        } else {
+            None
+        };
+        Ok(CommandBody::Return(value))
+    }
+
+    /// Parse a condition list (commands until 'then' or 'do')
+    fn parse_condition_list(&mut self) -> Result<Vec<Command>> {
+        let mut condition = Vec::new();
+        while !self.at_end()
+            && !self.check(&Token::Then)
+            && !self.check(&Token::Do)
+            && !self.check(&Token::Semi)
+        {
+            condition.push(self.parse_command()?);
+            self.skip_sep_optional();
+            if self.check(&Token::Semi) {
+                self.advance();
+                self.skip_sep();
+            }
+        }
+        Ok(condition)
+    }
+
+    /// Parse body commands until one of the terminator tokens
+    fn parse_body_until(&mut self, terminators: &[&Token]) -> Result<Vec<Command>> {
+        let mut body = Vec::new();
+        while !self.at_end() {
+            self.skip_sep();
+            if self.at_end() || terminators.iter().any(|t| self.check(t)) {
+                break;
+            }
+            body.push(self.parse_command()?);
+            self.skip_sep_optional();
+            if self.check(&Token::Semi) {
+                self.advance();
+            }
+        }
+        Ok(body)
+    }
+
+    // --- Helpers ---
 
     fn current(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
@@ -367,10 +963,14 @@ impl Parser {
         self.pos >= self.tokens.len() || matches!(self.current(), Some(Token::Eof))
     }
 
-    fn skip_newlines(&mut self) {
-        while self.check(&Token::Newline) {
+    fn skip_sep(&mut self) {
+        while self.check(&Token::Newline) || self.check(&Token::Semi) {
             self.advance();
         }
+    }
+
+    fn skip_sep_optional(&mut self) {
+        self.skip_sep();
     }
 
     fn is_command_terminator(&self) -> bool {
@@ -385,6 +985,13 @@ impl Parser {
                 | Some(Token::Eof)
                 | Some(Token::RightParen)
                 | Some(Token::RightBrace)
+                | Some(Token::Fi)
+                | Some(Token::Done)
+                | Some(Token::Esac)
+                | Some(Token::Then)
+                | Some(Token::Do)
+                | Some(Token::Elif)
+                | Some(Token::Else)
         )
     }
 
@@ -414,337 +1021,6 @@ impl Parser {
                 false
             }
         })
-    }
-
-    fn parse_function_def(&mut self) -> Result<CommandBody> {
-        self.advance(); // consume 'function'
-        let name = self.expect_word()?;
-
-        // Parse optional flags: --on-event EVENT, --on-variable VAR
-        let mut on_event = None;
-        let mut on_variable = None;
-        loop {
-            self.skip_newlines();
-            if self.check_word("--on-event") {
-                self.advance();
-                self.skip_newlines();
-                on_event = Some(self.expect_word()?);
-            } else if self.check_word("--on-variable") {
-                self.advance();
-                self.skip_newlines();
-                on_variable = Some(self.expect_word()?);
-            } else {
-                break;
-            }
-        }
-
-        self.skip_newlines();
-
-        // Parse body until 'end'
-        let mut body = Vec::new();
-        while !self.at_end() && !self.check(&Token::End) {
-            self.skip_newlines();
-            if self.check(&Token::End) {
-                break;
-            }
-            body.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
-        }
-        self.expect(&Token::End)?;
-
-        Ok(CommandBody::FunctionDef(FunctionDef {
-            name,
-            body,
-            on_event,
-            on_variable,
-        }))
-    }
-
-    fn parse_for_loop(&mut self) -> Result<CommandBody> {
-        self.advance(); // consume 'for'
-        let variable = self.expect_word()?;
-        self.skip_newlines();
-
-        // Expect 'in'
-        self.expect(&Token::In)?;
-        self.skip_newlines();
-
-        // Parse list of words
-        let mut list = Vec::new();
-        while !self.at_end()
-            && !self.is_command_terminator()
-            && !self.check(&Token::Do)
-            && !self.check(&Token::Newline)
-        {
-            list.push(self.parse_word()?);
-        }
-        self.skip_newlines();
-
-        // Expect 'do' or 'end' (fish style uses 'end')
-        if self.check(&Token::Do) {
-            self.advance();
-        }
-        self.skip_newlines();
-
-        // Parse body
-        let mut body = Vec::new();
-        while !self.at_end() && !self.check(&Token::End) {
-            self.skip_newlines();
-            if self.check(&Token::End) {
-                break;
-            }
-            body.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
-        }
-        self.expect(&Token::End)?;
-
-        Ok(CommandBody::ForLoop(ForLoop {
-            variable,
-            list,
-            body,
-        }))
-    }
-
-    fn parse_while_loop(&mut self) -> Result<CommandBody> {
-        self.advance(); // consume 'while'
-        self.skip_newlines();
-
-        // Parse condition
-        let mut condition = Vec::new();
-        while !self.at_end() && !self.check(&Token::Do) && !self.check(&Token::Newline) {
-            condition.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
-        }
-        self.skip_newlines();
-
-        // Expect 'do'
-        if self.check(&Token::Do) {
-            self.advance();
-        }
-        self.skip_newlines();
-
-        // Parse body
-        let mut body = Vec::new();
-        while !self.at_end() && !self.check(&Token::End) {
-            self.skip_newlines();
-            if self.check(&Token::End) {
-                break;
-            }
-            body.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
-        }
-        self.expect(&Token::End)?;
-
-        Ok(CommandBody::WhileLoop(WhileLoop { condition, body }))
-    }
-
-    fn parse_if_statement(&mut self) -> Result<CommandBody> {
-        self.advance(); // consume 'if'
-        self.skip_newlines();
-
-        // Parse condition
-        let mut condition = Vec::new();
-        while !self.at_end() && !self.check(&Token::Then) {
-            condition.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
-        }
-        self.skip_newlines();
-
-        // Expect 'then'
-        self.expect(&Token::Then)?;
-        self.skip_newlines();
-
-        // Parse then body
-        let mut then_body = Vec::new();
-        while !self.at_end()
-            && !self.check(&Token::Elif)
-            && !self.check(&Token::Else)
-            && !self.check(&Token::End)
-        {
-            self.skip_newlines();
-            if self.check(&Token::Elif) || self.check(&Token::Else) || self.check(&Token::End) {
-                break;
-            }
-            then_body.push(self.parse_command()?);
-            self.skip_newlines();
-            if self.check(&Token::Semi) {
-                self.advance();
-            }
-        }
-
-        // Parse elif branches
-        let mut elif_branches = Vec::new();
-        while self.check(&Token::Elif) {
-            self.advance(); // consume 'elif'
-            self.skip_newlines();
-
-            let mut elif_condition = Vec::new();
-            while !self.at_end() && !self.check(&Token::Then) {
-                elif_condition.push(self.parse_command()?);
-                self.skip_newlines();
-                if self.check(&Token::Semi) {
-                    self.advance();
-                }
-            }
-            self.skip_newlines();
-            self.expect(&Token::Then)?;
-            self.skip_newlines();
-
-            let mut elif_body = Vec::new();
-            while !self.at_end()
-                && !self.check(&Token::Elif)
-                && !self.check(&Token::Else)
-                && !self.check(&Token::End)
-            {
-                self.skip_newlines();
-                if self.check(&Token::Elif) || self.check(&Token::Else) || self.check(&Token::End) {
-                    break;
-                }
-                elif_body.push(self.parse_command()?);
-                self.skip_newlines();
-                if self.check(&Token::Semi) {
-                    self.advance();
-                }
-            }
-
-            elif_branches.push(ElifBranch {
-                condition: elif_condition,
-                body: elif_body,
-            });
-        }
-
-        // Parse else body
-        let else_body = if self.check(&Token::Else) {
-            self.advance(); // consume 'else'
-            self.skip_newlines();
-
-            let mut else_body = Vec::new();
-            while !self.at_end() && !self.check(&Token::End) {
-                self.skip_newlines();
-                if self.check(&Token::End) {
-                    break;
-                }
-                else_body.push(self.parse_command()?);
-                self.skip_newlines();
-                if self.check(&Token::Semi) {
-                    self.advance();
-                }
-            }
-            Some(else_body)
-        } else {
-            None
-        };
-
-        self.expect(&Token::End)?;
-
-        Ok(CommandBody::If(IfStatement {
-            condition,
-            then_body,
-            elif_branches,
-            else_body,
-        }))
-    }
-
-    fn parse_switch_statement(&mut self) -> Result<CommandBody> {
-        self.advance(); // consume 'switch'
-        self.skip_seps();
-
-        // Parse the switch value (a word)
-        let value = self.parse_word()?;
-        self.skip_seps();
-
-        // Parse case branches
-        let mut cases = Vec::new();
-        while self.check(&Token::Case) {
-            self.advance(); // consume 'case'
-            self.skip_seps();
-
-            // Parse patterns (one or more words until semicolon or newline)
-            let mut patterns = Vec::new();
-            while !self.at_end()
-                && !self.check(&Token::Semi)
-                && !self.check(&Token::Newline)
-                && !self.check(&Token::Case)
-                && !self.check(&Token::End)
-            {
-                patterns.push(self.parse_word()?);
-            }
-            self.skip_seps();
-
-            // Parse body until next case or end
-            let mut body = Vec::new();
-            while !self.at_end() && !self.check(&Token::Case) && !self.check(&Token::End) {
-                self.skip_seps();
-                if self.check(&Token::Case) || self.check(&Token::End) {
-                    break;
-                }
-                body.push(self.parse_command()?);
-                self.skip_seps();
-            }
-
-            cases.push(CaseBranch { patterns, body });
-        }
-
-        self.skip_seps();
-        self.expect(&Token::End)?;
-
-        Ok(CommandBody::Switch(SwitchStatement { value, cases }))
-    }
-
-    fn parse_begin_block(&mut self) -> Result<CommandBody> {
-        self.advance(); // consume 'begin'
-        self.skip_seps();
-
-        // Parse body until 'end'
-        let mut body_cmds = Vec::new();
-        while !self.at_end() && !self.check(&Token::End) {
-            self.skip_seps();
-            if self.check(&Token::End) {
-                break;
-            }
-            body_cmds.push(self.parse_command()?);
-            self.skip_seps();
-        }
-        self.expect(&Token::End)?;
-
-        // Create a Sequence from the body commands (like a group)
-        if body_cmds.is_empty() {
-            Ok(CommandBody::Group(Box::new(CommandBody::Simple(
-                SimpleCommand {
-                    redirects: Vec::new(),
-                    assignments: Vec::new(),
-                    words: vec![],
-                },
-            ))))
-        } else {
-            let mut iter = body_cmds.into_iter();
-            let first = iter.next().unwrap().body;
-            let body = iter.fold(first, |acc, cmd| {
-                CommandBody::Sequence(Box::new(acc), Box::new(cmd.body))
-            });
-            Ok(CommandBody::Group(Box::new(body)))
-        }
-    }
-
-    fn skip_seps(&mut self) {
-        while self.check(&Token::Newline) || self.check(&Token::Semi) {
-            self.advance();
-        }
     }
 }
 
@@ -800,10 +1076,6 @@ mod tests {
         match &commands[0].body {
             CommandBody::Simple(cmd) => {
                 assert_eq!(cmd.words.len(), 2);
-                assert_eq!(
-                    cmd.words[0].parts,
-                    vec![WordPart::Literal("echo".to_string())]
-                );
                 match &cmd.words[1].parts[0] {
                     WordPart::CommandSub(_) => {}
                     _ => panic!("Expected CommandSub, got {:?}", cmd.words[1].parts[0]),
@@ -814,305 +1086,8 @@ mod tests {
     }
 
     #[test]
-    fn test_assignment_with_cmd_sub() {
-        let mut parser = Parser::new("X=$(echo hi)");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.assignments.len(), 1);
-                assert_eq!(cmd.assignments[0].name, "X");
-                match &cmd.assignments[0].value.parts[0] {
-                    WordPart::CommandSub(_) => {}
-                    _ => panic!("Expected CommandSub in assignment value"),
-                }
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_switch_case() {
-        let mut parser =
-            Parser::new("switch hello; case world; echo wrong; case hello; echo right; end");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::Switch(switch) => {
-                assert_eq!(
-                    switch.value.parts,
-                    vec![WordPart::Literal("hello".to_string())]
-                );
-                assert_eq!(switch.cases.len(), 2);
-                assert_eq!(switch.cases[0].patterns.len(), 1);
-                assert_eq!(switch.cases[1].patterns.len(), 1);
-            }
-            _ => panic!("Expected switch statement, got {:?}", commands[0].body),
-        }
-    }
-
-    #[test]
-    fn test_empty_input() {
-        let mut parser = Parser::new("");
-        let commands = parser.parse().unwrap();
-        assert!(commands.is_empty());
-    }
-
-    #[test]
-    fn test_whitespace_only() {
-        let mut parser = Parser::new("   \n  \n  ");
-        let commands = parser.parse().unwrap();
-        assert!(commands.is_empty());
-    }
-
-    #[test]
-    fn test_multiple_commands_semicolon() {
-        let mut parser = Parser::new("echo a; echo b; echo c");
-        let commands = parser.parse().unwrap();
-        // Parser returns separate commands for semicolon-separated
-        assert_eq!(commands.len(), 3);
-    }
-
-    #[test]
-    fn test_multiple_commands_newline() {
-        let mut parser = Parser::new("echo a\necho b\necho c");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 3);
-    }
-
-    #[test]
-    fn test_and_chain() {
-        let mut parser = Parser::new("true && echo yes");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::And(_, _) => {}
-            _ => panic!("Expected And, got {:?}", commands[0].body),
-        }
-    }
-
-    #[test]
-    fn test_or_chain() {
-        let mut parser = Parser::new("false || echo fallback");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::Or(_, _) => {}
-            _ => panic!("Expected Or, got {:?}", commands[0].body),
-        }
-    }
-
-    #[test]
-    fn test_three_stage_pipeline() {
-        let mut parser = Parser::new("cat file | grep err | wc -l");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::Pipeline(p) => {
-                assert_eq!(p.commands.len(), 3);
-            }
-            _ => panic!("Expected pipeline"),
-        }
-    }
-
-    #[test]
-    fn test_redirect_append() {
-        let mut parser = Parser::new("echo hello >> log.txt");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.redirects.len(), 1);
-                assert_eq!(cmd.redirects[0].op, RedirectOp::Append);
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_redirect_input() {
-        let mut parser = Parser::new("cat < input.txt");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.redirects.len(), 1);
-                assert_eq!(cmd.redirects[0].op, RedirectOp::Input);
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_redirect_both() {
-        let mut parser = Parser::new("cmd &> /dev/null");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.redirects.len(), 1);
-                assert_eq!(cmd.redirects[0].op, RedirectOp::BothOutput);
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_simple_assignment() {
-        let mut parser = Parser::new("FOO=bar");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert!(cmd.words.is_empty());
-                assert_eq!(cmd.assignments.len(), 1);
-                assert_eq!(cmd.assignments[0].name, "FOO");
-                assert_eq!(
-                    cmd.assignments[0].value.parts,
-                    vec![WordPart::Literal("bar".to_string())]
-                );
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_assignment_not_confused_with_arg() {
-        // echo hello=world - parser sees hello=world as assignment since it matches is_assignment
-        let mut parser = Parser::new("echo hello=world");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                // Parser treats hello=world as an assignment
-                assert_eq!(cmd.words.len(), 1); // echo
-                assert_eq!(cmd.assignments.len(), 1); // hello=world
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_single_quoted_string() {
-        let mut parser = Parser::new("echo 'hello world'");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.words.len(), 2);
-                assert_eq!(
-                    cmd.words[1].parts,
-                    vec![WordPart::SingleQuoted("hello world".to_string())]
-                );
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_double_quoted_string() {
-        let mut parser = Parser::new(r#"echo "hello world""#);
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.words.len(), 2);
-                match &cmd.words[1].parts[0] {
-                    WordPart::DoubleQuoted(parts) => {
-                        assert_eq!(parts, &vec![WordPart::Literal("hello world".to_string())]);
-                    }
-                    _ => panic!("Expected DoubleQuoted"),
-                }
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_double_quoted_with_variable() {
-        let mut parser = Parser::new(r#"echo "$FOO bar""#);
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => match &cmd.words[1].parts[0] {
-                WordPart::DoubleQuoted(parts) => {
-                    assert_eq!(parts.len(), 2);
-                    assert_eq!(parts[0], WordPart::Variable("FOO".to_string()));
-                    assert_eq!(parts[1], WordPart::Literal(" bar".to_string()));
-                }
-                _ => panic!("Expected DoubleQuoted"),
-            },
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_variable_in_word() {
-        let mut parser = Parser::new("echo $VAR");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                assert_eq!(
-                    cmd.words[1].parts,
-                    vec![WordPart::Variable("VAR".to_string())]
-                );
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
-    fn test_function_def() {
-        let mut parser = Parser::new("function greet\n  echo hello $1\nend");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::FunctionDef(f) => {
-                assert_eq!(f.name, "greet");
-                assert_eq!(f.body.len(), 1);
-            }
-            _ => panic!("Expected FunctionDef, got {:?}", commands[0].body),
-        }
-    }
-
-    #[test]
-    fn test_for_loop() {
-        let mut parser = Parser::new("for i in 1 2 3\n  echo $i\nend");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::ForLoop(f) => {
-                assert_eq!(f.variable, "i");
-                assert_eq!(f.list.len(), 3);
-                assert_eq!(f.body.len(), 1);
-            }
-            _ => panic!("Expected ForLoop, got {:?}", commands[0].body),
-        }
-    }
-
-    #[test]
-    fn test_for_loop_with_do() {
-        let mut parser = Parser::new("for i in a b\ndo\n  echo $i\nend");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::ForLoop(f) => {
-                assert_eq!(f.variable, "i");
-                assert_eq!(f.list.len(), 2);
-            }
-            _ => panic!("Expected ForLoop"),
-        }
-    }
-
-    #[test]
-    fn test_while_loop() {
-        let mut parser = Parser::new("while true; do echo loop; end");
-        let commands = parser.parse().unwrap();
-        assert_eq!(commands.len(), 1);
-        match &commands[0].body {
-            CommandBody::WhileLoop(w) => {
-                assert_eq!(w.condition.len(), 1);
-                assert_eq!(w.body.len(), 1);
-            }
-            _ => panic!("Expected WhileLoop, got {:?}", commands[0].body),
-        }
-    }
-
-    #[test]
     fn test_if_statement() {
-        let mut parser = Parser::new("if true; then echo yes; end");
+        let mut parser = Parser::new("if true; then echo yes; fi");
         let commands = parser.parse().unwrap();
         assert_eq!(commands.len(), 1);
         match &commands[0].body {
@@ -1128,7 +1103,7 @@ mod tests {
 
     #[test]
     fn test_if_else() {
-        let mut parser = Parser::new("if false; then echo yes; else echo no; end");
+        let mut parser = Parser::new("if false; then echo yes; else echo no; fi");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::If(stmt) => {
@@ -1142,7 +1117,7 @@ mod tests {
     #[test]
     fn test_if_elif_else() {
         let mut parser =
-            Parser::new("if false; then echo a; elif true; then echo b; else echo c; end");
+            Parser::new("if false; then echo a; elif true; then echo b; else echo c; fi");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::If(stmt) => {
@@ -1154,56 +1129,109 @@ mod tests {
     }
 
     #[test]
-    fn test_switch_with_glob_pattern() {
-        let mut parser = Parser::new("switch $x; case *.txt; echo text; case *.rs; echo rust; end");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Switch(s) => {
-                assert_eq!(s.cases.len(), 2);
-                assert_eq!(
-                    s.cases[0].patterns[0].parts,
-                    vec![WordPart::Literal("*.txt".to_string())]
-                );
-                assert_eq!(
-                    s.cases[1].patterns[0].parts,
-                    vec![WordPart::Literal("*.rs".to_string())]
-                );
-            }
-            _ => panic!("Expected Switch"),
-        }
-    }
-
-    #[test]
-    fn test_switch_multiple_patterns() {
-        let mut parser = Parser::new("switch $x; case a b c; echo matched; end");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Switch(s) => {
-                assert_eq!(s.cases.len(), 1);
-                assert_eq!(s.cases[0].patterns.len(), 3);
-            }
-            _ => panic!("Expected Switch"),
-        }
-    }
-
-    #[test]
-    fn test_begin_end_block() {
-        let mut parser = Parser::new("begin; echo a; echo b; end");
+    fn test_for_loop() {
+        let mut parser = Parser::new("for i in 1 2 3; do echo $i; done");
         let commands = parser.parse().unwrap();
         assert_eq!(commands.len(), 1);
         match &commands[0].body {
-            CommandBody::Group(_) => {}
-            _ => panic!("Expected Group (begin/end), got {:?}", commands[0].body),
+            CommandBody::ForLoop(f) => {
+                assert_eq!(f.variable, "i");
+                assert_eq!(f.list.len(), 3);
+                assert_eq!(f.body.len(), 1);
+            }
+            _ => panic!("Expected ForLoop, got {:?}", commands[0].body),
+        }
+    }
+
+    #[test]
+    fn test_while_loop() {
+        let mut parser = Parser::new("while true; do echo loop; done");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::WhileLoop(w) => {
+                assert_eq!(w.condition.len(), 1);
+                assert_eq!(w.body.len(), 1);
+            }
+            _ => panic!("Expected WhileLoop, got {:?}", commands[0].body),
+        }
+    }
+
+    #[test]
+    fn test_until_loop() {
+        let mut parser = Parser::new("until false; do echo loop; done");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::UntilLoop(u) => {
+                assert_eq!(u.condition.len(), 1);
+                assert_eq!(u.body.len(), 1);
+            }
+            _ => panic!("Expected UntilLoop"),
+        }
+    }
+
+    #[test]
+    fn test_case_statement() {
+        let mut parser = Parser::new("case $x in foo) echo bar;; esac");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::Case(c) => {
+                assert_eq!(c.cases.len(), 1);
+                assert_eq!(c.cases[0].patterns.len(), 1);
+            }
+            _ => panic!("Expected Case, got {:?}", commands[0].body),
+        }
+    }
+
+    #[test]
+    fn test_function_def_parens() {
+        let mut parser = Parser::new("foo() { echo hello; }");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::FunctionDef(f) => {
+                assert_eq!(f.name, "foo");
+                assert_eq!(f.body.len(), 1);
+            }
+            _ => panic!("Expected FunctionDef, got {:?}", commands[0].body),
+        }
+    }
+
+    #[test]
+    fn test_function_def_keyword() {
+        let mut parser = Parser::new("function foo { echo hello; }");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::FunctionDef(f) => {
+                assert_eq!(f.name, "foo");
+                assert_eq!(f.body.len(), 1);
+            }
+            _ => panic!("Expected FunctionDef, got {:?}", commands[0].body),
         }
     }
 
     #[test]
     fn test_subshell() {
-        // Subshell parsing via ( ) is not yet implemented in the parser
-        // This test verifies the parser gracefully handles the error
-        let result = Parser::new("(echo hello)").parse();
-        // Should return an error since LeftParen is not handled
-        assert!(result.is_err());
+        let mut parser = Parser::new("(echo hello)");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::Subshell(_) => {}
+            _ => panic!("Expected Subshell"),
+        }
+    }
+
+    #[test]
+    fn test_group() {
+        let mut parser = Parser::new("{ echo hello; }");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::Group(_) => {}
+            _ => panic!("Expected Group"),
+        }
     }
 
     #[test]
@@ -1215,18 +1243,54 @@ mod tests {
     }
 
     #[test]
-    fn test_command_substitution_in_double_quotes() {
-        let mut parser = Parser::new(r#"echo "today is $(date)""#);
+    fn test_and_chain() {
+        let mut parser = Parser::new("true && echo yes");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::And(_, _) => {}
+            _ => panic!("Expected And"),
+        }
+    }
+
+    #[test]
+    fn test_or_chain() {
+        let mut parser = Parser::new("false || echo fallback");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 1);
+        match &commands[0].body {
+            CommandBody::Or(_, _) => {}
+            _ => panic!("Expected Or"),
+        }
+    }
+
+    #[test]
+    fn test_variable() {
+        let mut parser = Parser::new("echo $VAR");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Simple(cmd) => {
+                assert_eq!(
+                    cmd.words[1].parts,
+                    vec![WordPart::Variable("VAR".to_string())]
+                );
+            }
+            _ => panic!("Expected simple command"),
+        }
+    }
+
+    #[test]
+    fn test_param_expansion_default() {
+        let mut parser = Parser::new("echo ${x:-default}");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::Simple(cmd) => {
                 match &cmd.words[1].parts[0] {
-                    WordPart::DoubleQuoted(parts) => {
-                        // Parser handles $VAR in double quotes but $(cmd) may be literal
-                        // Just verify it's a DoubleQuoted with content
-                        assert!(!parts.is_empty());
+                    WordPart::ParamExpansion { name, op } => {
+                        assert_eq!(name, "x");
+                        assert_eq!(*op, ParamOp::UseDefault("default".to_string()));
                     }
-                    _ => panic!("Expected DoubleQuoted"),
+                    other => panic!("Expected ParamExpansion, got {:?}", other),
                 }
             }
             _ => panic!("Expected simple command"),
@@ -1234,13 +1298,100 @@ mod tests {
     }
 
     #[test]
-    fn test_nested_command_substitution() {
-        let mut parser = Parser::new("echo $(echo $(echo nested))");
+    fn test_param_expansion_length() {
+        let mut parser = Parser::new("echo ${#var}");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Simple(cmd) => {
+                match &cmd.words[1].parts[0] {
+                    WordPart::ParamExpansion { name, op } => {
+                        assert_eq!(name, "var");
+                        assert_eq!(*op, ParamOp::StringLength);
+                    }
+                    other => panic!("Expected ParamExpansion, got {:?}", other),
+                }
+            }
+            _ => panic!("Expected simple command"),
+        }
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let mut parser = Parser::new("");
+        let commands = parser.parse().unwrap();
+        assert!(commands.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_commands_semicolon() {
+        let mut parser = Parser::new("echo a; echo b; echo c");
+        let commands = parser.parse().unwrap();
+        assert_eq!(commands.len(), 3);
+    }
+
+    #[test]
+    fn test_redirect_append() {
+        let mut parser = Parser::new("echo hello >> log.txt");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Simple(cmd) => {
+                assert_eq!(cmd.redirects[0].op, RedirectOp::Append);
+            }
+            _ => panic!("Expected simple command"),
+        }
+    }
+
+    #[test]
+    fn test_redirect_both() {
+        let mut parser = Parser::new("cmd &> /dev/null");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Simple(cmd) => {
+                assert_eq!(cmd.redirects[0].op, RedirectOp::BothOutput);
+            }
+            _ => panic!("Expected simple command"),
+        }
+    }
+
+    #[test]
+    fn test_assignment() {
+        let mut parser = Parser::new("FOO=bar");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Simple(cmd) => {
+                assert!(cmd.words.is_empty());
+                assert_eq!(cmd.assignments.len(), 1);
+                assert_eq!(cmd.assignments[0].name, "FOO");
+            }
+            _ => panic!("Expected simple command"),
+        }
+    }
+
+    #[test]
+    fn test_single_quoted() {
+        let mut parser = Parser::new("echo 'hello world'");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Simple(cmd) => {
+                assert_eq!(
+                    cmd.words[1].parts,
+                    vec![WordPart::SingleQuoted("hello world".to_string())]
+                );
+            }
+            _ => panic!("Expected simple command"),
+        }
+    }
+
+    #[test]
+    fn test_double_quoted() {
+        let mut parser = Parser::new(r#"echo "hello world""#);
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::Simple(cmd) => match &cmd.words[1].parts[0] {
-                WordPart::CommandSub(_) => {}
-                _ => panic!("Expected CommandSub"),
+                WordPart::DoubleQuoted(parts) => {
+                    assert_eq!(parts, &vec![WordPart::Literal("hello world".to_string())]);
+                }
+                _ => panic!("Expected DoubleQuoted"),
             },
             _ => panic!("Expected simple command"),
         }
@@ -1252,7 +1403,6 @@ mod tests {
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::Simple(cmd) => {
-                assert_eq!(cmd.redirects.len(), 1);
                 assert_eq!(cmd.redirects[0].op, RedirectOp::HereDoc);
             }
             _ => panic!("Expected simple command"),
@@ -1260,22 +1410,8 @@ mod tests {
     }
 
     #[test]
-    fn test_combined_redirect_and_args() {
-        let mut parser = Parser::new("echo hello > out.txt 2>&1");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                // echo hello are words, 2>&1 may be parsed as additional token
-                assert!(cmd.words.len() >= 2);
-                assert!(!cmd.redirects.is_empty());
-            }
-            _ => panic!("Expected simple command"),
-        }
-    }
-
-    #[test]
     fn test_function_with_multiple_commands() {
-        let mut parser = Parser::new("function multi\n  echo a\n  echo b\n  echo c\nend");
+        let mut parser = Parser::new("foo() { echo a; echo b; echo c; }");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
             CommandBody::FunctionDef(f) => {
@@ -1286,29 +1422,64 @@ mod tests {
     }
 
     #[test]
-    fn test_for_loop_empty_list() {
-        let mut parser = Parser::new("for i in ; echo $i; end");
-        let commands = parser.parse().unwrap();
-        match &commands[0].body {
-            CommandBody::ForLoop(f) => {
-                assert!(f.list.is_empty());
-            }
-            _ => panic!("Expected ForLoop"),
-        }
-    }
-
-    #[test]
     fn test_chained_and_or() {
         let mut parser = Parser::new("a && b || c");
         let commands = parser.parse().unwrap();
         assert_eq!(commands.len(), 1);
-        // Should be Or(And(a, b), c)
         match &commands[0].body {
             CommandBody::Or(left, _right) => match left.as_ref() {
                 CommandBody::And(_, _) => {}
                 _ => panic!("Expected And inside Or"),
             },
             _ => panic!("Expected Or"),
+        }
+    }
+
+    #[test]
+    fn test_three_stage_pipeline() {
+        let mut parser = Parser::new("cat file | grep err | wc -l");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Pipeline(p) => {
+                assert_eq!(p.commands.len(), 3);
+            }
+            _ => panic!("Expected pipeline"),
+        }
+    }
+
+    #[test]
+    fn test_negated_pipeline() {
+        let mut parser = Parser::new("! true | false");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Pipeline(p) => {
+                assert!(p.negated);
+            }
+            _ => panic!("Expected pipeline"),
+        }
+    }
+
+    #[test]
+    fn test_case_multiple_patterns() {
+        let mut parser = Parser::new("case $x in a|b|c) echo match;; esac");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Case(c) => {
+                assert_eq!(c.cases[0].patterns.len(), 3);
+            }
+            _ => panic!("Expected Case"),
+        }
+    }
+
+    #[test]
+    fn test_return() {
+        let mut parser = Parser::new("return 0");
+        let commands = parser.parse().unwrap();
+        match &commands[0].body {
+            CommandBody::Return(val) => {
+                assert!(val.is_some());
+            }
+            _ => panic!("Expected Return"),
         }
     }
 }

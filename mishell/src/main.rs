@@ -20,7 +20,7 @@ use syntax::SyntaxHighlighter;
 
 #[derive(ClapParser)]
 #[command(name = "mishell")]
-#[command(about = "A powerful shell with bash syntax and fish features")]
+#[command(about = "A bash-compatible shell")]
 struct Cli {
     /// Execute a command and exit
     #[arg(short = 'c', long)]
@@ -29,10 +29,6 @@ struct Cli {
     /// Run in interactive mode (default if TTY)
     #[arg(short, long)]
     interactive: bool,
-
-    /// Disable fish features
-    #[arg(long)]
-    no_fish: bool,
 
     /// Run as MCP server (JSON-RPC 2.0 over stdio)
     #[arg(long)]
@@ -53,17 +49,17 @@ fn main() -> anyhow::Result<()> {
     }
 
     if let Some(cmd) = cli.command {
-        let mut shell = Shell::new(!cli.no_fish)?;
+        let mut shell = Shell::new()?;
         shell.set_interactive(false);
         shell.execute(&cmd)?;
         return Ok(());
     }
 
-    run_interactive(!cli.no_fish)
+    run_interactive()
 }
 
-fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
-    let mut shell = Shell::new(fish_features)?;
+fn run_interactive() -> anyhow::Result<()> {
+    let mut shell = Shell::new()?;
     let mut hist = History::new()?;
     let completer = AutoCompleter::new();
     let highlighter = SyntaxHighlighter::new();
@@ -82,14 +78,7 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
         loop {
             match &mode {
                 InputMode::Normal => {
-                    display_prompt(
-                        &shell,
-                        &highlighter,
-                        &input,
-                        cursor_pos,
-                        fish_features,
-                        &hist,
-                    )?;
+                    display_prompt(&shell, &highlighter, &input, cursor_pos, &hist)?;
                 }
                 InputMode::ReverseSearch {
                     query,
@@ -366,7 +355,7 @@ fn run_interactive(fish_features: bool) -> anyhow::Result<()> {
                             } else {
                                 cursor_pos = input.len();
                             }
-                        } else if cursor_pos == input.len() && fish_features {
+                        } else if cursor_pos == input.len() {
                             // Accept autosuggestion from history
                             if let Some(suggestion) =
                                 highlighter.get_autosuggestion(&input, hist.entries())
@@ -469,7 +458,6 @@ fn display_prompt(
     highlighter: &SyntaxHighlighter,
     input: &str,
     cursor_pos: usize,
-    fish_features: bool,
     hist: &History,
 ) -> anyhow::Result<()> {
     let mut stdout = io::stdout();
@@ -516,7 +504,7 @@ fn display_prompt(
     print!("{}", highlighted);
 
     // Fish-style autosuggestion (grey ghost text)
-    if fish_features && cursor_pos == input.len() && !input.is_empty() {
+    if cursor_pos == input.len() && !input.is_empty() {
         if let Some(suggestion) = highlighter.get_autosuggestion(input, hist.entries()) {
             let remaining = &suggestion[input.len()..];
             if !remaining.is_empty() {

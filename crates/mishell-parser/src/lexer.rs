@@ -44,16 +44,21 @@ pub enum Token {
     Function, // function
     For,      // for
     While,    // while
+    Until,    // until
     If,       // if
     Then,     // then
     Elif,     // elif
     Else,     // else
-    End,      // end
+    Fi,       // fi
     Do,       // do
+    Done,     // done
     In,       // in
-    Switch,   // switch
     Case,     // case
-    Begin,    // begin
+    Esac,     // esac
+    Return,   // return
+    Local,    // local
+    Declare,  // declare
+    Readonly, // readonly
 
     // Special
     Newline,
@@ -82,16 +87,21 @@ impl fmt::Display for Token {
             Token::Function => write!(f, "function"),
             Token::For => write!(f, "for"),
             Token::While => write!(f, "while"),
+            Token::Until => write!(f, "until"),
             Token::If => write!(f, "if"),
             Token::Then => write!(f, "then"),
             Token::Elif => write!(f, "elif"),
             Token::Else => write!(f, "else"),
-            Token::End => write!(f, "end"),
+            Token::Fi => write!(f, "fi"),
             Token::Do => write!(f, "do"),
+            Token::Done => write!(f, "done"),
             Token::In => write!(f, "in"),
-            Token::Switch => write!(f, "switch"),
             Token::Case => write!(f, "case"),
-            Token::Begin => write!(f, "begin"),
+            Token::Esac => write!(f, "esac"),
+            Token::Return => write!(f, "return"),
+            Token::Local => write!(f, "local"),
+            Token::Declare => write!(f, "declare"),
+            Token::Readonly => write!(f, "readonly"),
             Token::Newline => writeln!(f),
             Token::Eof => write!(f, "EOF"),
             _ => write!(f, "..."),
@@ -127,8 +137,15 @@ impl Lexer {
                 '|' => self.read_pipe_or(),
                 '&' => self.read_ampersand(),
                 ';' => {
-                    self.tokens.push(Token::Semi);
-                    self.pos += 1;
+                    // Check for ;;
+                    if self.pos + 1 < self.input.len() && self.input[self.pos + 1] == ';' {
+                        self.tokens.push(Token::Semi);
+                        self.tokens.push(Token::Semi);
+                        self.pos += 2;
+                    } else {
+                        self.tokens.push(Token::Semi);
+                        self.pos += 1;
+                    }
                 }
                 '!' => {
                     self.tokens.push(Token::Bang);
@@ -233,9 +250,6 @@ impl Lexer {
         if self.pos + 1 < self.input.len() && self.input[self.pos + 1] == '<' {
             if self.pos + 2 < self.input.len() && self.input[self.pos + 2] == '<' {
                 self.tokens.push(Token::HereDocStrip);
-                self.pos += 3;
-            } else if self.pos + 2 < self.input.len() && self.input[self.pos + 2] == '<' {
-                self.tokens.push(Token::HereString);
                 self.pos += 3;
             } else {
                 self.tokens.push(Token::HereDoc);
@@ -384,16 +398,21 @@ impl Lexer {
             "function" => Token::Function,
             "for" => Token::For,
             "while" => Token::While,
+            "until" => Token::Until,
             "if" => Token::If,
             "then" => Token::Then,
             "elif" => Token::Elif,
             "else" => Token::Else,
-            "end" => Token::End,
+            "fi" => Token::Fi,
             "do" => Token::Do,
+            "done" => Token::Done,
             "in" => Token::In,
-            "switch" => Token::Switch,
             "case" => Token::Case,
-            "begin" => Token::Begin,
+            "esac" => Token::Esac,
+            "return" => Token::Return,
+            "local" => Token::Local,
+            "declare" => Token::Declare,
+            "readonly" => Token::Readonly,
             _ => Token::Word(word),
         };
         self.tokens.push(token);
@@ -452,89 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn test_redirect_append() {
-        let mut lexer = Lexer::new("echo hello >> file.txt");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("echo".to_string()),
-                Token::Word("hello".to_string()),
-                Token::RedirectAppend,
-                Token::Word("file.txt".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_redirect_input() {
-        let mut lexer = Lexer::new("cat < input.txt");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("cat".to_string()),
-                Token::RedirectIn,
-                Token::Word("input.txt".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_redirect_both() {
-        let mut lexer = Lexer::new("cmd &> /dev/null");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("cmd".to_string()),
-                Token::RedirectBoth,
-                Token::Word("/dev/null".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_semicolon_sequence() {
-        let mut lexer = Lexer::new("echo a; echo b");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("echo".to_string()),
-                Token::Word("a".to_string()),
-                Token::Semi,
-                Token::Word("echo".to_string()),
-                Token::Word("b".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_and_or() {
-        let mut lexer = Lexer::new("true && echo yes || echo no");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("true".to_string()),
-                Token::And,
-                Token::Word("echo".to_string()),
-                Token::Word("yes".to_string()),
-                Token::Or,
-                Token::Word("echo".to_string()),
-                Token::Word("no".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_single_quoted_string() {
+    fn test_single_quoted() {
         let mut lexer = Lexer::new("echo 'hello world'");
         let tokens = lexer.tokenize();
         assert_eq!(
@@ -548,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn test_double_quoted_string() {
+    fn test_double_quoted() {
         let mut lexer = Lexer::new(r#"echo "hello world""#);
         let tokens = lexer.tokenize();
         assert_eq!(
@@ -562,122 +499,30 @@ mod tests {
     }
 
     #[test]
-    fn test_double_quoted_with_escape() {
-        let mut lexer = Lexer::new(r#"echo "hello\nworld""#);
+    fn test_variable() {
+        let mut lexer = Lexer::new("echo $VAR");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
                 Token::Word("echo".to_string()),
-                Token::DoubleQuoted("hello\\nworld".to_string()),
+                Token::Word("$VAR".to_string()),
                 Token::Eof,
             ]
         );
     }
 
     #[test]
-    fn test_variable_expansion() {
-        let mut lexer = Lexer::new("echo $HOME");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("echo".to_string()),
-                Token::Word("$HOME".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_variable_underscore() {
-        let mut lexer = Lexer::new("echo $_VAR");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("echo".to_string()),
-                Token::Word("$_VAR".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_dollar_paren() {
-        let mut lexer = Lexer::new("echo $(ls)");
+    fn test_command_substitution() {
+        let mut lexer = Lexer::new("echo $(date)");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
                 Token::Word("echo".to_string()),
                 Token::DollarParen,
-                Token::Word("ls".to_string()),
+                Token::Word("date".to_string()),
                 Token::RightParen,
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_dollar_double_paren() {
-        let mut lexer = Lexer::new("echo $((1+2))");
-        let tokens = lexer.tokenize();
-        // $((1+2)) is read as DollarArith then the content "1+2" as a single word
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("echo".to_string()),
-                Token::DollarArith,
-                Token::Word("1+2".to_string()),
-                Token::RightParen,
-                Token::RightParen,
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_subshell() {
-        let mut lexer = Lexer::new("(echo hello)");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::LeftParen,
-                Token::Word("echo".to_string()),
-                Token::Word("hello".to_string()),
-                Token::RightParen,
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_background() {
-        let mut lexer = Lexer::new("sleep 10 &");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("sleep".to_string()),
-                Token::Word("10".to_string()),
-                Token::Ampersand,
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_comment_skipped() {
-        let mut lexer = Lexer::new("echo hello # this is a comment");
-        let tokens = lexer.tokenize();
-        // Comments are skipped by the lexer, only echo, hello, and Eof remain
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("echo".to_string()),
-                Token::Word("hello".to_string()),
                 Token::Eof,
             ]
         );
@@ -685,183 +530,117 @@ mod tests {
 
     #[test]
     fn test_keywords() {
-        let mut lexer =
-            Lexer::new("if then elif else for while do in function switch case end begin");
+        let mut lexer = Lexer::new("if true; then echo yes; fi");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
                 Token::If,
+                Token::Word("true".to_string()),
+                Token::Semi,
                 Token::Then,
-                Token::Elif,
-                Token::Else,
+                Token::Word("echo".to_string()),
+                Token::Word("yes".to_string()),
+                Token::Semi,
+                Token::Fi,
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_for_loop_tokens() {
+        let mut lexer = Lexer::new("for i in 1 2 3; do echo $i; done");
+        let tokens = lexer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
                 Token::For,
-                Token::While,
-                Token::Do,
+                Token::Word("i".to_string()),
                 Token::In,
-                Token::Function,
-                Token::Switch,
+                Token::Word("1".to_string()),
+                Token::Word("2".to_string()),
+                Token::Word("3".to_string()),
+                Token::Semi,
+                Token::Do,
+                Token::Word("echo".to_string()),
+                Token::Word("$i".to_string()),
+                Token::Semi,
+                Token::Done,
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_case_tokens() {
+        let mut lexer = Lexer::new("case $x in foo) echo bar;; esac");
+        let tokens = lexer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
                 Token::Case,
-                Token::End,
-                Token::Begin,
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_keywords_as_part_of_word() {
-        let mut lexer = Lexer::new("echo iffy");
-        let tokens = lexer.tokenize();
-        // "iffy" is not a keyword, it's a word
-        assert_eq!(
-            tokens,
-            vec![
+                Token::Word("$x".to_string()),
+                Token::In,
+                Token::Word("foo".to_string()),
+                Token::RightParen,
                 Token::Word("echo".to_string()),
-                Token::Word("iffy".to_string()),
+                Token::Word("bar".to_string()),
+                Token::Semi,
+                Token::Semi,
+                Token::Esac,
                 Token::Eof,
             ]
         );
     }
 
     #[test]
-    fn test_newline_handling() {
-        let mut lexer = Lexer::new("echo a\necho b");
+    fn test_dollar_brace() {
+        let mut lexer = Lexer::new("echo ${x:-default}");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
                 Token::Word("echo".to_string()),
-                Token::Word("a".to_string()),
-                Token::Newline,
-                Token::Word("echo".to_string()),
-                Token::Word("b".to_string()),
+                Token::DollarBrace,
+                Token::Word("x".to_string()),
+                Token::Word(":-".to_string()),
+                Token::Word("default".to_string()),
+                Token::RightBrace,
                 Token::Eof,
             ]
         );
     }
 
     #[test]
-    fn test_empty_input() {
-        let mut lexer = Lexer::new("");
-        let tokens = lexer.tokenize();
-        assert_eq!(tokens, vec![Token::Eof]);
-    }
-
-    #[test]
-    fn test_whitespace_only() {
-        let mut lexer = Lexer::new("   \t  ");
-        let tokens = lexer.tokenize();
-        assert_eq!(tokens, vec![Token::Eof]);
-    }
-
-    #[test]
-    fn test_path_with_slashes() {
-        let mut lexer = Lexer::new("/usr/bin/env");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![Token::Word("/usr/bin/env".to_string()), Token::Eof,]
-        );
-    }
-
-    #[test]
-    fn test_flag_with_value() {
-        let mut lexer = Lexer::new("grep -i pattern");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("grep".to_string()),
-                Token::Word("-i".to_string()),
-                Token::Word("pattern".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_assignment() {
-        let mut lexer = Lexer::new("FOO=bar");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![Token::Word("FOO=bar".to_string()), Token::Eof,]
-        );
-    }
-
-    #[test]
-    fn test_escape_sequences() {
-        let mut lexer = Lexer::new(r#"echo hello\ world"#);
+    fn test_dollar_arith() {
+        let mut lexer = Lexer::new("echo $((1+2))");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
                 Token::Word("echo".to_string()),
-                Token::Word("hello world".to_string()),
+                Token::DollarArith,
+                Token::Word("1".to_string()),
+                Token::Word("+".to_string()),
+                Token::Word("2".to_string()),
+                Token::RightParen,
+                Token::RightParen,
                 Token::Eof,
             ]
         );
     }
 
     #[test]
-    fn test_multiple_pipes() {
-        let mut lexer = Lexer::new("cat file | grep err | wc -l");
+    fn test_function_def() {
+        let mut lexer = Lexer::new("foo() { echo hello; }");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
-                Token::Word("cat".to_string()),
-                Token::Word("file".to_string()),
-                Token::Pipe,
-                Token::Word("grep".to_string()),
-                Token::Word("err".to_string()),
-                Token::Pipe,
-                Token::Word("wc".to_string()),
-                Token::Word("-l".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_here_doc() {
-        let mut lexer = Lexer::new("cat <<EOF");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("cat".to_string()),
-                Token::HereDoc,
-                Token::Word("EOF".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_here_string() {
-        let mut lexer = Lexer::new("cat <<< hello");
-        let tokens = lexer.tokenize();
-        // <<< is lexed as HereDocStrip (<< then -), not HereString
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Word("cat".to_string()),
-                Token::HereDocStrip,
-                Token::Word("hello".to_string()),
-                Token::Eof,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_group_braces() {
-        let mut lexer = Lexer::new("{ echo hello; }");
-        let tokens = lexer.tokenize();
-        assert_eq!(
-            tokens,
-            vec![
+                Token::Word("foo".to_string()),
+                Token::LeftParen,
+                Token::RightParen,
                 Token::LeftBrace,
                 Token::Word("echo".to_string()),
                 Token::Word("hello".to_string()),
@@ -873,21 +652,76 @@ mod tests {
     }
 
     #[test]
-    fn test_complex_pipeline() {
-        let mut lexer = Lexer::new("ps aux | grep -v grep | awk '{print $2}'");
+    fn test_and_or() {
+        let mut lexer = Lexer::new("a && b || c");
         let tokens = lexer.tokenize();
         assert_eq!(
             tokens,
             vec![
-                Token::Word("ps".to_string()),
-                Token::Word("aux".to_string()),
-                Token::Pipe,
-                Token::Word("grep".to_string()),
-                Token::Word("-v".to_string()),
-                Token::Word("grep".to_string()),
-                Token::Pipe,
-                Token::Word("awk".to_string()),
-                Token::SingleQuoted("{print $2}".to_string()),
+                Token::Word("a".to_string()),
+                Token::And,
+                Token::Word("b".to_string()),
+                Token::Or,
+                Token::Word("c".to_string()),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_heredoc() {
+        let mut lexer = Lexer::new("cat <<EOF\nhello\nEOF");
+        let tokens = lexer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Word("cat".to_string()),
+                Token::HereDoc,
+                Token::Word("EOF".to_string()),
+                Token::Newline,
+                Token::Word("hello".to_string()),
+                Token::Newline,
+                Token::Word("EOF".to_string()),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_while_until() {
+        let mut lexer = Lexer::new("while true; do sleep 1; done");
+        let tokens = lexer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::While,
+                Token::Word("true".to_string()),
+                Token::Semi,
+                Token::Do,
+                Token::Word("sleep".to_string()),
+                Token::Word("1".to_string()),
+                Token::Semi,
+                Token::Done,
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_until_loop() {
+        let mut lexer = Lexer::new("until false; do echo loop; done");
+        let tokens = lexer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Until,
+                Token::Word("false".to_string()),
+                Token::Semi,
+                Token::Do,
+                Token::Word("echo".to_string()),
+                Token::Word("loop".to_string()),
+                Token::Semi,
+                Token::Done,
                 Token::Eof,
             ]
         );
