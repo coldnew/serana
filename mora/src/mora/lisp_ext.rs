@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use mora_lisp::eval::{EvalError, Evaluator};
 use mora_lisp::types::Value;
@@ -46,6 +47,13 @@ impl EditorState {
 
 thread_local! {
     static EDITOR_STATE: RefCell<Option<EditorState>> = RefCell::new(None);
+    static COMMAND_REGISTRY: RefCell<HashMap<String, CommandEntry>> = RefCell::new(HashMap::new());
+}
+
+#[derive(Clone)]
+struct CommandEntry {
+    func: Value,
+    doc: Option<String>,
 }
 
 pub fn with_editor_state<R>(f: impl FnOnce(&EditorState) -> R) -> R {
@@ -80,6 +88,7 @@ pub struct MoraLispBridge {
 
 impl MoraLispBridge {
     pub fn new() -> Self {
+        clear_command_registry();
         let mut evaluator = Evaluator::new();
         Self::register_editor_primitives(&mut evaluator);
         Self { evaluator }
@@ -96,6 +105,7 @@ impl MoraLispBridge {
         let overlay_ns = eval.ns.find_or_create("mora.overlay");
         let shell_ns = eval.ns.find_or_create("mora.shell");
         let ui_ns = eval.ns.find_or_create("mora.ui");
+        let command_ns = eval.ns.find_or_create("mora.command");
 
         // Buffer operations
         let mut ns = buffer_ns.lock();
@@ -238,6 +248,15 @@ impl MoraLispBridge {
         ns.intern_private("builders", Value::Native(prim_ui_builders));
         drop(ns);
 
+        // Command registry
+        let mut ns = command_ns.lock();
+        ns.intern("register!", Value::Native(prim_command_register));
+        ns.intern("execute!", Value::Native(prim_command_execute));
+        ns.intern("exists?", Value::Native(prim_command_exists));
+        ns.intern("names", Value::Native(prim_command_names));
+        ns.intern("doc", Value::Native(prim_command_doc));
+        drop(ns);
+
         for ns_name in [
             "mora.buffer",
             "mora.cursor",
@@ -249,6 +268,7 @@ impl MoraLispBridge {
             "mora.overlay",
             "mora.shell",
             "mora.ui",
+            "mora.command",
         ] {
             eval.ns
                 .refer_all(ns_name, "user")
@@ -299,6 +319,34 @@ impl MoraLispBridge {
             }
         }
     }
+
+    pub fn command_names(&self) -> Vec<String> {
+        command_names()
+    }
+
+    pub fn has_command(&self, name: &str) -> bool {
+        resolve_command_name(name).is_some()
+    }
+
+    pub fn execute_command(&mut self, name: &str) -> Result<Option<Value>, EvalError> {
+        let Some(name) = resolve_command_name(name) else {
+            return Ok(None);
+        };
+        let entry = command_entry(&name)
+            .ok_or_else(|| EvalError::Custom(format!("command not found: {}", name)))?;
+        let value = match entry.func {
+            Value::Fn(f) => self.evaluator.call_fn(f, vec![])?,
+            Value::Native(f) => f(&[]).map_err(EvalError::Custom)?,
+            other => {
+                return Err(EvalError::NotAFunction(format!(
+                    "command {} is {}",
+                    name,
+                    other.type_name()
+                )))
+            }
+        };
+        Ok(Some(value))
+    }
 }
 
 impl Default for MoraLispBridge {
@@ -323,6 +371,65 @@ fn extract_int(args: &[Value], idx: usize) -> Result<i64, String> {
         Some(v) => Err(format!("expected int, got {:?}", v)),
         None => Err("missing argument".to_string()),
     }
+}
+
+fn clear_command_registry() {
+    COMMAND_REGISTRY.with(|registry| registry.borrow_mut().clear());
+}
+
+fn short_command_name(name: &str) -> &str {
+    name.rsplit_once('/')
+        .map(|(_, short)| short)
+        .unwrap_or(name)
+}
+
+fn command_names() -> Vec<String> {
+    COMMAND_REGISTRY.with(|registry| {
+        let registry = registry.borrow();
+        let mut names: Vec<String> = registry.keys().cloned().collect();
+        let mut short_counts = HashMap::new();
+        for name in registry.keys() {
+            *short_counts
+                .entry(short_command_name(name).to_string())
+                .or_insert(0) += 1;
+        }
+        for name in registry.keys() {
+            let short = short_command_name(name);
+            if short_counts.get(short) == Some(&1) {
+                names.push(short.to_string());
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    })
+}
+
+fn command_entry(name: &str) -> Option<CommandEntry> {
+    COMMAND_REGISTRY.with(|registry| registry.borrow().get(name).cloned())
+}
+
+fn resolve_command_name(name: &str) -> Option<String> {
+    COMMAND_REGISTRY.with(|registry| {
+        let registry = registry.borrow();
+        if registry.contains_key(name) {
+            return Some(name.to_string());
+        }
+
+        let mut matches = registry
+            .keys()
+            .filter(|candidate| short_command_name(candidate) == name);
+        let first = matches.next()?.to_string();
+        if matches.next().is_none() {
+            Some(first)
+        } else {
+            None
+        }
+    })
+}
+
+fn command_doc(name: &str) -> Option<String> {
+    resolve_command_name(name).and_then(|name| command_entry(&name).and_then(|entry| entry.doc))
 }
 
 // --- Buffer primitives ---
@@ -773,6 +880,62 @@ fn prim_ui_builders(_args: &[Value]) -> Result<Value, String> {
     with_editor_state(|state| Ok(Value::Int(state.ui_builders.len() as i64)))
 }
 
+// --- Command registry primitives ---
+
+fn prim_command_register(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    let func = args
+        .get(1)
+        .cloned()
+        .ok_or_else(|| "register! requires a command function".to_string())?;
+    if !matches!(func, Value::Fn(_) | Value::Native(_)) {
+        return Err(format!(
+            "command function must be callable, got {}",
+            func.type_name()
+        ));
+    }
+    let doc = args.get(2).and_then(|v| match v {
+        Value::String(s) => Some(s.to_string()),
+        _ => None,
+    });
+
+    COMMAND_REGISTRY.with(|registry| {
+        registry
+            .borrow_mut()
+            .insert(name.clone(), CommandEntry { func, doc });
+    });
+    Ok(Value::string(name))
+}
+
+fn prim_command_execute(args: &[Value]) -> Result<Value, String> {
+    let requested = extract_string(args, 0)?;
+    let name = resolve_command_name(&requested)
+        .ok_or_else(|| format!("command not found or ambiguous: {}", requested))?;
+    let entry = command_entry(&name).ok_or_else(|| format!("command not found: {}", name))?;
+
+    mora_lisp::eval::with_evaluator(|eval| match entry.func {
+        Value::Fn(f) => eval.call_fn(f, vec![]).map_err(|e| e.to_string()),
+        Value::Native(f) => f(&[]),
+        other => Err(format!("command {} is {}", name, other.type_name())),
+    })
+}
+
+fn prim_command_exists(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    Ok(Value::Bool(resolve_command_name(&name).is_some()))
+}
+
+fn prim_command_names(_args: &[Value]) -> Result<Value, String> {
+    Ok(Value::vector(
+        command_names().into_iter().map(Value::string).collect(),
+    ))
+}
+
+fn prim_command_doc(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    Ok(command_doc(&name).map(Value::string).unwrap_or(Value::Nil))
+}
+
 // --- Lisp Value → UiNode converter ---
 
 fn map_get_kw<'a>(
@@ -1178,6 +1341,72 @@ mod tests {
 
         with_editor_state(|state| {
             assert_eq!(state.status_message, "Buffer: *scratch*");
+        });
+        take_editor_state();
+    }
+
+    #[test]
+    fn defcommand_registers_and_executes_editor_command() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge
+            .eval(
+                r#"
+                (ns coldnew.commands)
+                (require [mora.editor :as editor])
+                (defcommand say-hello
+                  "Say hello from a user command."
+                  []
+                  (editor/message "hello from command"))
+                "#,
+            )
+            .unwrap();
+
+        assert!(bridge.has_command("say-hello"));
+        assert!(bridge
+            .command_names()
+            .contains(&"coldnew.commands/say-hello".to_string()));
+        assert_eq!(
+            bridge.eval("(mora.command/doc \"say-hello\")").unwrap(),
+            Value::string("Say hello from a user command.")
+        );
+
+        bridge.execute_command("say-hello").unwrap();
+        with_editor_state(|state| {
+            assert_eq!(state.status_message, "hello from command");
+        });
+        take_editor_state();
+    }
+
+    #[test]
+    fn interactive_defn_registers_and_executes_editor_command() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge
+            .eval(
+                r#"
+                (ns coldnew.commands)
+                (require [mora.editor :as editor])
+                (defn say-hello
+                  "Say hello through interactive defn."
+                  []
+                  (interactive)
+                  (editor/message "hello from interactive defn"))
+                "#,
+            )
+            .unwrap();
+
+        assert!(bridge.has_command("say-hello"));
+        assert_eq!(
+            bridge.eval("(mora.command/doc \"say-hello\")").unwrap(),
+            Value::string("Say hello through interactive defn.")
+        );
+
+        bridge.execute_command("say-hello").unwrap();
+        with_editor_state(|state| {
+            assert_eq!(state.status_message, "hello from interactive defn");
         });
         take_editor_state();
     }

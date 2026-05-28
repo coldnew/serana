@@ -17,7 +17,10 @@
 
 ;;; ---- Helper Functions ----
 
-(defn toggle-line-numbers []
+(defn toggle-line-numbers
+  "Toggle line numbers."
+  []
+  (interactive)
   (mode/toggle-minor! "line-numbers"))
 
 (defn insert-date []
@@ -47,13 +50,22 @@
 
 ;;; ---- Custom Commands ----
 
-(defn show-status []
+(defn show-status
+  "Show Mora editor status."
+  []
+  (interactive)
   (editor/message (editor/status)))
 
-(defn show-version []
+(defn show-version
+  "Show Mora version."
+  []
+  (interactive)
   (editor/message (str "Mora version: " editor/*mora-version*)))
 
-(defn toggle-insert-mode []
+(defn toggle-insert-mode
+  "Toggle normal and insert mode."
+  []
+  (interactive)
   (if (= (mode/current) :insert)
     (mode/set! :normal)
     (mode/set! :insert)))

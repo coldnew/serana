@@ -1,5 +1,55 @@
 # Hermes Agent Refactor
 
+# Mora Interactive Defn
+
+Assumptions:
+- Support Emacs-style `(interactive)` as compatibility sugar inside `defn`.
+- Keep `mora.command` as the underlying registry so M-x does not depend on function body inspection after load.
+- Treat `(interactive ...)` as metadata only when it is the first body form after the arg vector; do not execute it when the function runs.
+
+Success criteria for this slice:
+- [x] Make `defn` accept optional docstrings.
+- [x] Register `(defn name ... (interactive) body...)` as an M-x command when the host command registry exists.
+- [x] Remove the top-level `(interactive ...)` marker from the runtime function body.
+- [x] Add focused tests for pure Lisp behavior and Mora host command execution.
+- [x] Update `mora/examples/init.mora` to demonstrate Emacs-style interactive `defn`.
+- [x] Format touched Rust files and run targeted tests.
+- [x] Record implementation results.
+
+Review:
+- `defn` now accepts a Clojure-style docstring before the parameter vector.
+- A first body form of `(interactive ...)` marks the function as an M-x command and is removed from the runtime body.
+- Interactive `defn` registers through the same `mora.command` registry as `defcommand`.
+- `mora/examples/init.mora` now demonstrates Emacs-style `(interactive)` commands.
+- Verification passed with `rustfmt` on touched Rust files and `cargo test -p mora-lisp`.
+- `cargo test -p mora-bin` was attempted but is currently blocked by an unrelated dirty `display-protocol` compile failure.
+
+# Mora Defcommand
+
+Assumptions:
+- Keep command definition Mora-native instead of cloning Emacs Lisp `defun`/`interactive` directly.
+- Implement the first slice as `(defcommand name [args] body...)` and `(defcommand name "Doc" [args] body...)`; argument prompting can come later when M-x has minibuffer prompts.
+- Commands should be normal namespace vars plus registered M-x entries.
+
+Success criteria for this slice:
+- [x] Add a `defcommand` form that defines a function and registers it when the Mora host command namespace is present.
+- [x] Add `mora.command` registry primitives for register, execute, list, and existence checks.
+- [x] Make M-x execute registered Lisp commands before falling back to built-in Rust commands.
+- [x] Include registered Lisp commands in M-x completion.
+- [x] Add focused tests for command registration/execution and M-x dispatch.
+- [x] Update `mora/examples/init.mora` to demonstrate `defcommand`.
+- [x] Format touched Rust files and run targeted tests.
+- [x] Record implementation results.
+
+Review:
+- Added `(defcommand name [args] body...)` and `(defcommand name "Doc" [args] body...)` as a Mora Lisp special form. It defines a normal function and registers it with the host when `mora.command/register!` exists.
+- Added `mora.command` host primitives: `register!`, `execute!`, `exists?`, `names`, and `doc`.
+- M-x now checks registered Lisp commands before built-in Rust command fallback.
+- M-x completion now includes registered Lisp command names, including unique short names.
+- `mora/examples/init.mora` now uses `defcommand` for user-invokable commands.
+- Verification passed with `rustfmt` on touched Rust files, `cargo test -p mora-lisp`, and `cargo test -p mora-bin`.
+- Full `cargo test` was attempted but remains blocked by the pre-existing dirty `mishell/src/shell.rs` unclosed-delimiter error.
+
 # Mora Coldnew Emacs Replacement
 
 Assumptions:

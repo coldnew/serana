@@ -193,6 +193,7 @@ impl Evaluator {
                 "let" => return self.eval_let(env, &list[1..]),
                 "fn" => return self.eval_fn(env, &list[1..]),
                 "defn" => return self.eval_defn(env, &list[1..]),
+                "defcommand" => return self.eval_defcommand(env, &list[1..]),
                 "quote" => return self.eval_quote(&list[1..]),
                 "quasiquote" | "syntax-quote" => return self.eval_quasiquote(env, &list[1..]),
                 "defmacro" => return self.eval_defmacro(env, &list[1..]),
@@ -576,15 +577,105 @@ impl Evaluator {
             }
         };
 
-        let fn_args = std::iter::once(Value::symbol(sym.name.to_string()))
-            .chain(args[1..].iter().cloned())
-            .collect::<Vec<_>>();
+        let (doc, params_idx) = self.parse_optional_doc(args, 1);
+        if args.len() <= params_idx {
+            return Err(EvalError::SpecialForm(
+                "defn requires parameter vector".to_string(),
+            ));
+        }
+        let (interactive, body_start) = self.parse_interactive_marker(args, params_idx + 1);
+
+        let mut fn_args = Vec::with_capacity(args.len() - params_idx + 1);
+        fn_args.push(Value::symbol(sym.name.to_string()));
+        fn_args.push(args[params_idx].clone());
+        fn_args.extend(args[body_start..].iter().cloned());
         let fn_val = self.eval_fn(env, &fn_args)?;
 
-        let ns = self.ns.current();
-        let mut ns = ns.lock();
-        ns.intern(&sym.name, fn_val.clone());
+        self.intern_current_and_register_command(&sym, fn_val.clone(), doc, interactive)?;
         Ok(fn_val)
+    }
+
+    fn eval_defcommand(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        if args.len() < 3 {
+            return Err(EvalError::SpecialForm(
+                "defcommand requires a name, optional docstring, params, and body".to_string(),
+            ));
+        }
+        let sym = match &args[0] {
+            Value::Symbol(s) => s.clone(),
+            _ => {
+                return Err(EvalError::SpecialForm(
+                    "defcommand first arg must be a symbol".to_string(),
+                ))
+            }
+        };
+
+        let (doc, params_idx) = self.parse_optional_doc(args, 1);
+        if args.len() <= params_idx + 1 {
+            return Err(EvalError::SpecialForm(
+                "defcommand requires params and body".to_string(),
+            ));
+        }
+
+        let mut fn_args = Vec::with_capacity(args.len() - params_idx + 1);
+        fn_args.push(Value::symbol(sym.name.to_string()));
+        fn_args.extend(args[params_idx..].iter().cloned());
+        let fn_val = self.eval_fn(env, &fn_args)?;
+
+        self.intern_current_and_register_command(&sym, fn_val.clone(), doc, true)?;
+        Ok(fn_val)
+    }
+
+    fn parse_optional_doc(&self, args: &[Value], idx: usize) -> (Option<Value>, usize) {
+        match args.get(idx) {
+            Some(Value::String(s)) => (Some(Value::String(s.clone())), idx + 1),
+            _ => (None, idx),
+        }
+    }
+
+    fn parse_interactive_marker(&self, args: &[Value], body_start: usize) -> (bool, usize) {
+        match args.get(body_start) {
+            Some(Value::List(list)) if !list.is_empty() => match &list[0] {
+                Value::Symbol(sym) if sym.ns.is_none() && sym.name.as_str() == "interactive" => {
+                    (true, body_start + 1)
+                }
+                _ => (false, body_start),
+            },
+            _ => (false, body_start),
+        }
+    }
+
+    fn intern_current_and_register_command(
+        &mut self,
+        sym: &Symbol,
+        fn_val: Value,
+        doc: Option<Value>,
+        interactive: bool,
+    ) -> Result<(), EvalError> {
+        let current_name = self.ns.current_name();
+        let command_name = format!("{}/{}", current_name, sym.name);
+        {
+            let ns = self.ns.current();
+            let mut ns = ns.lock();
+            ns.intern(&sym.name, fn_val.clone());
+        }
+
+        if interactive {
+            if let Some(register) = self.ns.resolve_symbol(&Symbol {
+                ns: Some(Arc::new("mora.command".to_string())),
+                name: Arc::new("register!".to_string()),
+            }) {
+                if let Value::Native(f) = register {
+                    let mut register_args = vec![Value::string(command_name), fn_val.clone()];
+                    if let Some(doc) = doc {
+                        register_args.push(doc);
+                    }
+                    f(&register_args).map_err(EvalError::Custom)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn eval_quote(&self, args: &[Value]) -> Result<Value, EvalError> {

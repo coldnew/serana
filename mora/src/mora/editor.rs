@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use super::display::event::{MoraKeyCode as KeyCode, MoraKeyEvent as KeyEvent, MoraKeyModifiers as KeyModifiers};
+use super::display::event::{
+    MoraKeyCode as KeyCode, MoraKeyEvent as KeyEvent, MoraKeyModifiers as KeyModifiers,
+};
 
 use super::buffer::Buffer;
 use super::keymap::{self, EditorMode, KeyAction, PendingOp};
@@ -667,8 +669,8 @@ impl MoraEditor {
                 | KeyAction::DeleteForward => {
                     return self.repeated_action(action, n);
                 }
-            _ => {}
-        }
+                _ => {}
+            }
             return action;
         }
 
@@ -2542,6 +2544,29 @@ impl MoraEditor {
         let input = self.command_input.clone();
         let trimmed = input.trim();
 
+        if self.lisp_bridge.has_command(trimmed) {
+            self.push_lisp_state();
+            let result = self.lisp_bridge.execute_command(trimmed);
+            self.pull_lisp_state();
+
+            match result {
+                Ok(Some(_)) => {
+                    if self.status_message.is_empty() {
+                        self.status_message = format!("Ran command: {}", trimmed);
+                    }
+                }
+                Ok(None) => {
+                    self.status_message = format!("Unknown command: {}", trimmed);
+                }
+                Err(e) => {
+                    self.status_message = format!("Error: {}", e);
+                }
+            }
+            self.mode = EditorMode::Emacs;
+            self.command_input.clear();
+            return;
+        }
+
         // Handle M-x commands that need special treatment
         match trimmed {
             "iedit" | "multi-cursor-edit" => {
@@ -2618,10 +2643,17 @@ impl MoraEditor {
                 state.cursor_row = self.buffer.cursor.row;
                 state.cursor_col = self.buffer.cursor.col;
                 state.modified = self.buffer.modified;
-                state.file_path = self.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
+                state.file_path = self
+                    .buffer
+                    .path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string());
                 state.mode = self.mode.label().to_lowercase();
                 state.window_count = self.windows.len();
-                state.overlays = std::mem::replace(&mut self.buffer.overlays, super::overlay::OverlayStore::new());
+                state.overlays = std::mem::replace(
+                    &mut self.buffer.overlays,
+                    super::overlay::OverlayStore::new(),
+                );
                 super::lisp_ext::set_editor_state(state);
 
                 let result = self.lisp_bridge.eval(code);
@@ -2629,7 +2661,9 @@ impl MoraEditor {
                 // Sync state back
                 if let Some(state) = super::lisp_ext::take_editor_state() {
                     self.buffer.lines = state.lines;
-                    self.buffer.cursor.row = state.cursor_row.min(self.buffer.lines.len().saturating_sub(1));
+                    self.buffer.cursor.row = state
+                        .cursor_row
+                        .min(self.buffer.lines.len().saturating_sub(1));
                     self.buffer.cursor.col = state.cursor_col;
                     self.buffer.modified = state.modified;
                     self.buffer.overlays = state.overlays;
@@ -2667,17 +2701,29 @@ impl MoraEditor {
                     state.cursor_row = self.buffer.cursor.row;
                     state.cursor_col = self.buffer.cursor.col;
                     state.modified = self.buffer.modified;
-                    state.file_path = self.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
+                    state.file_path = self
+                        .buffer
+                        .path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string());
                     state.mode = self.mode.label().to_lowercase();
                     state.window_count = self.windows.len();
-                    state.overlays = std::mem::replace(&mut self.buffer.overlays, super::overlay::OverlayStore::new());
+                    state.overlays = std::mem::replace(
+                        &mut self.buffer.overlays,
+                        super::overlay::OverlayStore::new(),
+                    );
                     super::lisp_ext::set_editor_state(state);
 
-                    let result = self.lisp_bridge.eval(&format!("(shell-command \"{}\")", cmd.replace('\\', "\\\\").replace('"', "\\\"")));
+                    let result = self.lisp_bridge.eval(&format!(
+                        "(shell-command \"{}\")",
+                        cmd.replace('\\', "\\\\").replace('"', "\\\"")
+                    ));
 
                     if let Some(state) = super::lisp_ext::take_editor_state() {
                         self.buffer.lines = state.lines;
-                        self.buffer.cursor.row = state.cursor_row.min(self.buffer.lines.len().saturating_sub(1));
+                        self.buffer.cursor.row = state
+                            .cursor_row
+                            .min(self.buffer.lines.len().saturating_sub(1));
                         self.buffer.cursor.col = state.cursor_col;
                         self.buffer.modified = state.modified;
                         self.buffer.overlays = state.overlays;
@@ -2725,8 +2771,44 @@ impl MoraEditor {
         }
     }
 
+    fn push_lisp_state(&mut self) {
+        let mut state = super::lisp_ext::EditorState::new();
+        state.lines = self.buffer.lines.clone();
+        state.cursor_row = self.buffer.cursor.row;
+        state.cursor_col = self.buffer.cursor.col;
+        state.modified = self.buffer.modified;
+        state.file_path = self
+            .buffer
+            .path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+        state.mode = self.mode.label().to_lowercase();
+        state.window_count = self.windows.len();
+        state.overlays = std::mem::replace(
+            &mut self.buffer.overlays,
+            super::overlay::OverlayStore::new(),
+        );
+        super::lisp_ext::set_editor_state(state);
+    }
+
+    fn pull_lisp_state(&mut self) {
+        if let Some(state) = super::lisp_ext::take_editor_state() {
+            self.buffer.lines = state.lines;
+            self.buffer.cursor.row = state
+                .cursor_row
+                .min(self.buffer.lines.len().saturating_sub(1));
+            self.buffer.cursor.col = state.cursor_col;
+            self.buffer.modified = state.modified;
+            self.buffer.overlays = state.overlays;
+            self.status_message = state.status_message;
+            if state.quit_requested {
+                self.quit_requested = true;
+            }
+        }
+    }
+
     fn mx_complete(&mut self) {
-        let commands = [
+        let built_in_commands = [
             "capitalize-word",
             "cleanup-buffer",
             "copy-and-comment",
@@ -2765,10 +2847,15 @@ impl MoraEditor {
         if input.is_empty() {
             return;
         }
+        let mut commands: Vec<String> = built_in_commands.iter().map(|c| c.to_string()).collect();
+        commands.extend(self.lisp_bridge.command_names());
+        commands.sort();
+        commands.dedup();
+
         let matches: Vec<&str> = commands
             .iter()
+            .map(String::as_str)
             .filter(|c| c.starts_with(input))
-            .copied()
             .collect();
         if matches.len() == 1 {
             self.command_input = matches[0].to_string();
@@ -3100,6 +3187,56 @@ impl MoraEditor {
 
     pub fn window_index_display(win: &WindowState) -> String {
         format!("[{}]", win.buffer_idx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mx_executes_registered_lisp_command() {
+        let mut editor = MoraEditor::new(20);
+        editor
+            .lisp_bridge
+            .eval(
+                r#"
+                (ns coldnew.commands)
+                (require [mora.buffer :as buffer])
+                (defn insert-marker []
+                  (interactive)
+                  (buffer/insert! "marker"))
+                "#,
+            )
+            .unwrap();
+
+        editor.command_input = "insert-marker".to_string();
+        editor.execute_command();
+
+        assert_eq!(editor.buffer.lines[0], "marker");
+        assert_eq!(editor.mode, EditorMode::Emacs);
+        assert!(editor.command_input.is_empty());
+    }
+
+    #[test]
+    fn mx_completion_includes_registered_lisp_command() {
+        let mut editor = MoraEditor::new(20);
+        editor
+            .lisp_bridge
+            .eval(
+                r#"
+                (ns coldnew.commands)
+                (defn coldnew-test-command []
+                  (interactive)
+                  nil)
+                "#,
+            )
+            .unwrap();
+
+        editor.command_input = "coldnew-test".to_string();
+        editor.mx_complete();
+
+        assert_eq!(editor.command_input, "coldnew-test-command");
     }
 }
 

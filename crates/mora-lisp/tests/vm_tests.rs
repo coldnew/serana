@@ -191,6 +191,28 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_defn_docstring() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn answer \"Return the answer.\" [] 42)")
+            .unwrap();
+        assert_eq!(lisp.eval("(answer)").unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn test_eval_defn_interactive_marker_is_not_executed() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn answer [] (interactive) 42)").unwrap();
+        assert_eq!(lisp.eval("(answer)").unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn test_eval_defcommand_defines_function_without_host_registry() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defcommand meaning [] 42)").unwrap();
+        assert_eq!(lisp.eval("(meaning)").unwrap(), Value::Int(42));
+    }
+
+    #[test]
     fn test_eval_lambda() {
         let mut lisp = MoraLisp::new();
         let result = lisp.eval("((fn [x] (* x x)) 5)").unwrap();
