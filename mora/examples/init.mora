@@ -1,67 +1,50 @@
 ;;; init.mora --- Mora editor configuration -*- lisp -*-
-
 ;;; This file is loaded on startup from ~/.mora/init.mora
 ;;; It uses Clojure-like syntax with namespaces.
-
+;;; Emacs-like extension via Rust + display-protocol.
 (ns coldnew.init)
-
 (require [mora.buffer :as buffer])
 (require [mora.cursor :as cursor])
 (require [mora.editor :as editor])
 (require [mora.hook :as hook])
 (require [mora.mode :as mode])
-
 ;;; ---- Display Settings ----
-
 (editor/message "Welcome to Mora!")
-
 ;;; ---- Helper Functions ----
-
 (defn toggle-line-numbers
   "Toggle line numbers."
   []
   (interactive)
   (mode/toggle-minor! "line-numbers"))
-
 (defn insert-date []
   (buffer/insert! "2026-01-01"))
-
 (defn goto-line-msg [n]
   (cursor/goto-line n)
   (editor/message (str "Went to line " n)))
-
 (defn show-buffer-info []
   (editor/message
     (str "Buffer: " (buffer/name) " | Lines: " (buffer/line-count))))
-
 (defn show-cursor-pos []
   (editor/message
     (str "Line: " (+ (cursor/row) 1) " Col: " (+ (cursor/col) 1))))
-
 ;;; ---- Hooks ----
-
 (hook/add "after-open"
   (fn []
     (editor/message (str "Opened: " (buffer/name)))))
-
 (hook/add "before-save"
   (fn []
     (editor/message (str "Saving: " (buffer/name)))))
-
 ;;; ---- Custom Commands ----
-
 (defn show-status
   "Show Mora editor status."
   []
   (interactive)
   (editor/message (editor/status)))
-
 (defn show-version
   "Show Mora version."
   []
   (interactive)
   (editor/message (str "Mora version: " editor/*mora-version*)))
-
 (defn toggle-insert-mode
   "Toggle normal and insert mode."
   []
@@ -69,5 +52,58 @@
   (if (= (mode/current) :insert)
     (mode/set! :normal)
     (mode/set! :insert)))
-
+;;; ---- Emacs-like Features ----
+;; Buffer-local variables (like emacs setq-local)
+(var-set "tab-width" 4)
+(var-set "indent-tabs-mode" false)
+;; Kill ring operations (like emacs kill-ring / yank)
+;; (kill-ring-push "text")  — push to kill ring
+;; (kill-ring-yank)          — get most recent kill
+;; (kill-ring-pop)           — cycle forward
+;; (kill-ring-pop-back)      — cycle backward
+;; Mark ring (like emacs set-mark / pop-to-mark)
+;; (set-mark)                — set mark at cursor
+;; (goto-mark)               — jump to mark
+;; (pop-mark)                — pop and go to previous mark
+;; (deactivate-mark)         — deactivate selection
+;; Registers (like emacs point-to-register)
+;; (register-set "a" "text") — store in register
+;; (register-get "a")        — retrieve from register
+;; Region operations (like emacs delete-region)
+;; (region-beginning)        — start of region
+;; (region-end)              — end of region
+;; (delete-region)           — delete selected text
+;; (buffer-substring s e)    — extract text
+;; Undo/Redo (like emacs undo-tree)
+;; (undo-boundary)           — mark undo point
+;; (undo)                    — undo last change
+;; (redo)                    — redo last undo
+;; Narrowing (like emacs narrow-to-region)
+;; (narrow-to-region s e)    — narrow buffer to range
+;; (widen)                   — remove narrowing
+;; (buffer-narrowed?)        — check if narrowed
+;; Text search (like emacs search-forward)
+;; (search-forward "pat")    — search forward, move cursor
+;; (search-backward "pat")   — search backward, move cursor
+;; (looking-at "pat")        — match at cursor position
+;; Minibuffer (like emacs read-string / completing-read)
+;; (read-string "prompt")    — read string input
+;; (completing-read "p" [..])— read with completion
+;; (y-or-n? "question?")     — yes/no prompt
+;; ---- Example: delete-line command using mark + region ----
+(defn delete-line
+  "Delete the current line."
+  []
+  (interactive)
+  (set-mark)
+  (cursor-end-of-line)
+  (delete-region))
+;; ---- Example: copy-line to register ----
+(defn copy-line-to-register
+  "Copy current line to named register."
+  []
+  (interactive)
+  (let [line (buffer/current-line)]
+    (register-set "0" line)
+    (editor/message (str "Copied: " line))))
 ;;; ---- End of init.mora ----

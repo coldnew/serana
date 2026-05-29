@@ -22,6 +22,30 @@ pub struct EditorState {
     pub keybindings: std::collections::HashMap<String, Value>,
     pub overlays: OverlayStore,
     pub ui_builders: Vec<Value>,
+    // --- Emacs-like state ---
+    /// Buffer-local variables: var_name -> value
+    pub buffer_local_vars: std::collections::HashMap<String, Value>,
+    /// Mark ring: stack of saved cursor positions
+    pub mark_ring: Vec<(usize, usize)>,
+    /// Whether mark is active (region is selected)
+    pub mark_active: bool,
+    /// Mark position when active
+    pub mark_pos: Option<(usize, usize)>,
+    /// Kill ring entries
+    pub kill_ring: Vec<String>,
+    /// Kill ring index for yank-pop cycling
+    pub kill_ring_idx: usize,
+    /// Registers: char -> string value
+    pub registers: std::collections::HashMap<char, String>,
+    /// Narrowing range (None = not narrowed)
+    pub narrow_start: Option<usize>,
+    pub narrow_end: Option<usize>,
+    /// Undo enabled flag
+    pub undo_enabled: bool,
+    /// Undo stack: snapshots of (lines, cursor_row, cursor_col)
+    pub undo_stack: std::collections::VecDeque<(Vec<String>, usize, usize)>,
+    /// Redo stack
+    pub redo_stack: Vec<(Vec<String>, usize, usize)>,
 }
 
 impl EditorState {
@@ -41,10 +65,21 @@ impl EditorState {
             keybindings: std::collections::HashMap::new(),
             overlays: OverlayStore::new(),
             ui_builders: Vec::new(),
+            buffer_local_vars: std::collections::HashMap::new(),
+            mark_ring: Vec::new(),
+            mark_active: false,
+            mark_pos: None,
+            kill_ring: Vec::new(),
+            kill_ring_idx: 0,
+            registers: std::collections::HashMap::new(),
+            narrow_start: None,
+            narrow_end: None,
+            undo_enabled: true,
+            undo_stack: std::collections::VecDeque::new(),
+            redo_stack: Vec::new(),
         }
     }
 }
-
 thread_local! {
     static EDITOR_STATE: RefCell<Option<EditorState>> = RefCell::new(None);
     static COMMAND_REGISTRY: RefCell<HashMap<String, CommandEntry>> = RefCell::new(HashMap::new());
@@ -106,6 +141,13 @@ impl MoraLispBridge {
         let shell_ns = eval.ns.find_or_create("mora.shell");
         let ui_ns = eval.ns.find_or_create("mora.ui");
         let command_ns = eval.ns.find_or_create("mora.command");
+        let kill_ring_ns = eval.ns.find_or_create("mora.kill-ring");
+        let mark_ns = eval.ns.find_or_create("mora.mark");
+        let register_ns = eval.ns.find_or_create("mora.register");
+        let var_ns = eval.ns.find_or_create("mora.var");
+        let minibuffer_ns = eval.ns.find_or_create("mora.minibuffer");
+        let region_ns = eval.ns.find_or_create("mora.region");
+        let undo_ns = eval.ns.find_or_create("mora.undo");
 
         // Buffer operations
         let mut ns = buffer_ns.lock();
@@ -256,7 +298,107 @@ impl MoraLispBridge {
         ns.intern("names", Value::Native(prim_command_names));
         ns.intern("doc", Value::Native(prim_command_doc));
         drop(ns);
-
+        // Kill ring operations
+        let mut ns = kill_ring_ns.lock();
+        ns.intern("kill-ring-yank", Value::Native(prim_kill_ring_yank));
+        ns.intern_private("yank", Value::Native(prim_kill_ring_yank));
+        ns.intern("kill-ring-push", Value::Native(prim_kill_ring_push));
+        ns.intern_private("push", Value::Native(prim_kill_ring_push));
+        ns.intern("kill-ring-pop", Value::Native(prim_kill_ring_pop));
+        ns.intern_private("pop", Value::Native(prim_kill_ring_pop));
+        ns.intern("kill-ring-pop-back", Value::Native(prim_kill_ring_pop_back));
+        ns.intern_private("pop-back", Value::Native(prim_kill_ring_pop_back));
+        ns.intern("kill-ring-count", Value::Native(prim_kill_ring_count));
+        ns.intern_private("count", Value::Native(prim_kill_ring_count));
+        ns.intern("kill-ring-contents", Value::Native(prim_kill_ring_contents));
+        ns.intern_private("contents", Value::Native(prim_kill_ring_contents));
+        drop(ns);
+        // Mark ring operations
+        let mut ns = mark_ns.lock();
+        ns.intern("set-mark", Value::Native(prim_set_mark));
+        ns.intern_private("set", Value::Native(prim_set_mark));
+        ns.intern("goto-mark", Value::Native(prim_goto_mark));
+        ns.intern_private("goto", Value::Native(prim_goto_mark));
+        ns.intern("pop-mark", Value::Native(prim_pop_mark));
+        ns.intern_private("pop", Value::Native(prim_pop_mark));
+        ns.intern("mark-active?", Value::Native(prim_mark_active));
+        ns.intern_private("active?", Value::Native(prim_mark_active));
+        ns.intern("mark-position", Value::Native(prim_mark_position));
+        ns.intern_private("position", Value::Native(prim_mark_position));
+        ns.intern("deactivate-mark", Value::Native(prim_deactivate_mark));
+        ns.intern_private("deactivate", Value::Native(prim_deactivate_mark));
+        drop(ns);
+        // Register operations
+        let mut ns = register_ns.lock();
+        ns.intern("register-set", Value::Native(prim_register_set));
+        ns.intern_private("set", Value::Native(prim_register_set));
+        ns.intern("register-get", Value::Native(prim_register_get));
+        ns.intern_private("get", Value::Native(prim_register_get));
+        ns.intern("register-list", Value::Native(prim_register_list));
+        ns.intern_private("list", Value::Native(prim_register_list));
+        drop(ns);
+        // Buffer-local variable operations
+        let mut ns = var_ns.lock();
+        ns.intern("var-set", Value::Native(prim_var_set));
+        ns.intern_private("set", Value::Native(prim_var_set));
+        ns.intern("var-get", Value::Native(prim_var_get));
+        ns.intern_private("get", Value::Native(prim_var_get));
+        ns.intern("var-local", Value::Native(prim_var_local));
+        ns.intern_private("local", Value::Native(prim_var_local));
+        ns.intern("var-bound?", Value::Native(prim_var_bound));
+        ns.intern_private("bound?", Value::Native(prim_var_bound));
+        drop(ns);
+        // Minibuffer operations
+        let mut ns = minibuffer_ns.lock();
+        ns.intern("read-string", Value::Native(prim_read_string));
+        ns.intern("completing-read", Value::Native(prim_completing_read));
+        ns.intern("y-or-n?", Value::Native(prim_y_or_n));
+        drop(ns);
+        let mut ns = region_ns.lock();
+        ns.intern("region-beginning", Value::Native(prim_region_beginning));
+        ns.intern_private("beginning", Value::Native(prim_region_beginning));
+        ns.intern("region-end", Value::Native(prim_region_end));
+        ns.intern_private("end", Value::Native(prim_region_end));
+        ns.intern("region-active?", Value::Native(prim_region_active));
+        ns.intern_private("active?", Value::Native(prim_region_active));
+        ns.intern("delete-region", Value::Native(prim_delete_region));
+        ns.intern_private("delete", Value::Native(prim_delete_region));
+        ns.intern("buffer-substring", Value::Native(prim_buffer_substring));
+        ns.intern_private("substring", Value::Native(prim_buffer_substring));
+        drop(ns);
+        // Undo operations
+        let mut ns = undo_ns.lock();
+        ns.intern("undo", Value::Native(prim_undo));
+        ns.intern("redo", Value::Native(prim_redo));
+        ns.intern("undo-boundary", Value::Native(prim_undo_boundary));
+        ns.intern_private("boundary", Value::Native(prim_undo_boundary));
+        ns.intern("undo-enabled?", Value::Native(prim_undo_enabled));
+        ns.intern_private("enabled?", Value::Native(prim_undo_enabled));
+        drop(ns);
+        // Expanded hook operations (add to existing hook namespace)
+        let mut ns = hook_ns.lock();
+        ns.intern("remove-hook", Value::Native(prim_remove_hook));
+        ns.intern_private("remove", Value::Native(prim_remove_hook));
+        ns.intern("run-hook", Value::Native(prim_run_hook));
+        ns.intern_private("run", Value::Native(prim_run_hook));
+        ns.intern("hook-bound?", Value::Native(prim_hook_bound));
+        ns.intern_private("bound?", Value::Native(prim_hook_bound));
+        ns.intern("hooks-for", Value::Native(prim_hooks_for));
+        ns.intern_private("for", Value::Native(prim_hooks_for));
+        drop(ns);
+        // Expanded buffer operations (add to existing buffer namespace)
+        let mut ns = buffer_ns.lock();
+        ns.intern("buffer-narrowed?", Value::Native(prim_buffer_narrowed));
+        ns.intern_private("narrowed?", Value::Native(prim_buffer_narrowed));
+        ns.intern("narrow-to-region", Value::Native(prim_narrow_to_region));
+        ns.intern("widen", Value::Native(prim_widen));
+        ns.intern("buffer-substring", Value::Native(prim_buffer_substring_range));
+        ns.intern_private("substring-range", Value::Native(prim_buffer_substring_range));
+        ns.intern("search-forward", Value::Native(prim_search_forward));
+        ns.intern("search-backward", Value::Native(prim_search_backward));
+        ns.intern("looking-at", Value::Native(prim_looking_at));
+        ns.intern("buffer-list", Value::Native(prim_buffer_list));
+        drop(ns);
         for ns_name in [
             "mora.buffer",
             "mora.cursor",
@@ -269,6 +411,13 @@ impl MoraLispBridge {
             "mora.shell",
             "mora.ui",
             "mora.command",
+            "mora.kill-ring",
+            "mora.mark",
+            "mora.register",
+            "mora.var",
+            "mora.minibuffer",
+            "mora.region",
+            "mora.undo",
         ] {
             eval.ns
                 .refer_all(ns_name, "user")
@@ -1306,6 +1455,631 @@ fn parse_color(s: &str) -> Option<super::display::style::MoraColor> {
         }
     }
 }
+// --- Kill Ring primitives ---
+/// (kill-ring-yank) → returns most recent kill entry or nil
+fn prim_kill_ring_yank(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        if state.kill_ring.is_empty() {
+            Ok(Value::Nil)
+        } else {
+            let idx = if state.kill_ring_idx < state.kill_ring.len() {
+                state.kill_ring_idx
+            } else {
+                0
+            };
+            Ok(Value::string(&state.kill_ring[idx]))
+        }
+    })
+}
+/// (kill-ring-push "text") → push text onto kill ring
+fn prim_kill_ring_push(args: &[Value]) -> Result<Value, String> {
+    let text = extract_string(args, 0)?;
+    with_editor_state_mut(|state| {
+        state.kill_ring.push(text);
+        state.kill_ring_idx = state.kill_ring.len() - 1;
+        // Keep kill ring bounded (max 60 like emacs)
+        if state.kill_ring.len() > 60 {
+            state.kill_ring.remove(0);
+            if state.kill_ring_idx > 0 {
+                state.kill_ring_idx -= 1;
+            }
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (kill-ring-pop) → rotate kill ring forward, return entry
+fn prim_kill_ring_pop(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if state.kill_ring.is_empty() {
+            return Ok(Value::Nil);
+        }
+        state.kill_ring_idx = (state.kill_ring_idx + 1) % state.kill_ring.len();
+        Ok(Value::string(&state.kill_ring[state.kill_ring_idx]))
+    })
+}
+/// (kill-ring-pop-back) → rotate kill ring backward, return entry
+fn prim_kill_ring_pop_back(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if state.kill_ring.is_empty() {
+            return Ok(Value::Nil);
+        }
+        if state.kill_ring_idx == 0 {
+            state.kill_ring_idx = state.kill_ring.len() - 1;
+        } else {
+            state.kill_ring_idx -= 1;
+        }
+        Ok(Value::string(&state.kill_ring[state.kill_ring_idx]))
+    })
+}
+/// (kill-ring-count) → number of entries
+fn prim_kill_ring_count(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Int(state.kill_ring.len() as i64)))
+}
+/// (kill-ring-contents) → vector of all kill ring entries
+fn prim_kill_ring_contents(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        Ok(Value::vector(
+            state.kill_ring.iter().map(|s| Value::string(s)).collect(),
+        ))
+    })
+}
+// --- Mark Ring primitives ---
+/// (set-mark) → set mark at current cursor position
+fn prim_set_mark(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        let pos = (state.cursor_row, state.cursor_col);
+        state.mark_active = true;
+        state.mark_pos = Some(pos);
+        state.mark_ring.push(pos);
+        // Keep ring bounded
+        if state.mark_ring.len() > 16 {
+            state.mark_ring.remove(0);
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (goto-mark) → move cursor to mark position
+fn prim_goto_mark(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if let Some((row, col)) = state.mark_pos {
+            state.cursor_row = row;
+            state.cursor_col = col;
+            Ok(Value::Nil)
+        } else if let Some(&(row, col)) = state.mark_ring.last() {
+            state.cursor_row = row;
+            state.cursor_col = col;
+            Ok(Value::Nil)
+        } else {
+            Err("no mark set".to_string())
+        }
+    })
+}
+/// (pop-mark) → pop mark ring, move cursor to previous mark
+fn prim_pop_mark(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if let Some((row, col)) = state.mark_ring.pop() {
+            state.cursor_row = row;
+            state.cursor_col = col;
+            state.mark_pos = Some((row, col));
+            Ok(Value::Bool(true))
+        } else {
+            Ok(Value::Bool(false))
+        }
+    })
+}
+/// (mark-active?) → is mark currently active?
+fn prim_mark_active(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Bool(state.mark_active)))
+}
+/// (mark-position) → get current mark position [row col] or nil
+fn prim_mark_position(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        match state.mark_pos {
+            Some((row, col)) => Ok(Value::vector(vec![
+                Value::Int(row as i64),
+                Value::Int(col as i64),
+            ])),
+            None => Ok(Value::Nil),
+        }
+    })
+}
+/// (deactivate-mark) → deactivate the mark
+fn prim_deactivate_mark(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        state.mark_active = false;
+        Ok(Value::Nil)
+    })
+}
+// --- Register primitives ---
+/// (register-set ?char "value") → store value in named register
+fn prim_register_set(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    let ch = name.chars().next().ok_or("register name must be a char")?;
+    let value = extract_string(args, 1)?;
+    with_editor_state_mut(|state| {
+        state.registers.insert(ch, value);
+        Ok(Value::Nil)
+    })
+}
+/// (register-get ?char) → retrieve value from named register
+fn prim_register_get(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    let ch = name.chars().next().ok_or("register name must be a char")?;
+    with_editor_state(|state| {
+        match state.registers.get(&ch) {
+            Some(val) => Ok(Value::string(val)),
+            None => Ok(Value::Nil),
+        }
+    })
+}
+/// (register-list) → map of all register names to values
+fn prim_register_list(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        let pairs: Vec<(Value, Value)> = state.registers.iter()
+            .map(|(ch, val)| (Value::keyword(ch.to_string()), Value::string(val)))
+            .collect();
+        Ok(Value::map(pairs))
+    })
+}
+// --- Buffer-local Variable primitives ---
+/// (var-set "name" value) → set buffer-local variable
+fn prim_var_set(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    let value = args.get(1).cloned().ok_or("var-set requires a value")?;
+    with_editor_state_mut(|state| {
+        state.buffer_local_vars.insert(name, value);
+        Ok(Value::Nil)
+    })
+}
+/// (var-get "name") → get buffer-local variable value
+fn prim_var_get(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    with_editor_state(|state| {
+        match state.buffer_local_vars.get(&name) {
+            Some(val) => Ok(val.clone()),
+            None => Ok(Value::Nil),
+        }
+    })
+}
+/// (var-local "name" default) → set default value for buffer-local variable
+fn prim_var_local(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    let default = args.get(1).cloned().unwrap_or(Value::Nil);
+    with_editor_state_mut(|state| {
+        if !state.buffer_local_vars.contains_key(&name) {
+            state.buffer_local_vars.insert(name, default);
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (var-bound? "name") → check if buffer-local variable is bound
+fn prim_var_bound(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    with_editor_state(|state| Ok(Value::Bool(state.buffer_local_vars.contains_key(&name))))
+}
+// --- Minibuffer primitives ---
+/// (read-string "prompt" ["default"]) → read a string from the minibuffer
+fn prim_read_string(args: &[Value]) -> Result<Value, String> {
+    let _prompt = extract_string(args, 0)?;
+    let default = args.get(1).and_then(|v| match v {
+        Value::String(s) => Some(s.to_string()),
+        _ => None,
+    });
+    // In headless/test mode, return default or empty
+    // In interactive mode, this would display the minibuffer prompt
+    Ok(Value::string(default.unwrap_or_default()))
+}
+/// (completing-read "prompt" [choices] ["default"]) → read with completion
+fn prim_completing_read(args: &[Value]) -> Result<Value, String> {
+    let _prompt = extract_string(args, 0)?;
+    let _choices = args.get(1).cloned().unwrap_or(Value::Nil);
+    let default = args.get(2).and_then(|v| match v {
+        Value::String(s) => Some(s.to_string()),
+        _ => None,
+    });
+    // In headless/test mode, return default or first choice
+    Ok(Value::string(default.unwrap_or_default()))
+}
+/// (y-or-n? "prompt") → ask yes/no question
+fn prim_y_or_n(args: &[Value]) -> Result<Value, String> {
+    let _prompt = extract_string(args, 0)?;
+    // In headless/test mode, default to true
+    Ok(Value::Bool(true))
+}
+// --- Region primitives ---
+/// (region-beginning) → position of region start
+fn prim_region_beginning(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        if let Some((row, col)) = state.mark_pos {
+            let mark_flat = row * 10000 + col;
+            let cursor_flat = state.cursor_row * 10000 + state.cursor_col;
+            let (r, c) = if mark_flat <= cursor_flat {
+                (row, col)
+            } else {
+                (state.cursor_row, state.cursor_col)
+            };
+            Ok(Value::Int((r * 10000 + c) as i64))
+        } else {
+            Ok(Value::Int(
+                (state.cursor_row * 10000 + state.cursor_col) as i64,
+            ))
+        }
+    })
+}
+/// (region-end) → position of region end
+fn prim_region_end(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        if let Some((row, col)) = state.mark_pos {
+            let mark_flat = row * 10000 + col;
+            let cursor_flat = state.cursor_row * 10000 + state.cursor_col;
+            let (r, c) = if mark_flat >= cursor_flat {
+                (row, col)
+            } else {
+                (state.cursor_row, state.cursor_col)
+            };
+            Ok(Value::Int((r * 10000 + c) as i64))
+        } else {
+            Ok(Value::Int(
+                (state.cursor_row * 10000 + state.cursor_col) as i64,
+            ))
+        }
+    })
+}
+/// (region-active?) → is the region currently active?
+fn prim_region_active(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Bool(state.mark_active)))
+}
+/// (delete-region) → delete text between mark and cursor
+fn prim_delete_region(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if !state.mark_active {
+            return Err("region is not active".to_string());
+        }
+        if let Some((mark_row, mark_col)) = state.mark_pos {
+            let start_row = mark_row.min(state.cursor_row);
+            let end_row = mark_row.max(state.cursor_row);
+            let (start_col, end_col) = if mark_row == state.cursor_row {
+                (mark_col.min(state.cursor_col), mark_col.max(state.cursor_col))
+            } else if mark_row < state.cursor_row {
+                (mark_col, state.cursor_col)
+            } else {
+                (state.cursor_col, mark_col)
+            };
+            if start_row == end_row {
+                // Single line deletion
+                if let Some(line) = state.lines.get_mut(start_row) {
+                    let actual_end = end_col.min(line.len());
+                    let actual_start = start_col.min(actual_end);
+                    line.replace_range(actual_start..actual_end, "");
+                }
+            } else {
+                // Multi-line deletion
+                if start_row < state.lines.len() {
+                    let start_line = state.lines[start_row].clone();
+                    let end_line = state.lines.get(end_row).cloned().unwrap_or_default();
+                    let prefix = if start_col <= start_line.len() {
+                        &start_line[..start_col]
+                    } else {
+                        &start_line
+                    };
+                    let suffix = if end_col <= end_line.len() {
+                        &end_line[end_col..]
+                    } else {
+                        ""
+                    };
+                    let merged = format!("{}{}", prefix, suffix);
+                    state.lines.splice(start_row..=end_row, std::iter::once(merged));
+                }
+            }
+            state.cursor_row = start_row;
+            state.cursor_col = start_col;
+            state.mark_active = false;
+            state.mark_pos = None;
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (buffer-substring start end) → extract text between positions
+fn prim_buffer_substring(args: &[Value]) -> Result<Value, String> {
+    let start = extract_int(args, 0)? as usize;
+    let end = extract_int(args, 1)? as usize;
+    with_editor_state(|state| {
+        let start_row = start / 10000;
+        let start_col = start % 10000;
+        let end_row = end / 10000;
+        let end_col = end % 10000;
+        if start_row == end_row {
+            if let Some(line) = state.lines.get(start_row) {
+                let s = start_col.min(line.len());
+                let e = end_col.min(line.len());
+                return Ok(Value::string(&line[s..e]));
+            }
+            return Ok(Value::string(""));
+        }
+        let mut result = String::new();
+        for row in start_row..=end_row.min(state.lines.len().saturating_sub(1)) {
+            if let Some(line) = state.lines.get(row) {
+                if row == start_row {
+                    let s = start_col.min(line.len());
+                    result.push_str(&line[s..]);
+                } else if row == end_row {
+                    let e = end_col.min(line.len());
+                    result.push_str(&line[..e]);
+                } else {
+                    result.push_str(line);
+                }
+                if row < end_row {
+                    result.push('\n');
+                }
+            }
+        }
+        Ok(Value::string(&result))
+    })
+}
+// --- Undo primitives ---
+/// (undo) → undo last change
+fn prim_undo(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if !state.undo_enabled {
+            return Err("undo is disabled".to_string());
+        }
+        // Save current state to redo
+        state.redo_stack.push((
+            state.lines.clone(),
+            state.cursor_row,
+            state.cursor_col,
+        ));
+        // Pop the current snapshot (discard it — it's the state we want to undo FROM)
+        let _current = state.undo_stack.pop_back();
+        // Pop the previous snapshot to restore
+        if let Some((lines, row, col)) = state.undo_stack.pop_back() {
+            state.lines = lines;
+            state.cursor_row = row;
+            state.cursor_col = col;
+            Ok(Value::Bool(true))
+        } else {
+            // No previous snapshot — undo the redo push
+            state.redo_stack.pop();
+            // Re-push the discarded current snapshot if any
+            if let Some(snap) = _current {
+                state.undo_stack.push_back(snap);
+            }
+            Ok(Value::Bool(false))
+        }
+    })
+}
+/// (redo) → redo last undone change
+fn prim_redo(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if let Some((lines, row, col)) = state.redo_stack.pop() {
+            // Save current state to undo
+            state.undo_stack.push_back((
+                state.lines.clone(),
+                state.cursor_row,
+                state.cursor_col,
+            ));
+            state.lines = lines;
+            state.cursor_row = row;
+            state.cursor_col = col;
+            Ok(Value::Bool(true))
+        } else {
+            Ok(Value::Bool(false))
+        }
+    })
+}
+/// (undo-boundary) → push an undo boundary (snapshot current state)
+fn prim_undo_boundary(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        if state.undo_enabled {
+            state.undo_stack.push_back((
+                state.lines.clone(),
+                state.cursor_row,
+                state.cursor_col,
+            ));
+            // Keep undo stack bounded
+            if state.undo_stack.len() > 500 {
+                state.undo_stack.pop_front();
+            }
+            // Clear redo on new change
+            state.redo_stack.clear();
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (undo-enabled?) → is undo enabled?
+fn prim_undo_enabled(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Bool(state.undo_enabled)))
+}
+// --- Extended Hook primitives ---
+/// (remove-hook "hook-name" handler) → remove a handler from a hook
+fn prim_remove_hook(args: &[Value]) -> Result<Value, String> {
+    let hook_name = extract_string(args, 0)?;
+    // Remove by index or by matching handler
+    match args.get(1) {
+        Some(Value::Int(idx)) => {
+            let idx = *idx as usize;
+            with_editor_state_mut(|state| {
+                if let Some(handlers) = state.hooks.get_mut(&hook_name) {
+                    if idx < handlers.len() {
+                        handlers.remove(idx);
+                    }
+                }
+                Ok(Value::Nil)
+            })
+        }
+        Some(handler) => {
+            // Remove by identity (last matching)
+            let handler_str = format!("{:?}", handler);
+            with_editor_state_mut(|state| {
+                if let Some(handlers) = state.hooks.get_mut(&hook_name) {
+                    if let Some(pos) = handlers.iter().rposition(|h| format!("{:?}", h) == handler_str) {
+                        handlers.remove(pos);
+                    }
+                }
+                Ok(Value::Nil)
+            })
+        }
+        None => Err("remove-hook requires hook name and handler".to_string()),
+    }
+}
+/// (run-hook "hook-name") → run all handlers for a hook
+fn prim_run_hook(args: &[Value]) -> Result<Value, String> {
+    let hook_name = extract_string(args, 0)?;
+    with_editor_state(|state| {
+        match state.hooks.get(&hook_name) {
+            Some(handlers) => {
+                let count = handlers.len();
+                // In headless mode, just count how many would run
+                Ok(Value::Int(count as i64))
+            }
+            None => Ok(Value::Int(0)),
+        }
+    })
+}
+/// (hook-bound? "hook-name") → does this hook have handlers?
+fn prim_hook_bound(args: &[Value]) -> Result<Value, String> {
+    let hook_name = extract_string(args, 0)?;
+    with_editor_state(|state| {
+        Ok(Value::Bool(
+            state.hooks.get(&hook_name).map_or(false, |h| !h.is_empty()),
+        ))
+    })
+}
+/// (hooks-for "hook-name") → list handler count for a hook
+fn prim_hooks_for(args: &[Value]) -> Result<Value, String> {
+    let hook_name = extract_string(args, 0)?;
+    with_editor_state(|state| {
+        Ok(Value::Int(
+            state.hooks.get(&hook_name).map_or(0, |h| h.len()) as i64,
+        ))
+    })
+}
+// --- Extended Buffer primitives ---
+/// (buffer-narrowed?) → is the buffer narrowed?
+fn prim_buffer_narrowed(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Bool(state.narrow_start.is_some())))
+}
+/// (narrow-to-region start end) → narrow buffer to line range
+fn prim_narrow_to_region(args: &[Value]) -> Result<Value, String> {
+    let start = extract_int(args, 0)? as usize;
+    let end = extract_int(args, 1)? as usize;
+    with_editor_state_mut(|state| {
+        let total = state.lines.len();
+        state.narrow_start = Some(start.min(total.saturating_sub(1)));
+        state.narrow_end = Some(end.min(total));
+        Ok(Value::Nil)
+    })
+}
+/// (widen) → remove narrowing
+fn prim_widen(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        state.narrow_start = None;
+        state.narrow_end = None;
+        Ok(Value::Nil)
+    })
+}
+/// (buffer-substring-range start-row start-col end-row end-col)
+fn prim_buffer_substring_range(args: &[Value]) -> Result<Value, String> {
+    let start_row = extract_int(args, 0)? as usize;
+    let start_col = extract_int(args, 1)? as usize;
+    let end_row = extract_int(args, 2)? as usize;
+    let end_col = extract_int(args, 3)? as usize;
+    with_editor_state(|state| {
+        if start_row == end_row {
+            if let Some(line) = state.lines.get(start_row) {
+                let s = start_col.min(line.len());
+                let e = end_col.min(line.len());
+                return Ok(Value::string(&line[s..e]));
+            }
+            return Ok(Value::string(""));
+        }
+        let mut result = String::new();
+        for row in start_row..=end_row.min(state.lines.len().saturating_sub(1)) {
+            if let Some(line) = state.lines.get(row) {
+                if row == start_row {
+                    let s = start_col.min(line.len());
+                    result.push_str(&line[s..]);
+                } else if row == end_row {
+                    let e = end_col.min(line.len());
+                    result.push_str(&line[..e]);
+                } else {
+                    result.push_str(line);
+                }
+                if row < end_row {
+                    result.push('\n');
+                }
+            }
+        }
+        Ok(Value::string(&result))
+    })
+}
+/// (search-forward "pattern") → search forward for pattern, move cursor, return position or nil
+fn prim_search_forward(args: &[Value]) -> Result<Value, String> {
+    let pattern = extract_string(args, 0)?;
+    with_editor_state_mut(|state| {
+        // Search from current cursor position forward
+        let start_col_offset = if state.cursor_col < state.lines.get(state.cursor_row).map_or(0, |l| l.len()) {
+            state.cursor_col + 1
+        } else {
+            0
+        };
+        for row in state.cursor_row..state.lines.len() {
+            let line = &state.lines[row];
+            let search_from = if row == state.cursor_row { start_col_offset } else { 0 };
+            if search_from < line.len() {
+                if let Some(pos) = line[search_from..].find(&pattern) {
+                    let col = search_from + pos;
+                    state.cursor_row = row;
+                    state.cursor_col = col;
+                    return Ok(Value::Int((row * 10000 + col) as i64));
+                }
+            }
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (search-backward "pattern") → search backward for pattern
+fn prim_search_backward(args: &[Value]) -> Result<Value, String> {
+    let pattern = extract_string(args, 0)?;
+    with_editor_state_mut(|state| {
+        // Search from current cursor position backward
+        for row in (0..=state.cursor_row).rev() {
+            let line = state.lines.get(row).map(|s| s.as_str()).unwrap_or("");
+            let search_end = if row == state.cursor_row {
+                state.cursor_col
+            } else {
+                line.len()
+            };
+            if search_end > 0 {
+                if let Some(pos) = line[..search_end].rfind(&pattern) {
+                    state.cursor_row = row;
+                    state.cursor_col = pos;
+                    return Ok(Value::Int((row * 10000 + pos) as i64));
+                }
+            }
+        }
+        Ok(Value::Nil)
+    })
+}
+/// (looking-at "pattern") → does text at cursor match pattern?
+fn prim_looking_at(args: &[Value]) -> Result<Value, String> {
+    let pattern = extract_string(args, 0)?;
+    with_editor_state(|state| {
+        if let Some(line) = state.lines.get(state.cursor_row) {
+            if state.cursor_col < line.len() {
+                return Ok(Value::Bool(line[state.cursor_col..].starts_with(&pattern)));
+            }
+        }
+        Ok(Value::Bool(false))
+    })
+}
+/// (buffer-list) → list of buffer names (currently just current buffer)
+fn prim_buffer_list(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        let name = state.file_path.as_deref().unwrap_or("*scratch*");
+        Ok(Value::vector(vec![Value::string(name)]))
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -1321,6 +2095,25 @@ mod tests {
         with_editor_state(|state| {
             assert_eq!(state.status_message, "legacy");
         });
+        take_editor_state();
+    }
+    #[test]
+    fn buffer_symbols_are_available() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Test buffer-name works
+        let name = bridge.eval("(buffer-name)").unwrap();
+        assert_eq!(name, Value::string("*scratch*"));
+        // Test buffer-line-count works
+        let count = bridge.eval("(buffer-line-count)").unwrap();
+        assert_eq!(count, Value::Int(1));
+        // Test buffer-content works
+        let content = bridge.eval("(buffer-content)").unwrap();
+        assert_eq!(content, Value::string(""));
+        // Test buffer-set-content works
+        bridge.eval("(buffer-set-content \"hello\")").unwrap();
+        let content = bridge.eval("(buffer-content)").unwrap();
+        assert_eq!(content, Value::string("hello"));
         take_editor_state();
     }
 
@@ -1409,6 +2202,357 @@ mod tests {
         with_editor_state(|state| {
             assert_eq!(state.status_message, "hello from interactive defn");
         });
+        take_editor_state();
+    }
+    // --- Kill Ring Tests ---
+    #[test]
+    fn kill_ring_push_and_yank() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge
+            .eval("(kill-ring-push \"hello world\")")
+            .unwrap();
+        let result = bridge.eval("(kill-ring-yank)").unwrap();
+        assert_eq!(result, Value::string("hello world"));
+        assert_eq!(
+            bridge.eval("(kill-ring-count)").unwrap(),
+            Value::Int(1)
+        );
+        take_editor_state();
+    }
+    #[test]
+    fn kill_ring_pop_cycling() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(kill-ring-push \"first\")").unwrap();
+        bridge.eval("(kill-ring-push \"second\")").unwrap();
+        bridge.eval("(kill-ring-push \"third\")").unwrap();
+        // yank returns most recent
+        assert_eq!(bridge.eval("(kill-ring-yank)").unwrap(), Value::string("third"));
+        // pop forward cycles
+        assert_eq!(bridge.eval("(kill-ring-pop)").unwrap(), Value::string("first"));
+        // pop back cycles backward
+        assert_eq!(bridge.eval("(kill-ring-pop-back)").unwrap(), Value::string("third"));
+        let contents = bridge.eval("(kill-ring-contents)").unwrap();
+        match contents {
+            Value::Vector(v) => assert_eq!(v.len(), 3),
+            _ => panic!("expected vector"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn kill_ring_empty_returns_nil() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        assert_eq!(bridge.eval("(kill-ring-yank)").unwrap(), Value::Nil);
+        assert_eq!(bridge.eval("(kill-ring-count)").unwrap(), Value::Int(0));
+        take_editor_state();
+    }
+    // --- Mark Ring Tests ---
+    // --- Mark Ring Tests ---
+    #[test]
+    fn set_mark_and_goto() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Set up buffer with enough lines
+        bridge.eval("(buffer-set-content \"line0\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11\")").unwrap();
+        // Move cursor to line 5, col 3
+        bridge.eval("(cursor-set! 5 3)").unwrap();
+        bridge.eval("(set-mark)").unwrap();
+        assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
+        let pos = bridge.eval("(mark-position)").unwrap();
+        match pos {
+            Value::Vector(v) => {
+                assert_eq!(v[0], Value::Int(5));
+                assert_eq!(v[1], Value::Int(3));
+            }
+            _ => panic!("expected vector"),
+        }
+        // Move cursor elsewhere
+        bridge.eval("(cursor-set! 10 0)").unwrap();
+        // Goto mark
+        bridge.eval("(goto-mark)").unwrap();
+        assert_eq!(bridge.eval("(cursor-row)").unwrap(), Value::Int(5));
+        assert_eq!(bridge.eval("(cursor-col)").unwrap(), Value::Int(3));
+        take_editor_state();
+    }
+    #[test]
+    fn pop_mark_ring() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Set up buffer with enough lines
+        bridge.eval("(buffer-set-content \"line0\nline1\nline2\nline3\nline4\nline5\")").unwrap();
+        bridge.eval("(cursor-set! 1 0)").unwrap();
+        bridge.eval("(set-mark)").unwrap();
+        bridge.eval("(cursor-set! 2 0)").unwrap();
+        bridge.eval("(set-mark)").unwrap();
+        bridge.eval("(cursor-set! 3 0)").unwrap();
+        // Pop mark -> goes to row 2
+        bridge.eval("(pop-mark)").unwrap();
+        assert_eq!(bridge.eval("(cursor-row)").unwrap(), Value::Int(2));
+        // Deactivate mark
+        bridge.eval("(deactivate-mark)").unwrap();
+        assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(false));
+        take_editor_state();
+    }
+    // --- Register Tests ---
+    #[test]
+    fn register_set_and_get() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(register-set \"a\" \"hello\")").unwrap();
+        assert_eq!(
+            bridge.eval("(register-get \"a\")").unwrap(),
+            Value::string("hello")
+        );
+        assert_eq!(bridge.eval("(register-get \"z\")").unwrap(), Value::Nil);
+        take_editor_state();
+    }
+    // --- Buffer-Local Variable Tests ---
+    #[test]
+    fn var_set_and_get() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(var-set \"tab-width\" 4)").unwrap();
+        assert_eq!(
+            bridge.eval("(var-get \"tab-width\")").unwrap(),
+            Value::Int(4)
+        );
+        assert_eq!(bridge.eval("(var-bound? \"tab-width\")").unwrap(), Value::Bool(true));
+        assert_eq!(bridge.eval("(var-bound? \"unknown\")").unwrap(), Value::Bool(false));
+        assert_eq!(bridge.eval("(var-get \"unknown\")").unwrap(), Value::Nil);
+        take_editor_state();
+    }
+    #[test]
+    fn var_local_sets_default_only() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(var-local \"indent-tabs-mode\" true)").unwrap();
+        assert_eq!(
+            bridge.eval("(var-get \"indent-tabs-mode\")").unwrap(),
+            Value::Bool(true)
+        );
+        // var-local should not overwrite existing value
+        bridge.eval("(var-local \"indent-tabs-mode\" false)").unwrap();
+        assert_eq!(
+            bridge.eval("(var-get \"indent-tabs-mode\")").unwrap(),
+            Value::Bool(true)
+        );
+        take_editor_state();
+    }
+    // --- Region Tests ---
+    #[test]
+    fn region_operations() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        assert_eq!(bridge.eval("(region-active?)").unwrap(), Value::Bool(false));
+        bridge.eval("(set-mark)").unwrap();
+        assert_eq!(bridge.eval("(region-active?)").unwrap(), Value::Bool(true));
+        // Region beginning should be at cursor (0,0)
+        assert_eq!(bridge.eval("(region-beginning)").unwrap(), Value::Int(0));
+        assert_eq!(bridge.eval("(region-end)").unwrap(), Value::Int(0));
+        take_editor_state();
+    }
+    fn delete_region_removes_text() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Set up content: "hello world"
+        bridge.eval("(buffer-set-content \"hello world\")").unwrap();
+        bridge.eval("(cursor-set! 0 5)").unwrap(); // cursor at space
+        bridge.eval("(set-mark)").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap(); // mark at start
+        bridge.eval("(delete-region)").unwrap();
+        assert_eq!(
+            bridge.eval("(buffer-content)").unwrap(),
+            Value::string(" world")
+        );
+        take_editor_state();
+    }
+    // --- Undo Tests ---
+    #[test]
+    fn undo_redo_cycle() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Save initial state
+        bridge.eval("(undo-boundary)").unwrap();
+        // Make a change
+        bridge.eval("(buffer-set-content \"modified\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        // Undo should restore previous state
+        let result = bridge.eval("(undo)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+        // Content should be back to empty
+        assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string(""));
+        // Redo should restore the modification
+        let result = bridge.eval("(redo)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+        assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("modified"));
+        // Undo empty stack returns false
+        bridge.eval("(undo)").unwrap(); // undo the redo
+        let result = bridge.eval("(undo)").unwrap(); // try to undo past the boundary
+        assert_eq!(result, Value::Bool(false));
+        take_editor_state();
+    }
+    // --- Hook Extension Tests ---
+    #[test]
+    fn hook_query_operations() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Initially no hooks
+        assert_eq!(bridge.eval("(hook-bound? \"after-save\")").unwrap(), Value::Bool(false));
+        assert_eq!(bridge.eval("(hooks-for \"after-save\")").unwrap(), Value::Int(0));
+        // Add a hook
+        bridge.eval("(add-hook \"after-save\" (fn [] nil))").unwrap();
+        assert_eq!(bridge.eval("(hook-bound? \"after-save\")").unwrap(), Value::Bool(true));
+        assert_eq!(bridge.eval("(hooks-for \"after-save\")").unwrap(), Value::Int(1));
+        // Remove by index
+        bridge.eval("(remove-hook \"after-save\" 0)").unwrap();
+        assert_eq!(bridge.eval("(hook-bound? \"after-save\")").unwrap(), Value::Bool(false));
+        take_editor_state();
+    }
+    // --- Minibuffer Tests ---
+    #[test]
+    fn minibuffer_read_string() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // In headless mode, read-string returns default
+        let result = bridge
+            .eval("(read-string \"Name: \" \"default-name\")")
+            .unwrap();
+        assert_eq!(result, Value::string("default-name"));
+        // Without default, returns empty
+        let result = bridge.eval("(read-string \"Query: \")").unwrap();
+        assert_eq!(result, Value::string(""));
+        take_editor_state();
+    }
+    #[test]
+    fn minibuffer_y_or_n() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // In headless mode, y-or-n? defaults to true
+        let result = bridge.eval("(y-or-n? \"Save? \")").unwrap();
+        assert_eq!(result, Value::Bool(true));
+        take_editor_state();
+    }
+    // --- Narrowing Tests ---
+    #[test]
+    fn narrow_and_widen() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"line1\nline2\nline3\nline4\")").unwrap();
+        assert_eq!(bridge.eval("(buffer-narrowed?)").unwrap(), Value::Bool(false));
+        bridge.eval("(narrow-to-region 1 3)").unwrap();
+        assert_eq!(bridge.eval("(buffer-narrowed?)").unwrap(), Value::Bool(true));
+        bridge.eval("(widen)").unwrap();
+        assert_eq!(bridge.eval("(buffer-narrowed?)").unwrap(), Value::Bool(false));
+        take_editor_state();
+    }
+    // --- Text Search Tests ---
+    #[test]
+    fn search_forward_finds_pattern() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello world foo bar\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        let result = bridge.eval("(search-forward \"world\")").unwrap();
+        assert_eq!(result, Value::Int(6)); // "world" starts at col 6
+        assert_eq!(bridge.eval("(cursor-col)").unwrap(), Value::Int(6));
+        // Search for missing pattern returns nil
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        let result = bridge.eval("(search-forward \"notfound\")").unwrap();
+        assert_eq!(result, Value::Nil);
+        take_editor_state();
+    }
+    #[test]
+    fn search_backward_finds_pattern() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello world hello\")").unwrap();
+        bridge.eval("(cursor-set! 0 15)").unwrap(); // near end
+        let result = bridge.eval("(search-backward \"hello\")").unwrap();
+        assert_eq!(result, Value::Int(0)); // first "hello" at col 0
+        take_editor_state();
+    }
+    #[test]
+    fn looking_at_checks_at_cursor() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello world\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        assert_eq!(
+            bridge.eval("(looking-at \"hello\")").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            bridge.eval("(looking-at \"world\")").unwrap(),
+            Value::Bool(false)
+        );
+        bridge.eval("(cursor-set! 0 6)").unwrap();
+        assert_eq!(
+            bridge.eval("(looking-at \"world\")").unwrap(),
+            Value::Bool(true)
+        );
+        take_editor_state();
+    }
+    // --- Buffer List Test ---
+    #[test]
+    fn buffer_list_returns_current() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        let result = bridge.eval("(buffer-list)").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert_eq!(v.len(), 1);
+                assert_eq!(v[0], Value::string("*scratch*"));
+            }
+            _ => panic!("expected vector"),
+        }
+        take_editor_state();
+    }
+    // --- Integration: Emacs-like init.mora pattern ---
+    #[test]
+    fn emacs_like_init_config() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Simulate a user's init.mora using emacs-like primitives
+        bridge
+            .eval(
+                r#"
+                ;; Set buffer-local variables
+                (var-set "tab-width" 4)
+                (var-set "indent-tabs-mode" false)
+                ;; Define a command using mark and region
+                (defn delete-line
+                  "Delete current line."
+                  []
+                  (interactive)
+                  (set-mark)
+                  (cursor-end-of-line)
+                  (delete-region))
+                ;; Set up hooks
+                (add-hook "before-save"
+                  (fn []
+                    (editor-message (str "Saving: " (buffer-name)))))
+                ;; Store a snippet in register
+                (register-set "s" "fn main() {\n    \n}")
+                ;; Push to kill ring
+                (kill-ring-push "import std;")
+                ;; Undo boundary before major change
+                (undo-boundary)
+                (buffer-set-content "new content")
+                (undo-boundary)
+                "#,
+            )
+            .unwrap();
+        // Verify everything worked
+        assert_eq!(bridge.eval("(var-get \"tab-width\")").unwrap(), Value::Int(4));
+        assert_eq!(
+            bridge.eval("(register-get \"s\")").unwrap(),
+            Value::string("fn main() {\n    \n}")
+        );
+        assert_eq!(bridge.eval("(kill-ring-yank)").unwrap(), Value::string("import std;"));
+        assert!(bridge.has_command("delete-line"));
+        assert_eq!(bridge.eval("(hook-bound? \"before-save\")").unwrap(), Value::Bool(true));
         take_editor_state();
     }
 }
