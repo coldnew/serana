@@ -908,6 +908,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-wgpu"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "bytemuck",
+ "display-protocol",
+ "pollster",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3485,7 +3497,6 @@ dependencies = [
  "mora-bin",
  "parking_lot",
  "pulldown-cmark",
- "ratatui",
  "regex",
  "reqwest",
  "rusqlite",
@@ -4650,11 +4661,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "crossterm",
  "display-protocol",
  "display-protocol-jsx",
  "display-tui",
- "ratatui",
 ]
 
 [[package]]

@@ -1,0 +1,17 @@
+[package]
+name = "display-wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+display-protocol = { path = "../display-protocol" }
+wgpu = { workspace = true }
+winit = { workspace = true }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+ab_glyph = "0.2"
