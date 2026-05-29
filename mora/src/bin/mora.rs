@@ -78,7 +78,9 @@ enum Commands {
         #[arg(default_value = "127.0.0.1:7890")]
         addr: String,
     },
-}
+    /// Start an interactive REPL
+    Repl,
+ }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -167,6 +169,12 @@ fn main() -> anyhow::Result<()> {
 
         Some(Commands::Connect { addr }) => {
             run_client(&addr)
+        }
+
+        Some(Commands::Repl) => {
+            println!("mora-lisp REPL (Ctrl-D to exit)");
+            let mut repl = mora_lisp::repl::Repl::new();
+            repl.run().map_err(|e| anyhow::anyhow!("{}", e))
         }
     }
 }
