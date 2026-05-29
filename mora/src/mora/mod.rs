@@ -15,6 +15,7 @@ mod rectangle;
 mod register;
 pub mod syntax;
 pub mod ui_node;
+pub mod undo_tree;
 mod view;
 pub mod wasm_ext;
 mod window;

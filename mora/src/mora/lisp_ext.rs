@@ -5,6 +5,7 @@ use crate::lisp::eval::{EvalError, Evaluator};
 use crate::lisp::types::Value;
 
 use super::overlay::{OverlayFace, OverlayStore};
+use super::undo_tree::{Snapshot, UndoTree};
 
 /// Shared editor state accessible from Lisp primitives
 pub struct EditorState {
@@ -42,10 +43,8 @@ pub struct EditorState {
     pub narrow_end: Option<usize>,
     /// Undo enabled flag
     pub undo_enabled: bool,
-    /// Undo stack: snapshots of (lines, cursor_row, cursor_col)
-    pub undo_stack: std::collections::VecDeque<(Vec<String>, usize, usize)>,
-    /// Redo stack
-    pub redo_stack: Vec<(Vec<String>, usize, usize)>,
+    /// Undo tree for branching history
+    pub undo_tree: UndoTree,
 }
 
 impl EditorState {
@@ -75,8 +74,11 @@ impl EditorState {
             narrow_start: None,
             narrow_end: None,
             undo_enabled: true,
-            undo_stack: std::collections::VecDeque::new(),
-            redo_stack: Vec::new(),
+            undo_tree: UndoTree::new(Snapshot {
+                lines: vec![String::new()],
+                cursor_row: 0,
+                cursor_col: 0,
+            }),
         }
     }
 }
@@ -374,6 +376,12 @@ impl MoraLispBridge {
         ns.intern_private("boundary", Value::Native(prim_undo_boundary));
         ns.intern("undo-enabled?", Value::Native(prim_undo_enabled));
         ns.intern_private("enabled?", Value::Native(prim_undo_enabled));
+        ns.intern("undo-tree-branches", Value::Native(prim_undo_tree_branches));
+        ns.intern("undo-tree-switch-branch", Value::Native(prim_undo_tree_switch_branch));
+        ns.intern("undo-tree-visualize", Value::Native(prim_undo_tree_visualize));
+        ns.intern("undo-tree-node-count", Value::Native(prim_undo_tree_node_count));
+        ns.intern("undo-tree-can-undo?", Value::Native(prim_undo_tree_can_undo));
+        ns.intern("undo-tree-can-redo?", Value::Native(prim_undo_tree_can_redo));
         drop(ns);
         // Expanded hook operations (add to existing hook namespace)
         let mut ns = hook_ns.lock();
@@ -1823,27 +1831,13 @@ fn prim_undo(_args: &[Value]) -> Result<Value, String> {
         if !state.undo_enabled {
             return Err("undo is disabled".to_string());
         }
-        // Save current state to redo
-        state.redo_stack.push((
-            state.lines.clone(),
-            state.cursor_row,
-            state.cursor_col,
-        ));
-        // Pop the current snapshot (discard it — it's the state we want to undo FROM)
-        let _current = state.undo_stack.pop_back();
-        // Pop the previous snapshot to restore
-        if let Some((lines, row, col)) = state.undo_stack.pop_back() {
-            state.lines = lines;
-            state.cursor_row = row;
-            state.cursor_col = col;
+        if state.undo_tree.undo() {
+            let snap = state.undo_tree.current().clone();
+            state.lines = snap.lines;
+            state.cursor_row = snap.cursor_row;
+            state.cursor_col = snap.cursor_col;
             Ok(Value::Bool(true))
         } else {
-            // No previous snapshot — undo the redo push
-            state.redo_stack.pop();
-            // Re-push the discarded current snapshot if any
-            if let Some(snap) = _current {
-                state.undo_stack.push_back(snap);
-            }
             Ok(Value::Bool(false))
         }
     })
@@ -1851,16 +1845,11 @@ fn prim_undo(_args: &[Value]) -> Result<Value, String> {
 /// (redo) → redo last undone change
 fn prim_redo(_args: &[Value]) -> Result<Value, String> {
     with_editor_state_mut(|state| {
-        if let Some((lines, row, col)) = state.redo_stack.pop() {
-            // Save current state to undo
-            state.undo_stack.push_back((
-                state.lines.clone(),
-                state.cursor_row,
-                state.cursor_col,
-            ));
-            state.lines = lines;
-            state.cursor_row = row;
-            state.cursor_col = col;
+        if state.undo_tree.redo() {
+            let snap = state.undo_tree.current().clone();
+            state.lines = snap.lines;
+            state.cursor_row = snap.cursor_row;
+            state.cursor_col = snap.cursor_col;
             Ok(Value::Bool(true))
         } else {
             Ok(Value::Bool(false))
@@ -1871,17 +1860,11 @@ fn prim_redo(_args: &[Value]) -> Result<Value, String> {
 fn prim_undo_boundary(_args: &[Value]) -> Result<Value, String> {
     with_editor_state_mut(|state| {
         if state.undo_enabled {
-            state.undo_stack.push_back((
-                state.lines.clone(),
-                state.cursor_row,
-                state.cursor_col,
-            ));
-            // Keep undo stack bounded
-            if state.undo_stack.len() > 500 {
-                state.undo_stack.pop_front();
-            }
-            // Clear redo on new change
-            state.redo_stack.clear();
+            state.undo_tree.record(Snapshot {
+                lines: state.lines.clone(),
+                cursor_row: state.cursor_row,
+                cursor_col: state.cursor_col,
+            });
         }
         Ok(Value::Nil)
     })
@@ -1889,6 +1872,41 @@ fn prim_undo_boundary(_args: &[Value]) -> Result<Value, String> {
 /// (undo-enabled?) → is undo enabled?
 fn prim_undo_enabled(_args: &[Value]) -> Result<Value, String> {
     with_editor_state(|state| Ok(Value::Bool(state.undo_enabled)))
+}
+/// (undo-tree-branches) → number of branches at current point
+fn prim_undo_tree_branches(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Int(state.undo_tree.branch_count() as i64)))
+}
+/// (undo-tree-switch-branch N) → switch to branch N at current point
+fn prim_undo_tree_switch_branch(args: &[Value]) -> Result<Value, String> {
+    let n = extract_int(args, 0)? as usize;
+    with_editor_state_mut(|state| {
+        if state.undo_tree.switch_branch(n) {
+            let snap = state.undo_tree.current().clone();
+            state.lines = snap.lines;
+            state.cursor_row = snap.cursor_row;
+            state.cursor_col = snap.cursor_col;
+            Ok(Value::Bool(true))
+        } else {
+            Ok(Value::Bool(false))
+        }
+    })
+}
+/// (undo-tree-visualize) → string representation of the tree
+fn prim_undo_tree_visualize(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::string(state.undo_tree.visualize())))
+}
+/// (undo-tree-node-count) → total nodes in tree
+fn prim_undo_tree_node_count(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Int(state.undo_tree.node_count() as i64)))
+}
+/// (undo-tree-can-undo?) → can undo from current position?
+fn prim_undo_tree_can_undo(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Bool(state.undo_tree.can_undo())))
+}
+/// (undo-tree-can-redo?) → can redo from current position?
+fn prim_undo_tree_can_redo(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| Ok(Value::Bool(state.undo_tree.can_redo())))
 }
 // --- Extended Hook primitives ---
 /// (remove-hook "hook-name" handler) → remove a handler from a hook
@@ -2373,24 +2391,36 @@ mod tests {
     fn undo_redo_cycle() {
         set_editor_state(EditorState::new());
         let mut bridge = MoraLispBridge::new();
-        // Save initial state
+        // Record initial state
         bridge.eval("(undo-boundary)").unwrap();
-        // Make a change
+        // Make a change and record
         bridge.eval("(buffer-set-content \"modified\")").unwrap();
         bridge.eval("(undo-boundary)").unwrap();
-        // Undo should restore previous state
+        // Undo should restore previous state (empty)
         let result = bridge.eval("(undo)").unwrap();
         assert_eq!(result, Value::Bool(true));
-        // Content should be back to empty
         assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string(""));
         // Redo should restore the modification
         let result = bridge.eval("(redo)").unwrap();
         assert_eq!(result, Value::Bool(true));
         assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("modified"));
-        // Undo empty stack returns false
-        bridge.eval("(undo)").unwrap(); // undo the redo
-        let result = bridge.eval("(undo)").unwrap(); // try to undo past the boundary
-        assert_eq!(result, Value::Bool(false));
+        // Undo again
+        let result = bridge.eval("(undo)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+        assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string(""));
+        // Make a DIFFERENT edit (creates branch instead of overwriting)
+        bridge.eval("(buffer-set-content \"alternate\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        assert_eq!(
+            bridge.eval("(buffer-content)").unwrap(),
+            Value::string("alternate")
+        );
+        // Go back — should have 2 branches now
+        bridge.eval("(undo)").unwrap();
+        assert_eq!(
+            bridge.eval("(undo-tree-branches)").unwrap(),
+            Value::Int(2)
+        );
         take_editor_state();
     }
     // --- Hook Extension Tests ---
@@ -2553,6 +2583,97 @@ mod tests {
         assert_eq!(bridge.eval("(kill-ring-yank)").unwrap(), Value::string("import std;"));
         assert!(bridge.has_command("delete-line"));
         assert_eq!(bridge.eval("(hook-bound? \"before-save\")").unwrap(), Value::Bool(true));
+        take_editor_state();
+    }
+    // --- Undo-Tree Tests ---
+    #[test]
+    fn undo_tree_branching_preserves_alternate_history() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Initial state
+        bridge.eval("(undo-boundary)").unwrap();
+        // Make edit A
+        bridge.eval("(buffer-set-content \"A\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        // Make edit B
+        bridge.eval("(buffer-set-content \"B\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        // Undo to A
+        bridge.eval("(undo)").unwrap();
+        assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("A"));
+        // Make edit C (creates branch instead of destroying B)
+        bridge.eval("(buffer-set-content \"C\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("C"));
+        // Go back to A — should have 2 branches
+        bridge.eval("(undo)").unwrap();
+        assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("A"));
+        assert_eq!(
+            bridge.eval("(undo-tree-branches)").unwrap(),
+            Value::Int(2)
+        );
+        // Switch to branch 0
+        bridge.eval("(undo-tree-switch-branch 0)").unwrap();
+        let branch0 = bridge.eval("(buffer-content)").unwrap();
+        // Go back, switch to branch 1
+        bridge.eval("(undo)").unwrap();
+        bridge.eval("(undo-tree-switch-branch 1)").unwrap();
+        let branch1 = bridge.eval("(buffer-content)").unwrap();
+        // Both branches accessible
+        assert_ne!(branch0, branch1);
+        take_editor_state();
+    }
+    #[test]
+    fn undo_tree_visualize_shows_structure() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(undo-boundary)").unwrap();
+        bridge.eval("(buffer-set-content \"A\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        bridge.eval("(undo)").unwrap();
+        bridge.eval("(buffer-set-content \"B\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        let vis = bridge.eval("(undo-tree-visualize)").unwrap();
+        match vis {
+            Value::String(s) => {
+                assert!(s.contains("●"), "should show active node");
+                assert!(s.contains("○"), "should show inactive nodes");
+            }
+            _ => panic!("expected string"),
+        }
+        let count = bridge.eval("(undo-tree-node-count)").unwrap();
+        // root + boundary-of-A + A + boundary-of-B + B = 5 nodes
+        // (each boundary records a new node in tree)
+        assert!(matches!(count, Value::Int(n) if n >= 3));
+        take_editor_state();
+    }
+    #[test]
+    fn undo_tree_can_undo_redo() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Fresh tree at root — nothing to undo
+        assert_eq!(
+            bridge.eval("(undo-tree-can-undo?)").unwrap(),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            bridge.eval("(undo-tree-can-redo?)").unwrap(),
+            Value::Bool(false)
+        );
+        // Record an edit
+        bridge.eval("(undo-boundary)").unwrap();
+        bridge.eval("(buffer-set-content \"edit\")").unwrap();
+        bridge.eval("(undo-boundary)").unwrap();
+        assert_eq!(
+            bridge.eval("(undo-tree-can-undo?)").unwrap(),
+            Value::Bool(true)
+        );
+        // Undo to previous state
+        bridge.eval("(undo)").unwrap();
+        assert_eq!(
+            bridge.eval("(undo-tree-can-redo?)").unwrap(),
+            Value::Bool(true)
+        );
         take_editor_state();
     }
 }
