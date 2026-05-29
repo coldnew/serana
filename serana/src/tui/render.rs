@@ -39,7 +39,9 @@ pub fn build_ui(app: &App, width: u16, height: u16) -> UiNode {
 
     children.push(build_input(app, width, &theme));
 
-    if let Some(ref dialog) = app.active_dialog {
+    if app.show_help {
+        children.push(build_help_overlay(width, height, &theme));
+    } else if let Some(ref dialog) = app.active_dialog {
         children.push(build_dialog(dialog, width, height));
     }
 
@@ -501,6 +503,56 @@ fn build_dialog(dialog: &super::dialog::Dialog, width: u16, height: u16) -> UiNo
     let title = format!(" {} ", dialog.title);
     jsx! {
         <Box border style={Style::new().fg(aquamarine)} title={title.as_str()} width={popup_w} height={popup_h}>
+            {build_column(children)}
+        </Box>
+    }
+}
+
+fn build_help_overlay(width: u16, height: u16, theme: &Theme) -> UiNode {
+    let popup_w = width.min(52).min(width * 3 / 4);
+    let popup_h = height.min(24).min(height * 3 / 4);
+    let aquamarine = Color::new(0, 180, 255);
+
+    let shortcuts: &[(&str, &str)] = &[
+        ("General", ""),
+        ("  ?",           "Show this help"),
+        ("  Ctrl+Q/D",    "Quit"),
+        ("  Esc",          "Cancel / back to Normal"),
+        ("", ""),
+        ("Input", ""),
+        ("  Enter",        "Send message"),
+        ("  Shift+Enter",  "New line"),
+        ("  Tab",          "Autocomplete"),
+        ("  Up/Down",      "Autocomplete navigation"),
+        ("", ""),
+        ("Dialogs", ""),
+        ("  Ctrl+M",       "Model selector"),
+        ("  Ctrl+T",       "Theme selector"),
+        ("", ""),
+        ("Processing", ""),
+        ("  Esc",          "Interrupt agent"),
+    ];
+
+    let mut children = Vec::new();
+    for &(key, desc) in shortcuts {
+        if key.is_empty() && desc.is_empty() {
+            children.push(jsx! { <Text>{""}</Text> });
+        } else if desc.is_empty() {
+            // Section header
+            children.push(jsx! {
+                <Text style={Style::new().fg(aquamarine).bold()}>{key}</Text>
+            });
+        } else {
+            let line = format!("{:<18} {}", key, desc);
+            children.push(jsx! {
+                <Text style={theme.dim}>{line.as_str()}</Text>
+            });
+        }
+    }
+
+    let title = " Keyboard Shortcuts ";
+    jsx! {
+        <Box border style={Style::new().fg(aquamarine)} title={title} width={popup_w} height={popup_h}>
             {build_column(children)}
         </Box>
     }

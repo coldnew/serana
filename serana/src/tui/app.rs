@@ -143,6 +143,7 @@ pub struct App {
     pub version: String,
     pub git_branch: Option<String>,
     pub show_welcome: bool,
+    pub show_help: bool,
     // Token usage tracking (oh-my-pi style)
     pub tokens_input: u64,
     pub tokens_output: u64,
@@ -207,6 +208,7 @@ impl App {
             version: env!("CARGO_PKG_VERSION").to_string(),
             git_branch: None,
             show_welcome: true,
+            show_help: false,
             tokens_input: 0,
             tokens_output: 0,
             tokens_cache_read: 0,
@@ -246,6 +248,12 @@ impl App {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
+        // Help overlay closes on any key
+        if self.show_help {
+            self.show_help = false;
+            return Ok(true);
+        }
+
         // Dialog intercepts all keys
         if self.active_dialog.is_some() {
             return self.handle_dialog_key(key);
@@ -278,6 +286,10 @@ impl App {
             if key.modifiers.contains(KeyModifiers::CONTROL) && (c == 'q' || c == 'd') {
                 self.should_quit = true;
                 return Ok(false);
+            }
+            if c == '?' {
+                self.show_help = true;
+                return Ok(true);
             }
             self.mode = AppMode::Input;
             self.editor.insert_char(c);
