@@ -50,6 +50,23 @@ pub use table::Table;
 mod toggle;
 pub use toggle::Toggle;
 
+mod text_input;
+pub use text_input::TextInput;
+
+mod editor;
+pub use editor::Editor;
+
+mod tree_view;
+pub use tree_view::{TreeView, TreeBranch};
+
+mod split_pane;
+pub use split_pane::SplitPane;
+
+mod status_bar;
+pub use status_bar::StatusBar;
+
+mod popup;
+pub use popup::Popup;
 /// Renders text as a keyboard shortcut key (e.g. `Ctrl+K`).
 pub fn kbd(text: impl Into<String>) -> UiNode {
     use display_protocol::{Border, Padding, Style, BoxNode};
