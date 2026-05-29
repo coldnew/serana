@@ -9,6 +9,6 @@ fn prim_window_count(_args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut Namespace) {
-    ns.intern("window-count", Value::Native(prim_window_count));
-    ns.intern_private("count", Value::Native(prim_window_count));
+    ns.intern_with_doc("window-count", Value::Native(prim_window_count), "Return the number of visible windows.");
+    ns.intern_private_with_doc("count", Value::Native(prim_window_count), "Return the number of visible windows.");
 }

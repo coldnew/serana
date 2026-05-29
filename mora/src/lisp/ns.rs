@@ -1,9 +1,25 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-
+use std::sync::OnceLock;
 use parking_lot::Mutex;
-
 use crate::lisp::types::{Symbol, Value};
+/// Global documentation registry for native functions.
+/// Maps fully-qualified names (e.g. "mora.buffer/buffer-name") to doc strings.
+static DOC_REGISTRY: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+fn doc_registry() -> &'static Mutex<HashMap<String, String>> {
+    DOC_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+/// Register a doc string for a fully-qualified function name.
+pub fn register_doc(ns_name: &str, fn_name: &str, doc: &str) {
+    let qualified = format!("{}/{}", ns_name, fn_name);
+    doc_registry().lock().insert(qualified, doc.to_string());
+    // Also register unqualified
+    doc_registry().lock().insert(fn_name.to_string(), doc.to_string());
+}
+/// Look up a doc string by name (qualified or unqualified).
+pub fn lookup_doc(name: &str) -> Option<String> {
+    doc_registry().lock().get(name).cloned()
+}
 
 #[derive(Debug, Clone)]
 pub struct Var {
@@ -31,21 +47,38 @@ impl Var {
         self.is_dynamic = true;
         self
     }
-
     pub fn private(mut self) -> Self {
         self.is_private = true;
         self
     }
-
+    pub fn with_doc(mut self, doc: &str) -> Self {
+        let meta = self.meta.get_or_insert_with(|| Arc::new(Vec::new()));
+        let mut meta = (**meta).clone();
+        meta.push((Value::keyword("doc"), Value::string(doc)));
+        self.meta = Some(Arc::new(meta));
+        self
+    }
+    pub fn doc(&self) -> Option<String> {
+        self.meta.as_ref().and_then(|meta| {
+            meta.iter().find_map(|(k, v)| {
+                if k == &Value::keyword("doc") {
+                    match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+        })
+    }
     pub fn set(&self, value: Value) {
         *self.value.lock() = value;
     }
-
     pub fn deref(&self) -> Value {
         self.value.lock().clone()
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct Namespace {
     pub name: String,
@@ -81,11 +114,24 @@ impl Namespace {
         self.vars.insert(name.to_string(), var.clone());
         var
     }
-
+    pub fn intern_with_doc(&mut self, name: &str, value: Value, doc: &str) -> Var {
+        let sym = Symbol {
+            ns: Some(Arc::new(self.name.clone())),
+            name: Arc::new(name.to_string()),
+        };
+        let var = Var::new(sym, value).with_doc(doc);
+        self.vars.insert(name.to_string(), var.clone());
+        register_doc(&self.name, name, doc);
+        var
+    }
+    pub fn intern_private_with_doc(&mut self, name: &str, value: Value, doc: &str) -> Var {
+        let var = self.intern_with_doc(name, value, doc).private();
+        self.vars.insert(name.to_string(), var.clone());
+        var
+    }
     pub fn find_var(&self, name: &str) -> Option<&Var> {
         self.vars.get(name).or_else(|| self.refers.get(name))
     }
-
     pub fn resolve(&self, sym: &Symbol) -> Option<Value> {
         if let Some(ns_name) = &sym.ns {
             // Qualified symbol: check aliases first

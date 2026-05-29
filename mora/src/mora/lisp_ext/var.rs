@@ -3,13 +3,13 @@ use super::editor_state::{with_editor_state, with_editor_state_mut};
 use super::helpers::{extract_string, extract_int};
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern("var-set", Value::Native(prim_var_set));
-    ns.intern_private("set-var!", Value::Native(prim_var_set));
-    ns.intern("var-get", Value::Native(prim_var_get));
-    ns.intern_private("get-var", Value::Native(prim_var_get));
-    ns.intern("var-local", Value::Native(prim_var_local));
-    ns.intern_private("local-var!", Value::Native(prim_var_local));
-    ns.intern("var-bound?", Value::Native(prim_var_bound));
+    ns.intern_with_doc("var-set", Value::Native(prim_var_set), "Set the buffer-local variable NAME to VALUE.");
+    ns.intern_private_with_doc("set-var!", Value::Native(prim_var_set), "Set the buffer-local variable NAME to VALUE.");
+    ns.intern_with_doc("var-get", Value::Native(prim_var_get), "Return the value of the buffer-local variable NAME, or nil.");
+    ns.intern_private_with_doc("get-var", Value::Native(prim_var_get), "Return the value of the buffer-local variable NAME, or nil.");
+    ns.intern_with_doc("var-local", Value::Native(prim_var_local), "Set the default value for buffer-local variable NAME.");
+    ns.intern_private_with_doc("local-var!", Value::Native(prim_var_local), "Set the default value for buffer-local variable NAME.");
+    ns.intern_with_doc("var-bound?", Value::Native(prim_var_bound), "Return t if the buffer-local variable NAME is bound.");
 }
 
 /// (var-set "name" value) → set buffer-local variable

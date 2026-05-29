@@ -127,11 +127,24 @@ fn prim_command_doc(args: &[Value]) -> Result<Value, String> {
     let name = extract_string(args, 0)?;
     Ok(command_doc(&name).map(Value::string).unwrap_or(Value::Nil))
 }
-
+/// (describe-function "name") → return doc string for any function
+fn prim_describe_function(args: &[Value]) -> Result<Value, String> {
+    let name = extract_string(args, 0)?;
+    // Check command registry first
+    if let Some(doc) = command_doc(&name) {
+        return Ok(Value::string(doc));
+    }
+    // Check global doc registry (populated by intern_with_doc)
+    if let Some(doc) = crate::lisp::ns::lookup_doc(&name) {
+        return Ok(Value::string(doc));
+    }
+    Ok(Value::Nil)
+}
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern("register!", Value::Native(prim_command_register));
-    ns.intern("execute!", Value::Native(prim_command_execute));
-    ns.intern("exists?", Value::Native(prim_command_exists));
-    ns.intern("names", Value::Native(prim_command_names));
-    ns.intern("doc", Value::Native(prim_command_doc));
+    ns.intern_with_doc("register!", Value::Native(prim_command_register), "Register NAME as an interactive command with FUNC.");
+    ns.intern_with_doc("execute!", Value::Native(prim_command_execute), "Execute the command NAME.");
+    ns.intern_with_doc("exists?", Value::Native(prim_command_exists), "Return t if the command NAME exists.");
+    ns.intern_with_doc("names", Value::Native(prim_command_names), "Return a vector of all command names.");
+    ns.intern_with_doc("doc", Value::Native(prim_command_doc), "Return the doc string for command NAME.");
+    ns.intern_with_doc("describe-function", Value::Native(prim_describe_function), "Return the doc string for the function NAME.");
 }

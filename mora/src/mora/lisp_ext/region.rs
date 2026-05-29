@@ -3,16 +3,16 @@ use super::editor_state::*;
 use super::helpers::{extract_string, extract_int};
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern("region-beginning", Value::Native(prim_region_beginning));
-    ns.intern_private("beginning", Value::Native(prim_region_beginning));
-    ns.intern("region-end", Value::Native(prim_region_end));
-    ns.intern_private("end", Value::Native(prim_region_end));
-    ns.intern("region-active?", Value::Native(prim_region_active));
-    ns.intern_private("active?", Value::Native(prim_region_active));
-    ns.intern("delete-region", Value::Native(prim_delete_region));
-    ns.intern_private("delete", Value::Native(prim_delete_region));
-    ns.intern("buffer-substring", Value::Native(prim_buffer_substring));
-    ns.intern_private("substring", Value::Native(prim_buffer_substring));
+    ns.intern_with_doc("region-beginning", Value::Native(prim_region_beginning), "Return the position of the beginning of the region.");
+    ns.intern_private_with_doc("beginning", Value::Native(prim_region_beginning), "Return the position of the beginning of the region.");
+    ns.intern_with_doc("region-end", Value::Native(prim_region_end), "Return the position of the end of the region.");
+    ns.intern_private_with_doc("end", Value::Native(prim_region_end), "Return the position of the end of the region.");
+    ns.intern_with_doc("region-active?", Value::Native(prim_region_active), "Return t if the region is currently active.");
+    ns.intern_private_with_doc("active?", Value::Native(prim_region_active), "Return t if the region is currently active.");
+    ns.intern_with_doc("delete-region", Value::Native(prim_delete_region), "Delete the text between the mark and the cursor.");
+    ns.intern_private_with_doc("delete", Value::Native(prim_delete_region), "Delete the text between the mark and the cursor.");
+    ns.intern_with_doc("buffer-substring", Value::Native(prim_buffer_substring), "Return the contents of the region as a string.");
+    ns.intern_private_with_doc("substring", Value::Native(prim_buffer_substring), "Return the contents of the region as a string.");
 }
 
 /// (region-beginning) → position of region start

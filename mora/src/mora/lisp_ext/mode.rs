@@ -3,12 +3,12 @@ use super::editor_state::{with_editor_state, with_editor_state_mut};
 use super::helpers::extract_string;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern("current-mode", Value::Native(prim_current_mode));
-    ns.intern_private("current", Value::Native(prim_current_mode));
-    ns.intern("set-mode!", Value::Native(prim_set_mode));
-    ns.intern_private("set!", Value::Native(prim_set_mode));
-    ns.intern("set-minor-mode!", Value::Native(prim_set_minor_mode));
-    ns.intern_private("toggle-minor!", Value::Native(prim_set_minor_mode));
+    ns.intern_with_doc("current-mode", Value::Native(prim_current_mode), "Return the current editor mode keyword.");
+    ns.intern_private_with_doc("current", Value::Native(prim_current_mode), "Return the current editor mode keyword.");
+    ns.intern_with_doc("set-mode!", Value::Native(prim_set_mode), "Set the editor mode to MODE.");
+    ns.intern_private_with_doc("set!", Value::Native(prim_set_mode), "Set the editor mode to MODE.");
+    ns.intern_with_doc("set-minor-mode!", Value::Native(prim_set_minor_mode), "Toggle the minor mode MODE.");
+    ns.intern_private_with_doc("toggle-minor!", Value::Native(prim_set_minor_mode), "Toggle the minor mode MODE.");
 }
 
 fn prim_current_mode(_args: &[Value]) -> Result<Value, String> {

@@ -151,29 +151,32 @@ fn prim_overlay_put_read_only(args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut Namespace) {
-    ns.intern("make-overlay", Value::Native(prim_make_overlay));
-    ns.intern_private("make", Value::Native(prim_make_overlay));
-    ns.intern("overlay-put-face", Value::Native(prim_overlay_put_face));
-    ns.intern_private("put-face", Value::Native(prim_overlay_put_face));
-    ns.intern(
+    ns.intern_with_doc("make-overlay", Value::Native(prim_make_overlay), "Create an overlay between START and END in the current buffer.");
+    ns.intern_private_with_doc("make", Value::Native(prim_make_overlay), "Create an overlay between START and END in the current buffer.");
+    ns.intern_with_doc("overlay-put-face", Value::Native(prim_overlay_put_face), "Set the face (foreground, background, bold) of OVERLAY.");
+    ns.intern_private_with_doc("put-face", Value::Native(prim_overlay_put_face), "Set the face (foreground, background, bold) of OVERLAY.");
+    ns.intern_with_doc(
         "overlay-put-property",
         Value::Native(prim_overlay_put_property),
+        "Set PROP to VALUE on OVERLAY.",
     );
-    ns.intern_private("put-property", Value::Native(prim_overlay_put_property));
-    ns.intern("overlay-delete", Value::Native(prim_overlay_delete));
-    ns.intern_private("delete", Value::Native(prim_overlay_delete));
-    ns.intern("overlay-get", Value::Native(prim_overlay_get));
-    ns.intern_private("get", Value::Native(prim_overlay_get));
-    ns.intern("overlays-at", Value::Native(prim_overlays_at));
-    ns.intern_private("at", Value::Native(prim_overlays_at));
-    ns.intern(
+    ns.intern_private_with_doc("put-property", Value::Native(prim_overlay_put_property), "Set PROP to VALUE on OVERLAY.");
+    ns.intern_with_doc("overlay-delete", Value::Native(prim_overlay_delete), "Delete OVERLAY from the current buffer.");
+    ns.intern_private_with_doc("delete", Value::Native(prim_overlay_delete), "Delete OVERLAY from the current buffer.");
+    ns.intern_with_doc("overlay-get", Value::Native(prim_overlay_get), "Return the value of PROP on OVERLAY, or nil.");
+    ns.intern_private_with_doc("get", Value::Native(prim_overlay_get), "Return the value of PROP on OVERLAY, or nil.");
+    ns.intern_with_doc("overlays-at", Value::Native(prim_overlays_at), "Return a list of overlay ids at POSITION.");
+    ns.intern_private_with_doc("at", Value::Native(prim_overlays_at), "Return a list of overlay ids at POSITION.");
+    ns.intern_with_doc(
         "overlay-put-invisible",
         Value::Native(prim_overlay_put_invisible),
+        "Make OVERLAY invisible if FLAG is non-nil.",
     );
-    ns.intern_private("put-invisible", Value::Native(prim_overlay_put_invisible));
-    ns.intern(
+    ns.intern_private_with_doc("put-invisible", Value::Native(prim_overlay_put_invisible), "Make OVERLAY invisible if FLAG is non-nil.");
+    ns.intern_with_doc(
         "overlay-put-read-only",
         Value::Native(prim_overlay_put_read_only),
+        "Make OVERLAY read-only if FLAG is non-nil.",
     );
-    ns.intern_private("put-read-only", Value::Native(prim_overlay_put_read_only));
+    ns.intern_private_with_doc("put-read-only", Value::Native(prim_overlay_put_read_only), "Make OVERLAY read-only if FLAG is non-nil.");
 }

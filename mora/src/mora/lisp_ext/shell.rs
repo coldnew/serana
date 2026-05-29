@@ -54,8 +54,8 @@ fn prim_shell_capture(args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut Namespace) {
-    ns.intern("shell-command", Value::Native(prim_shell_command));
-    ns.intern_private("command", Value::Native(prim_shell_command));
-    ns.intern("shell-capture", Value::Native(prim_shell_capture));
-    ns.intern_private("capture", Value::Native(prim_shell_capture));
+    ns.intern_with_doc("shell-command", Value::Native(prim_shell_command), "Execute COMMAND in a shell and return output.");
+    ns.intern_private_with_doc("command", Value::Native(prim_shell_command), "Execute COMMAND in a shell and return output.");
+    ns.intern_with_doc("shell-capture", Value::Native(prim_shell_capture), "Execute COMMAND and return its stdout as a string.");
+    ns.intern_private_with_doc("capture", Value::Native(prim_shell_capture), "Execute COMMAND and return its stdout as a string.");
 }

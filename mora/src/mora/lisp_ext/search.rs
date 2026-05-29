@@ -3,9 +3,9 @@ use super::editor_state::*;
 use super::helpers::{extract_string, extract_int};
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern("search-forward", Value::Native(prim_search_forward));
-    ns.intern("search-backward", Value::Native(prim_search_backward));
-    ns.intern("looking-at", Value::Native(prim_looking_at));
+    ns.intern_with_doc("search-forward", Value::Native(prim_search_forward), "Search forward from point for PATTERN. Move cursor and return position.");
+    ns.intern_with_doc("search-backward", Value::Native(prim_search_backward), "Search backward from point for PATTERN. Move cursor and return position.");
+    ns.intern_with_doc("looking-at", Value::Native(prim_looking_at), "Return t if text after point matches PATTERN.");
 }
 
 /// (search-forward "pattern") → search forward for pattern, move cursor, return position or nil

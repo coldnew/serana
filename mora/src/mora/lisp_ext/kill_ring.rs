@@ -3,18 +3,18 @@ use super::editor_state::{with_editor_state, with_editor_state_mut};
 use super::helpers::{extract_string, extract_int};
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern("kill-ring-yank", Value::Native(prim_kill_ring_yank));
-    ns.intern_private("yank", Value::Native(prim_kill_ring_yank));
-    ns.intern("kill-ring-push", Value::Native(prim_kill_ring_push));
-    ns.intern_private("kill-push!", Value::Native(prim_kill_ring_push));
-    ns.intern("kill-ring-pop", Value::Native(prim_kill_ring_pop));
-    ns.intern_private("kill-pop!", Value::Native(prim_kill_ring_pop));
-    ns.intern("kill-ring-pop-back", Value::Native(prim_kill_ring_pop_back));
-    ns.intern_private("kill-pop-back!", Value::Native(prim_kill_ring_pop_back));
-    ns.intern("kill-ring-count", Value::Native(prim_kill_ring_count));
-    ns.intern_private("kill-count", Value::Native(prim_kill_ring_count));
-    ns.intern("kill-ring-contents", Value::Native(prim_kill_ring_contents));
-    ns.intern_private("kill-contents", Value::Native(prim_kill_ring_contents));
+    ns.intern_with_doc("kill-ring-yank", Value::Native(prim_kill_ring_yank), "Return the most recent kill ring entry, or nil.");
+    ns.intern_private_with_doc("yank", Value::Native(prim_kill_ring_yank), "Return the most recent kill ring entry, or nil.");
+    ns.intern_with_doc("kill-ring-push", Value::Native(prim_kill_ring_push), "Push TEXT onto the kill ring.");
+    ns.intern_private_with_doc("kill-push!", Value::Native(prim_kill_ring_push), "Push TEXT onto the kill ring.");
+    ns.intern_with_doc("kill-ring-pop", Value::Native(prim_kill_ring_pop), "Rotate the kill ring forward and return the entry.");
+    ns.intern_private_with_doc("kill-pop!", Value::Native(prim_kill_ring_pop), "Rotate the kill ring forward and return the entry.");
+    ns.intern_with_doc("kill-ring-pop-back", Value::Native(prim_kill_ring_pop_back), "Rotate the kill ring backward and return the entry.");
+    ns.intern_private_with_doc("kill-pop-back!", Value::Native(prim_kill_ring_pop_back), "Rotate the kill ring backward and return the entry.");
+    ns.intern_with_doc("kill-ring-count", Value::Native(prim_kill_ring_count), "Return the number of entries in the kill ring.");
+    ns.intern_private_with_doc("kill-count", Value::Native(prim_kill_ring_count), "Return the number of entries in the kill ring.");
+    ns.intern_with_doc("kill-ring-contents", Value::Native(prim_kill_ring_contents), "Return a vector of all kill ring entries.");
+    ns.intern_private_with_doc("kill-contents", Value::Native(prim_kill_ring_contents), "Return a vector of all kill ring entries.");
 }
 
 /// (kill-ring-yank) → returns most recent kill entry or nil

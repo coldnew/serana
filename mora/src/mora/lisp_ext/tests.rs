@@ -652,3 +652,28 @@ fn tramp_invalid_path_errors() {
     assert!(result.is_err());
     take_editor_state();
 }
+#[test]
+fn describe_function_returns_doc() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    // Describe a known function with doc
+    let doc = bridge.eval("(describe-function \"buffer-name\")").unwrap();
+    match doc {
+        Value::String(s) => {
+            assert!(s.contains("buffer"), "doc should mention buffer: {}", s);
+        }
+        _ => panic!("expected string, got {:?}", doc),
+    }
+    // Describe cursor function
+    let doc = bridge.eval("(describe-function \"cursor-set!\")").unwrap();
+    match doc {
+        Value::String(s) => {
+            assert!(s.contains("cursor") || s.contains("Cursor"), "doc should mention cursor: {}", s);
+        }
+        _ => panic!("expected string, got {:?}", doc),
+    }
+    // Unknown function returns nil
+    let result = bridge.eval("(describe-function \"nonexistent-function\")").unwrap();
+    assert_eq!(result, Value::Nil);
+    take_editor_state();
+}
