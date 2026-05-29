@@ -6,7 +6,7 @@
 use display_protocol::*;
 use display_protocol_jsx::jsx;
 
-use super::app::{App, AppMode, MessageRole, TodoStatus};
+use super::app::{App, AppMode, MessageRole, TodoStatus, ToolCallStatus};
 use super::markdown;
 use super::theme::Theme;
 
@@ -165,10 +165,8 @@ fn build_messages(app: &App, width: u16, theme: &Theme) -> UiNode {
                     children.push(styled_line_to_row(md_line, "    ", &theme.agent_fg));
                 }
                 for tool in &msg.tool_calls {
-                    let tool_text = format!("  ⚡ {}", tool.name);
-                    children.push(jsx! {
-                        <Text style={theme.dim}>{tool_text.as_str()}</Text>
-                    });
+                    let tool_lines = build_tool_call(tool, width, &theme);
+                    children.extend(tool_lines);
                 }
             }
             MessageRole::System => {
@@ -292,6 +290,72 @@ fn build_status_bar(app: &App, _width: u16, theme: &Theme) -> UiNode {
         style: bg,
     });
     status_node
+}
+
+fn build_tool_call(tool: &super::app::ToolCall, width: u16, theme: &Theme) -> Vec<UiNode> {
+    let mut children = Vec::new();
+    let indent = "  ";
+
+    // Status icon
+    let (icon, header_style) = match tool.status {
+        ToolCallStatus::Pending => ("◌", theme.dim),
+        ToolCallStatus::Running => ("⚡", Style::new().fg(Color::new(212, 192, 144))),
+        ToolCallStatus::Success => ("✓", Style::new().fg(Color::new(0, 255, 136))),
+        ToolCallStatus::Error => ("✗", Style::new().fg(Color::new(255, 71, 87))),
+    };
+
+    // Header: tool name + args
+    let header = format!("{}{} {}", indent, icon, tool.name);
+    children.push(jsx! {
+        <Text style={header_style}>{header.as_str()}</Text>
+    });
+
+    // Arguments (truncated)
+    if !tool.args.is_empty() {
+        let max_len = width.saturating_sub(6) as usize;
+        let display_args = if tool.args.len() > max_len {
+            format!("{}{}", &tool.args[..max_len], "…")
+        } else {
+            tool.args.clone()
+        };
+        let args_text = format!("{}  {}", indent, display_args);
+        children.push(jsx! {
+            <Text style={theme.dim}>{args_text.as_str()}</Text>
+        });
+    }
+
+    // Diff preview for edit operations
+    if let Some((ref _path, ref diff_text)) = tool.diff_preview {
+        let md_theme = markdown::MarkdownTheme::default();
+        let diff_width = width.saturating_sub(6) as usize;
+        let md_lines = markdown::render_markdown(diff_text, &md_theme, diff_width);
+        for md_line in md_lines.iter().take(8) {
+            children.push(styled_line_to_row(md_line, indent, &theme.dim));
+        }
+    }
+
+    // Result preview (truncated)
+    if let Some(ref result) = tool.result {
+        let preview_lines: Vec<&str> = result.lines().take(5).collect();
+        for line in &preview_lines {
+            let max_len = width.saturating_sub(6) as usize;
+            let display = if line.len() > max_len {
+                format!("{}{}", &line[..max_len], "…")
+            } else {
+                line.to_string()
+            };
+            let result_text = format!("{}  {}", indent, display);
+            let style = match tool.status {
+                ToolCallStatus::Error => Style::new().fg(Color::new(255, 71, 87)),
+                _ => theme.dim,
+            };
+            children.push(jsx! {
+                <Text style={style}>{result_text.as_str()}</Text>
+            });
+        }
+    }
+
+    children
 }
 
 fn build_input(app: &App, _width: u16, theme: &Theme) -> UiNode {
