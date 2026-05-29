@@ -38,6 +38,31 @@ impl Editor {
                 self.mode = Mode::Insert;
                 self.selection = None;
             }
+            KeyCode::Char('>') => {
+                self.indent_selection(4);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('<') => {
+                self.dedent_selection(4);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('U') => {
+                self.case_selection(true);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('u') => {
+                self.case_selection(false);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('~') => {
+                self.toggle_case_selection();
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
             _ => {
                 self.handle_normal(key);
                 self.update_selection_head();
@@ -77,6 +102,31 @@ impl Editor {
             KeyCode::Char('c') | KeyCode::Char('s') => {
                 self.delete_selection();
                 self.mode = Mode::Insert;
+                self.selection = None;
+            }
+            KeyCode::Char('>') => {
+                self.indent_selection(4);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('<') => {
+                self.dedent_selection(4);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('U') => {
+                self.case_selection(true);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('u') => {
+                self.case_selection(false);
+                self.mode = Mode::Normal;
+                self.selection = None;
+            }
+            KeyCode::Char('~') => {
+                self.toggle_case_selection();
+                self.mode = Mode::Normal;
                 self.selection = None;
             }
             KeyCode::Char('J') => {

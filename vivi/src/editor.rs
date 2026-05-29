@@ -11,12 +11,19 @@ mod visual;
 const SCROLL_MARGIN: usize = 3;
 const HORIZONTAL_SCROLL_MARGIN: usize = 5;
 
+/// Normal-mode operator that can precede a motion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OperatorKind {
+    Delete,
+    Yank,
+    Change,
+}
+
 /// The main editor state.
 pub struct Editor {
     buffer: Buffer,
     cursor: Cursor,
     mode: Mode,
-    /// Scroll offset (row, col) — the top-left corner of the visible area.
     scroll: ScrollOffset,
     /// Command line input text (when in Command mode).
     command_input: String,
@@ -35,9 +42,26 @@ pub struct Editor {
     yank_register: YankRegister,
     /// Visual mode selection (anchor/head model).
     selection: Option<Selection>,
-    /// Pending normal-mode delete operator. `d` waits for a motion; `dd`
-    /// deletes lines.
-    pending_delete: bool,
+    /// Pending normal-mode operator. `d`, `y`, `c` set this; the next
+    /// motion (or repeated operator) completes it.
+    pending_operator: Option<OperatorKind>,
+    /// Pending `g` prefix (waiting for second key like `gg`, `gj`, etc.)
+    pending_g: bool,
+    /// Last search pattern (for `n` / `N`).
+    last_search: Option<String>,
+    /// Whether the last search was forward.
+    last_search_forward: bool,
+    /// Last `f`/`F`/`t`/`T` find: (char, forward, till_mode).
+    last_find: Option<(char, bool, bool)>,
+    /// Pending find char (waiting for second key from f/F/t/T).
+    pending_find: bool,
+    /// Direction of pending find (forward or backward).
+    pending_find_forward: bool,
+    /// Till mode of pending find (t/T vs f/F).
+    pending_find_till: bool,
+    /// Saved cursor/scroll before an operator+motion runs, used for `.` repeat.
+    #[allow(dead_code)]
+    last_edit: Option<SavedEdit>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -52,6 +76,24 @@ enum YankRegister {
     Chars(String),
 }
 
+/// Snapshot of cursor and scroll for repeating the last edit with `.`.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct SavedEdit {
+    cursor_before: Cursor,
+    scroll_before: ScrollOffset,
+    change_kind: EditKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+enum EditKind {
+    InsertedText(String),
+    DeletedText(usize, usize, String),
+    DeletedLines(usize, Vec<String>),
+    JoinedLines(usize),
+    ChangedLine(usize, String, String),
+}
 
 impl Editor {
     pub fn new(buffer: Buffer) -> Self {
@@ -69,7 +111,15 @@ impl Editor {
             count: None,
             yank_register: YankRegister::Lines(vec![]),
             selection: None,
-            pending_delete: false,
+            pending_operator: None,
+            pending_g: false,
+            last_search: None,
+            last_search_forward: true,
+            last_find: None,
+            pending_find: false,
+            pending_find_forward: true,
+            pending_find_till: false,
+            last_edit: None,
         }
     }
 
@@ -118,6 +168,37 @@ impl Editor {
     pub fn handle_key(&mut self, key: KeyEvent) {
         self.message = None;
 
+        if self.mode == Mode::Normal && self.pending_g {
+            self.pending_g = false;
+            match key.code {
+                KeyCode::Char('g') => {
+                    let n = self.count.take().unwrap_or(1);
+                    self.cursor.row = (n.saturating_sub(1))
+                        .min(self.buffer.line_count().saturating_sub(1));
+                    self.set_cursor_col(0);
+                    self.clamp_cursor();
+                    self.update_scroll();
+                    return;
+                }
+                _ => {
+                    self.count = None;
+                }
+            }
+        }
+
+        if self.mode == Mode::Normal && self.pending_find {
+            self.pending_find = false;
+            if let KeyCode::Char(ch) = key.code {
+                let forward = self.pending_find_forward;
+                let till = self.pending_find_till;
+                self.last_find = Some((ch, forward, till));
+                self.find_char(ch, forward, till);
+                self.clamp_cursor();
+                self.update_scroll();
+                return;
+            }
+        }
+
         match self.mode {
             Mode::Normal => self.handle_normal(key),
             Mode::Insert => self.handle_insert(key),
@@ -157,6 +238,8 @@ impl Editor {
             return;
         }
 
+        let line_count = self.buffer.line_count();
+
         // Vertical scroll
         let scroll_margin = SCROLL_MARGIN.min(text_height.saturating_sub(1) / 2);
         if self.cursor.row < self.scroll.row + scroll_margin {
@@ -164,8 +247,16 @@ impl Editor {
         } else if self.cursor.row + scroll_margin >= self.scroll.row + text_height {
             self.scroll.row = (self.cursor.row + scroll_margin + 1).saturating_sub(text_height);
         }
-        let max_scroll_row = self.buffer.line_count().saturating_sub(text_height);
+        let max_scroll_row = line_count.saturating_sub(text_height);
         self.scroll.row = self.scroll.row.min(max_scroll_row);
+
+        // Ensure cursor is always on a visible content row
+        if self.cursor.row < self.scroll.row {
+            self.scroll.row = self.cursor.row;
+        } else if line_count > 0 && self.cursor.row >= self.scroll.row + text_height {
+            self.scroll.row = self.cursor.row.saturating_sub(text_height - 1);
+            self.scroll.row = self.scroll.row.min(max_scroll_row);
+        }
 
         // Horizontal scroll
         let col_margin = HORIZONTAL_SCROLL_MARGIN.min(text_width.saturating_sub(1) / 2);
@@ -179,8 +270,8 @@ impl Editor {
     // ─── Normal Mode ───────────────────────────────────────────────
 
     fn handle_normal(&mut self, key: KeyEvent) {
-        if self.pending_delete {
-            self.handle_pending_delete(key);
+        if let Some(op) = self.pending_operator {
+            self.execute_operator_motion(op, key);
             return;
         }
 
@@ -241,9 +332,6 @@ impl Editor {
             }
 
             // Line motion
-            KeyCode::Char('0') => {
-                self.set_cursor_col(0);
-            }
             KeyCode::Char('$') => {
                 let len = self.buffer.line_len(self.cursor.row);
                 self.set_cursor_col(if len > 0 { len - 1 } else { 0 });
@@ -254,26 +342,18 @@ impl Editor {
                 self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
             }
             KeyCode::Char('G') => {
+                let last = self.buffer.line_count().saturating_sub(1);
                 if self.count.is_some() {
-                    // Go to specific line
                     let line = self.take_count();
-                    self.cursor.row = (line - 1).min(self.buffer.line_count().saturating_sub(1));
+                    self.cursor.row = (line.saturating_sub(1)).min(last);
                 } else {
-                    // Go to end of file
-                    self.cursor.row = self.buffer.line_count().saturating_sub(1);
+                    self.cursor.row = last;
                 }
                 self.set_cursor_col(0);
                 self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
             KeyCode::Char('g') => {
-                // Check for 'gg'
-                // We need a two-key sequence. For simplicity, treat the next
-                // key immediately. In a real editor we'd have a pending state.
-                // For now, gg goes to beginning of file.
-                // We'll handle this as a special case - just 'g' once goes to top.
-                // Actually let's make it work: g is pending, next g completes it.
-                // To keep it simple, single 'g' goes to top.
-                self.cursor = Cursor::home();
+                self.pending_g = true;
             }
 
             // Screen-relative motion
@@ -371,7 +451,7 @@ impl Editor {
                 }
             }
             KeyCode::Char('d') => {
-                self.pending_delete = true;
+                self.pending_operator = Some(OperatorKind::Delete);
             }
             KeyCode::Char('D') => {
                 // Delete to end of line
@@ -380,6 +460,9 @@ impl Editor {
                     self.buffer
                         .replace_range(self.cursor.row, self.cursor.col, len, "");
                 }
+            }
+            KeyCode::Char('c') => {
+                self.pending_operator = Some(OperatorKind::Change);
             }
             KeyCode::Char('C') => {
                 // Change to end of line
@@ -405,18 +488,9 @@ impl Editor {
                 self.mode = Mode::Insert;
             }
 
-            // Yank and paste
+            // Yank — wait for y or a motion
             KeyCode::Char('y') => {
-                let n = self.take_count();
-                let mut lines = Vec::new();
-                for i in 0..n {
-                    let row = self.cursor.row + i;
-                    if row < self.buffer.line_count() {
-                        lines.push(self.buffer.line(row).to_string());
-                    }
-                }
-                self.yank_register = YankRegister::Lines(lines);
-                self.message = Some(format!("{} line(s) yanked", n));
+                self.pending_operator = Some(OperatorKind::Yank);
             }
             KeyCode::Char('Y') => {
                 let line = self.buffer.line(self.cursor.row).to_string();
@@ -522,6 +596,101 @@ impl Editor {
                 self.command_cursor = 0;
             }
 
+            // Search repeat
+            KeyCode::Char('n') => {
+                self.repeat_search(true);
+            }
+            KeyCode::Char('N') => {
+                self.repeat_search(false);
+            }
+
+            // Word-under-cursor search
+            KeyCode::Char('*') => {
+                self.search_word_under_cursor(true);
+            }
+            KeyCode::Char('#') => {
+                self.search_word_under_cursor(false);
+            }
+
+            // Bracket matching
+            KeyCode::Char('%') => {
+                self.jump_to_matching_bracket();
+            }
+
+            // Toggle case
+            KeyCode::Char('~') => {
+                let line_len = self.buffer.line_len(self.cursor.row);
+                let col = self.cursor.col;
+                if col < line_len {
+                    let ch = self.buffer.line(self.cursor.row).as_bytes()[col] as char;
+                    let toggled = if ch.is_ascii_lowercase() {
+                        ch.to_ascii_uppercase()
+                    } else {
+                        ch.to_ascii_lowercase()
+                    };
+                    self.buffer.replace_range(
+                        self.cursor.row, col, col + 1, &toggled.to_string(),
+                    );
+                    if col + 1 < self.buffer.line_len(self.cursor.row) {
+                        self.set_cursor_col(col + 1);
+                    }
+                }
+            }
+
+            // Line-relative movement (first non-blank)
+            KeyCode::Enter | KeyCode::Char('+') => {
+                let n = self.take_count();
+                self.cursor.row = (self.cursor.row + n).min(self.buffer.line_count().saturating_sub(1));
+                let line = self.buffer.line(self.cursor.row);
+                self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
+            }
+            KeyCode::Char('-') => {
+                let n = self.take_count();
+                self.cursor.row = self.cursor.row.saturating_sub(n);
+                let line = self.buffer.line(self.cursor.row);
+                self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
+            }
+            KeyCode::Char('_') => {
+                let n = self.take_count();
+                let target = (self.cursor.row + n.saturating_sub(1))
+                    .min(self.buffer.line_count().saturating_sub(1));
+                self.cursor.row = target;
+                let line = self.buffer.line(self.cursor.row);
+                self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
+            }
+
+            // Find/till on line
+            KeyCode::Char('f') => {
+                self.pending_find = true;
+                self.pending_find_forward = true;
+                self.pending_find_till = false;
+            }
+            KeyCode::Char('F') => {
+                self.pending_find = true;
+                self.pending_find_forward = false;
+                self.pending_find_till = false;
+            }
+            KeyCode::Char('t') => {
+                self.pending_find = true;
+                self.pending_find_forward = true;
+                self.pending_find_till = true;
+            }
+            KeyCode::Char('T') => {
+                self.pending_find = true;
+                self.pending_find_forward = false;
+                self.pending_find_till = true;
+            }
+            KeyCode::Char(';') => {
+                if let Some((ch, forward, till)) = self.last_find {
+                    self.find_char(ch, forward, till);
+                }
+            }
+            KeyCode::Char(',') => {
+                if let Some((ch, forward, till)) = self.last_find {
+                    self.find_char(ch, !forward, till);
+                }
+            }
+
             // Search
             KeyCode::Char('/') => {
                 self.mode = Mode::Command;
@@ -535,71 +704,155 @@ impl Editor {
             }
 
             // Number prefix
-            KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
-                let digit = c.to_digit(10).unwrap() as usize;
-                self.count = Some(self.count.unwrap_or(0) * 10 + digit);
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                if c == '0' && self.count.is_none() {
+                    self.set_cursor_col(0);
+                } else {
+                    let digit = c.to_digit(10).unwrap() as usize;
+                    self.count = Some(self.count.unwrap_or(0) * 10 + digit);
+                }
             }
 
-            // Escape — clear count, stay in normal
+            // Escape — clear count/selection/pending
             KeyCode::Esc => {
                 self.count = None;
                 self.selection = None;
-                self.pending_delete = false;
+                self.pending_operator = None;
+                self.pending_g = false;
+                self.pending_find = false;
             }
 
             _ => {}
         }
     }
 
-    fn handle_pending_delete(&mut self, key: KeyEvent) {
-        self.pending_delete = false;
+    /// Execute an operator (d/y/c) followed by a motion (second key).
+    fn execute_operator_motion(&mut self, op: OperatorKind, key: KeyEvent) {
+        // Consume the pending operator
+        self.pending_operator = None;
 
+        // Handle line-wise operator (dd, yy, cc)
         match key.code {
-            KeyCode::Char('d') => {
-                self.delete_current_lines();
+            KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Char('c') => {
+                let n = self.take_count();
+                match op {
+                    OperatorKind::Delete => self.delete_n_lines(n),
+                    OperatorKind::Yank => self.yank_n_lines(n),
+                    OperatorKind::Change => self.change_n_lines(n),
+                }
+                return;
             }
-            KeyCode::Esc => {
-                self.count = None;
+            _ => {}
+        }
+
+        // For operator + motion, save cursor and apply motion
+        // Then apply operation over the range [saved_cursor, cursor)
+        let saved_row = self.cursor.row;
+        let saved_col = self.cursor.col;
+        let saved_scroll = self.scroll;
+
+        // Apply the motion
+        let prev_count = self.count.take();
+        self.handle_normal(key);
+
+        let end_row = self.cursor.row;
+        let end_col = self.cursor.col;
+
+        // Restore scroll (don't want the motion to scroll independently)
+        self.scroll = saved_scroll;
+
+        match op {
+            OperatorKind::Delete => {
+                if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
+                    // Forward motion: delete from saved to end
+                    self.apply_delete_range((saved_row, saved_col), (end_row, end_col));
+                    self.cursor.row = saved_row;
+                    self.cursor.col = saved_col;
+                } else if end_row < saved_row || (end_row == saved_row && end_col < saved_col) {
+                    // Backward motion: delete from end to saved
+                    self.apply_delete_range((end_row, end_col), (saved_row, saved_col));
+                    self.cursor.row = end_row;
+                    self.cursor.col = end_col;
+                }
             }
-            _ => {
-                self.count = None;
+            OperatorKind::Yank => {
+                if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
+                    let text = self.extract_range((saved_row, saved_col), (end_row, end_col));
+                    self.yank_register = YankRegister::Chars(text);
+                } else {
+                    let text = self.extract_range((end_row, end_col), (saved_row, saved_col));
+                    self.yank_register = YankRegister::Chars(text);
+                }
+                self.cursor.row = saved_row;
+                self.cursor.col = saved_col;
             }
+            OperatorKind::Change => {
+                if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
+                    self.apply_delete_range((saved_row, saved_col), (end_row, end_col));
+                    self.cursor.row = saved_row;
+                    self.cursor.col = saved_col;
+                } else {
+                    self.apply_delete_range((end_row, end_col), (saved_row, saved_col));
+                    self.cursor.row = end_row;
+                    self.cursor.col = end_col;
+                }
+                self.mode = Mode::Insert;
+            }
+        }
+
+        // Restore count if consumed
+        if let Some(c) = prev_count {
+            self.count = Some(c);
         }
     }
 
     fn handle_ctrl_normal(&mut self, key: KeyEvent) -> bool {
         match key.code {
-            KeyCode::Char('f') => {
-                self.move_pages_down();
-                true
-            }
-            KeyCode::Char('b') => {
-                self.move_pages_up();
-                true
-            }
-            KeyCode::Char('d') => {
-                self.move_half_pages_down();
-                true
-            }
-            KeyCode::Char('u') => {
-                self.move_half_pages_up();
-                true
-            }
+            KeyCode::Char('f') => { self.move_pages_down(); true }
+            KeyCode::Char('b') => { self.move_pages_up(); true }
+            KeyCode::Char('d') => { self.move_half_pages_down(); true }
+            KeyCode::Char('u') => { self.move_half_pages_up(); true }
+            KeyCode::Char('e') => { self.scroll_one_line_down(); true }
+            KeyCode::Char('y') => { self.scroll_one_line_up(); true }
+            KeyCode::Char('a') => { self.increment_number(true); true }
+            KeyCode::Char('x') => { self.increment_number(false); true }
             _ => false,
         }
     }
 
-    fn delete_current_lines(&mut self) {
-        let n = self.take_count();
+    fn delete_n_lines(&mut self, n: usize) {
         let mut lines = Vec::new();
+        let start_row = self.cursor.row;
         for _ in 0..n {
             if let Some(line) = self.buffer.delete_line(self.cursor.row) {
                 lines.push(line);
             }
         }
-        self.yank_register = YankRegister::Lines(lines);
+        if !lines.is_empty() {
+            self.yank_register = YankRegister::Lines(lines);
+        }
+        self.cursor.row = start_row.min(self.buffer.line_count().saturating_sub(1));
         self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
         self.cursor.preferred_col = self.cursor.col;
+    }
+
+    fn yank_n_lines(&mut self, n: usize) {
+        let mut lines = Vec::new();
+        for i in 0..n {
+            let row = self.cursor.row + i;
+            if row < self.buffer.line_count() {
+                lines.push(self.buffer.line(row).to_string());
+            }
+        }
+        self.yank_register = YankRegister::Lines(lines);
+        self.message = Some(format!("{} line(s) yanked", n));
+    }
+
+    fn change_n_lines(&mut self, n: usize) {
+        self.delete_n_lines(n);
+        self.buffer.insert_line(self.cursor.row, String::new());
+        self.set_cursor_col(0);
+        self.mode = Mode::Insert;
     }
 
     fn move_pages_down(&mut self) {
@@ -656,17 +909,286 @@ impl Editor {
         self.apply_preferred_col();
     }
 
+    fn scroll_one_line_down(&mut self) {
+        let text_height = (self.term_height as usize).saturating_sub(2);
+        if self.scroll.row + 1 + text_height <= self.buffer.line_count() {
+            self.scroll.row += 1;
+        }
+        self.cursor.row = self.cursor.row.min(self.scroll.row + text_height - 1);
+        self.cursor.row = self.cursor.row.max(self.scroll.row);
+    }
+
+    fn scroll_one_line_up(&mut self) {
+        if self.scroll.row > 0 {
+            self.scroll.row -= 1;
+        }
+        self.cursor.row = self.cursor.row.max(self.scroll.row);
+        self.cursor.row = self.cursor.row.min(self.scroll.row + (self.term_height as usize).saturating_sub(2) - 1);
+    }
+
+    /// Repeat last search (`n` / `N`).
+    fn repeat_search(&mut self, forward: bool) {
+        let Some(ref pattern) = self.last_search.clone() else {
+            self.message = Some("No previous search".into());
+            return;
+        };
+        let dir = if forward { 1 } else { -1 };
+        self.search_pattern(&pattern, dir);
+    }
+
+    /// Search for word under cursor (`*` / `#`).
+    fn search_word_under_cursor(&mut self, forward: bool) {
+        let line = self.buffer.line(self.cursor.row);
+        if line.is_empty() {
+            return;
+        }
+        let word = extract_word_at(line, self.cursor.col);
+        self.last_search = Some(word.clone());
+        self.last_search_forward = forward;
+        let dir = if forward { 1 } else { -1 };
+        self.search_pattern(&word, dir);
+    }
+
+    fn search_pattern(&mut self, pattern: &str, dir: isize) {
+        let start = self.cursor.row as isize;
+        let total = self.buffer.line_count() as isize;
+        let mut row = start + dir;
+        let mut found = false;
+
+        while row >= 0 && row < total {
+            if self.buffer.line(row as usize).contains(pattern) {
+                self.cursor.row = row as usize;
+                self.set_cursor_col(
+                    self.buffer.line(row as usize).find(pattern).unwrap_or(0),
+                );
+                found = true;
+                break;
+            }
+            row += dir;
+        }
+
+        if !found {
+            self.message = Some(format!("Pattern not found: {}", pattern));
+        }
+    }
+
+    /// Jump to matching bracket `()`, `[]`, `{}`.
+    fn jump_to_matching_bracket(&mut self) {
+        let line = self.buffer.line(self.cursor.row);
+        let bytes = line.as_bytes();
+        let col = self.cursor.col;
+
+        let (open, close) = match bytes.get(col) {
+            Some(b'(') => (b'(', b')'),
+            Some(b')') => (b')', b'('),
+            Some(b'[') => (b'[', b']'),
+            Some(b']') => (b']', b'['),
+            Some(b'{') => (b'{', b'}'),
+            Some(b'}') => (b'}', b'{'),
+            _ => return,
+        };
+
+        let is_forward = open == b'(' || open == b'[' || open == b'{';
+        let dir: isize = if is_forward { 1 } else { -1 };
+        let target = if is_forward { close } else { open };
+        let mut depth = 1;
+        let mut r = self.cursor.row as isize;
+        let mut c = col as isize + dir;
+
+        loop {
+            if c < 0 || c as usize >= self.buffer.line_len(r as usize) {
+                r += dir;
+                if r < 0 || r as usize >= self.buffer.line_count() {
+                    self.message = Some("Unmatched bracket".into());
+                    return;
+                }
+                c = if is_forward { 0 } else { (self.buffer.line_len(r as usize) as isize) - 1 };
+                continue;
+            }
+
+            let ch = self.buffer.line(r as usize).as_bytes()[c as usize];
+            if ch == open || ch == close {
+                if ch == target {
+                    depth -= 1;
+                    if depth == 0 {
+                        self.cursor.row = r as usize;
+                        self.cursor.col = c as usize;
+                        return;
+                    }
+                } else {
+                    depth += 1;
+                }
+            }
+            c += dir;
+        }
+    }
+
+    /// Find char on current line (f/F/t/T).
+    fn find_char(&mut self, ch: char, forward: bool, till: bool) {
+        let line = self.buffer.line(self.cursor.row);
+        let bytes = line.as_bytes();
+        let col = self.cursor.col;
+        let target = ch as u8;
+
+        if forward {
+            let mut c = col + 1;
+            while c < bytes.len() {
+                if bytes[c] == target {
+                    self.cursor.col = if till { c } else { c };
+                    self.cursor.preferred_col = self.cursor.col;
+                    return;
+                }
+                c += 1;
+            }
+        } else {
+            let mut c = col.saturating_sub(1);
+            loop {
+                if bytes[c] == target {
+                    self.cursor.col = if till { c + 1 } else { c };
+                    self.cursor.preferred_col = self.cursor.col;
+                    return;
+                }
+                if c == 0 {
+                    break;
+                }
+                c -= 1;
+            }
+        }
+    }
+
+    /// Increment or decrement the number under the cursor (Ctrl+A / Ctrl+X).
+    fn increment_number(&mut self, add: bool) {
+        let col = self.cursor.col;
+        let line_len = self.buffer.line_len(self.cursor.row);
+        if line_len == 0 {
+            return;
+        }
+        let line = self.buffer.line(self.cursor.row).to_string();
+        let bytes = line.as_bytes();
+
+        let mut start = col;
+        while start > 0 && bytes[start - 1].is_ascii_digit() {
+            start -= 1;
+        }
+        let mut end = col;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if start >= end {
+            return;
+        }
+
+        let num_str = line[start..end].to_string();
+        if let Ok(mut n) = num_str.parse::<i64>() {
+            let count = self.take_count() as i64;
+            if add {
+                n += count;
+            } else {
+                n -= count;
+            }
+            let padded = format!("{:0>width$}", n, width = num_str.len());
+            self.buffer.replace_range(self.cursor.row, start, end, &padded);
+            self.cursor.col = start;
+        }
+    }
+
+    // ─── Range helpers for operator+motion ─────────────────────────
+
+    fn apply_delete_range(&mut self, from: (usize, usize), to: (usize, usize)) {
+        let (sr, sc) = from;
+        let (er, ec) = to;
+        if sr == er {
+            let text = self.buffer.line(sr)[sc..ec].to_string();
+            self.buffer.replace_range(sr, sc, ec, "");
+            self.yank_register = YankRegister::Chars(text);
+        } else {
+            let mut parts = Vec::new();
+            parts.push(self.buffer.line(sr)[sc..].to_string());
+            for i in (sr + 1)..er {
+                parts.push(self.buffer.line(i).to_string());
+            }
+            if ec <= self.buffer.line_len(er) {
+                parts.push(self.buffer.line(er)[..ec].to_string());
+            } else {
+                parts.push(self.buffer.line(er).to_string());
+            }
+            self.yank_register = YankRegister::Chars(parts.join("\n"));
+
+            self.buffer.replace_range(sr, sc, self.buffer.line_len(sr), "");
+            for _ in (sr + 1)..=er {
+                if self.buffer.line_count() > sr + 1 {
+                    self.buffer.delete_line(sr + 1);
+                }
+            }
+            if sr + 1 < self.buffer.line_count() && ec <= self.buffer.line_len(sr + 1) {
+                self.buffer.replace_range(sr + 1, 0, ec, "");
+                self.buffer.join_lines(sr);
+            }
+        }
+    }
+
+    fn extract_range(&mut self, from: (usize, usize), to: (usize, usize)) -> String {
+        let (sr, sc) = from;
+        let (er, ec) = to;
+        if sr == er {
+            self.buffer.line(sr)[sc..ec].to_string()
+        } else {
+            let mut parts = Vec::new();
+            parts.push(self.buffer.line(sr)[sc..].to_string());
+            for i in (sr + 1)..er {
+                parts.push(self.buffer.line(i).to_string());
+            }
+            if ec <= self.buffer.line_len(er) {
+                parts.push(self.buffer.line(er)[..ec].to_string());
+            } else {
+                parts.push(self.buffer.line(er).to_string());
+            }
+            parts.join("\n")
+        }
+    }
+
     // ─── Insert Mode ───────────────────────────────────────────────
 
     fn handle_insert(&mut self, key: KeyEvent) {
         match key.code {
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('\x1b') => {
                 self.mode = Mode::Normal;
-                // Move cursor back one if possible (vim behavior)
                 if self.cursor.col > 0 {
                     self.cursor.col -= 1;
                 }
                 self.cursor.preferred_col = self.cursor.col;
+            }
+            KeyCode::Char(c @ ('\x03' | '\x17' | '\x15' | '\x7f')) => {
+                match c {
+                    '\x03' => {
+                        // Ctrl+C — exit insert
+                        self.mode = Mode::Normal;
+                        self.cursor.preferred_col = self.cursor.col;
+                    }
+                    '\x17' => self.delete_word_before_cursor(), // Ctrl+W
+                    '\x15' => {
+                        // Ctrl+U — delete to start of line
+                        let col = self.cursor.col;
+                        if col > 0 {
+                            self.buffer.replace_range(self.cursor.row, 0, col, "");
+                            self.cursor.col = 0;
+                            self.cursor.preferred_col = 0;
+                        }
+                    }
+                    '\x7f' => {
+                        // DEL (same as backspace)
+                        if self.cursor.col > 0 {
+                            self.set_cursor_col(self.cursor.col - 1);
+                            self.buffer.delete_char(self.cursor.row, self.cursor.col);
+                        } else if self.cursor.row > 0 {
+                            let prev_len = self.buffer.line_len(self.cursor.row - 1);
+                            self.buffer.join_lines(self.cursor.row - 1);
+                            self.cursor.row -= 1;
+                            self.set_cursor_col(prev_len);
+                        }
+                    }
+                    _ => unreachable!(),
+                }
             }
             KeyCode::Char(ch) => {
                 self.buffer
@@ -698,7 +1220,6 @@ impl Editor {
                 }
             }
             KeyCode::Tab => {
-                // Insert 4 spaces (configurable in a real editor)
                 for _ in 0..4 {
                     self.buffer
                         .insert_char(self.cursor.row, self.cursor.col, ' ');
@@ -755,7 +1276,7 @@ impl Editor {
 
     fn handle_replace(&mut self, key: KeyEvent) {
         match key.code {
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('\x1b') | KeyCode::Char('\x03') => {
                 self.mode = Mode::Normal;
                 self.cursor.preferred_col = self.cursor.col;
             }
@@ -786,6 +1307,142 @@ impl Editor {
             _ => {}
         }
     }
+
+    /// Delete the word before the cursor (for Ctrl+W in insert mode).
+    fn delete_word_before_cursor(&mut self) {
+        if self.cursor.col == 0 {
+            return;
+        }
+        let line = self.buffer.line(self.cursor.row);
+        let bytes = line.as_bytes();
+        let end = self.cursor.col;
+        // Skip spaces
+        let mut start = end;
+        while start > 0 && bytes[start - 1] == b' ' {
+            start -= 1;
+        }
+        // Skip word chars
+        while start > 0 && bytes[start - 1] != b' ' {
+            start -= 1;
+        }
+        if start < end {
+            self.buffer.replace_range(self.cursor.row, start, end, "");
+            self.cursor.col = start;
+            self.cursor.preferred_col = start;
+        }
+    }
+
+    // ─── Visual selection operations ───────────────────────────────
+
+    fn indent_selection(&mut self, amount: usize) {
+        let Some(ref sel) = self.selection else { return };
+        let (sl, _sc, el, _ec) = sel.normalized_range();
+        let indent = " ".repeat(amount);
+        for row in sl..=el {
+            let r = row as usize;
+            if r < self.buffer.line_count() {
+                self.buffer.insert_str(r, 0, &indent);
+            }
+        }
+        self.cursor.row = sl as usize;
+        self.cursor.col = 0;
+    }
+
+    fn dedent_selection(&mut self, amount: usize) {
+        let Some(ref sel) = self.selection else { return };
+        let (sl, _sc, el, _ec) = sel.normalized_range();
+        for row in sl..=el {
+            let r = row as usize;
+            if r < self.buffer.line_count() {
+                let line = self.buffer.line(r);
+                let to_remove = line.len().min(amount);
+                if to_remove > 0 {
+                    self.buffer.replace_range(r, 0, to_remove, "");
+                }
+            }
+        }
+        self.cursor.row = sl as usize;
+        self.cursor.col = 0;
+    }
+
+    fn case_selection(&mut self, upper: bool) {
+        let Some(ref sel) = self.selection else { return };
+        let (sl, sc, el, ec) = sel.normalized_range();
+        for row in sl..=el {
+            let r = row as usize;
+            if r >= self.buffer.line_count() {
+                continue;
+            }
+            let line = self.buffer.line(r).to_string();
+            let start_col = if r == sl as usize { sc as usize } else { 0 };
+            let end_col = if r == el as usize { (ec as usize + 1).min(line.len()) } else { line.len() };
+            if start_col >= end_col {
+                continue;
+            }
+            let mut chars: Vec<char> = line[start_col..end_col].chars().collect();
+            for ch in &mut chars {
+                *ch = if upper { ch.to_ascii_uppercase() } else { ch.to_ascii_lowercase() };
+            }
+            let new_part: String = chars.into_iter().collect();
+            self.buffer.replace_range(r, start_col, end_col, &new_part);
+        }
+        self.cursor.row = sl as usize;
+        self.cursor.col = sc as usize;
+    }
+
+    fn toggle_case_selection(&mut self) {
+        let Some(ref sel) = self.selection else { return };
+        let (sl, sc, el, ec) = sel.normalized_range();
+        for row in sl..=el {
+            let r = row as usize;
+            if r >= self.buffer.line_count() {
+                continue;
+            }
+            let line = self.buffer.line(r).to_string();
+            let start_col = if r == sl as usize { sc as usize } else { 0 };
+            let end_col = if r == el as usize { (ec as usize + 1).min(line.len()) } else { line.len() };
+            if start_col >= end_col {
+                continue;
+            }
+            let mut chars: Vec<char> = line[start_col..end_col].chars().collect();
+            for ch in &mut chars {
+                *ch = if ch.is_ascii_lowercase() {
+                    ch.to_ascii_uppercase()
+                } else {
+                    ch.to_ascii_lowercase()
+                };
+            }
+            let new_part: String = chars.into_iter().collect();
+            self.buffer.replace_range(r, start_col, end_col, &new_part);
+        }
+        self.cursor.row = sl as usize;
+        self.cursor.col = sc as usize;
+    }
+}
+
+/// Extract the word (alphanumeric + _) at `col` in `line`.
+fn extract_word_at(line: &str, col: usize) -> String {
+    let bytes = line.as_bytes();
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let mut start = col;
+    while start > 0 && is_word_char(bytes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = col;
+    while end < bytes.len() && is_word_char(bytes[end]) {
+        end += 1;
+    }
+    if start >= end {
+        return String::new();
+    }
+    line[start..end].to_string()
+}
+
+#[inline]
+fn is_word_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 #[cfg(test)]
@@ -1184,7 +1841,8 @@ mod tests {
     fn test_yank_and_paste() {
         let mut ed = make_multiline_editor(&["line1", "line2", "line3"]);
 
-        // yank current line (line1)
+        // yank current line (line1) with yy
+        ed.handle_key(key('y'));
         ed.handle_key(key('y'));
         // paste below
         ed.handle_key(key('p'));
@@ -1192,6 +1850,21 @@ mod tests {
         assert_eq!(ed.buffer().line_count(), 4);
         assert_eq!(ed.buffer().line(0), "line1");
         assert_eq!(ed.buffer().line(1), "line1");
+    }
+
+    #[test]
+    fn test_yank_word_with_yw() {
+        let mut ed = make_editor("hello world foo");
+
+        // yank word forward
+        ed.handle_key(key('y'));
+        ed.handle_key(key('w'));
+
+        // yank_register should contain "world" (cursor at 0, w moves to 6)
+        match &ed.yank_register {
+            YankRegister::Chars(s) => assert_eq!(s, "hello "),
+            _ => panic!("expected Chars register"),
+        }
     }
 
     #[test]
@@ -1256,12 +1929,132 @@ mod tests {
     }
 
     #[test]
-    fn test_go_to_top_g() {
+    fn test_go_to_end_G_single_line() {
+        let mut ed = make_editor("hello");
+        ed.handle_key(key('G'));
+        assert_eq!(ed.cursor().row, 0);
+        assert!(ed.cursor().row < ed.buffer().line_count());
+    }
+
+    #[test]
+    fn test_go_to_end_G_from_disk() {
+        let path = std::env::temp_dir().join(format!(
+            "vivi-g-test-{}-{}.txt",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, "line1\nline2\nline3\n").unwrap();
+        let buf = Buffer::from_file(&path).unwrap();
+        let mut ed = Editor::new(buf);
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(ed.buffer().line_count(), 3);
+        ed.handle_key(key('G'));
+        assert_eq!(ed.cursor().row, 2);
+        assert!(ed.cursor().row < ed.buffer().line_count());
+    }
+
+    #[test]
+    fn test_go_to_end_G_from_disk_no_trailing_newline() {
+        let path = std::env::temp_dir().join(format!(
+            "vivi-g-test-{}-{}.txt",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, "line1\nline2\nline3").unwrap();
+        let buf = Buffer::from_file(&path).unwrap();
+        let mut ed = Editor::new(buf);
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(ed.buffer().line_count(), 3);
+        ed.handle_key(key('G'));
+        assert_eq!(ed.cursor().row, 2);
+        assert!(ed.cursor().row < ed.buffer().line_count());
+    }
+
+    #[test]
+    fn test_go_to_line_with_count_G() {
+        let mut ed = make_multiline_editor(&["a", "b", "c", "d", "e"]);
+        ed.handle_key(key('3'));
+        ed.handle_key(key('G'));
+        assert_eq!(ed.cursor().row, 2);
+    }
+
+    #[test]
+    fn test_G_never_exceeds_line_count() {
+        for n in 1..=20 {
+            let lines: Vec<String> = (1..=n).map(|i| format!("line{i}")).collect();
+            let line_refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+            let mut ed = make_multiline_editor(&line_refs);
+            ed.handle_key(key('G'));
+            assert!(
+                ed.cursor().row < ed.buffer().line_count(),
+                "G on {}-line file: cursor.row={} >= line_count={}",
+                n,
+                ed.cursor().row,
+                ed.buffer().line_count()
+            );
+            assert_eq!(ed.cursor().row, n - 1);
+        }
+    }
+
+    #[test]
+    fn test_g_cursor_always_visible() {
+        // Test edge cases with very small terminals
+        use display_protocol::KeyEvent;
+
+        for height in [4, 6, 8, 10, 24] {
+            for n in 1..=15 {
+                let mut buf = Buffer::new();
+                buf.replace_range(0, 0, 0, "line0");
+                for i in 1..n {
+                    buf.insert_line(i, format!("line{}", i));
+                }
+                let mut ed = Editor::new(buf);
+                ed.set_term_size(80, height);
+
+                ed.handle_key(KeyEvent::char('G'));
+
+                let text_height = (height as usize).saturating_sub(2);
+                if text_height > 0 {
+                    assert!(
+                        ed.cursor().row >= ed.scroll().row,
+                        "G on {}-line file, height={}: cursor.row={} < scroll.row={}",
+                        n,
+                        height,
+                        ed.cursor().row,
+                        ed.scroll().row
+                    );
+                    assert!(
+                        ed.cursor().row < ed.scroll().row + text_height,
+                        "G on {}-line file, height={}: cursor.row={} >= scroll.row+text_height={}",
+                        n,
+                        height,
+                        ed.cursor().row,
+                        ed.scroll().row + text_height
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_go_to_top_gg() {
         let mut ed = make_multiline_editor(&["a", "b", "c"]);
         ed.handle_key(key('G')); // go to end first
 
         ed.handle_key(key('g'));
+        ed.handle_key(key('g'));
         assert_eq!(ed.cursor().row, 0);
+    }
+
+    #[test]
+    fn test_go_to_top_g_count() {
+        let mut ed = make_multiline_editor(&["a", "b", "c", "d", "e"]);
+        ed.handle_key(key('3'));
+        ed.handle_key(key('g'));
+        ed.handle_key(key('g'));
+        assert_eq!(ed.cursor().row, 2);
     }
 
     // ── Visual Mode Tests ─────────────────────────────────────────
