@@ -77,9 +77,11 @@ fn main() -> Result<()> {
         ));
         let _ = last_line; // handled by G
     }
-
-    // Main event loop
+    let mut tick: u64 = 0;
+    // Main event loop with cursor blink (~600ms on/off, vim default)
     loop {
+        tick = tick.wrapping_add(1);
+        let cursor_blink_on = (tick / 12) % 2 == 0;
         // Update terminal size
         let (w, h) = terminal.size();
         editor.set_term_size(w, h);
@@ -108,7 +110,7 @@ fn main() -> Result<()> {
             let gutter = render::line_number_width(editor.buffer().line_count(), w as usize);
             let cursor_x = (gutter + screen_col) as u16;
             let cursor_y = screen_row as u16;
-            if cursor_x < area.width && cursor_y < area.height {
+            if cursor_blink_on && cursor_x < area.width && cursor_y < area.height {
                 buf[(cursor_x, cursor_y)].set_bg(
                     ratatui::style::Color::Rgb(204, 204, 204)
                 );
@@ -118,20 +120,13 @@ fn main() -> Result<()> {
             }
         })?;
 
-        // Set cursor position for terminal cursor
-        let cursor = editor.cursor();
-        let scroll = editor.scroll();
-        let screen_col = cursor.col.saturating_sub(scroll.col);
-        let screen_row = cursor.row.saturating_sub(scroll.row);
-        let gutter = render::line_number_width(editor.buffer().line_count(), w as usize);
-        let cursor_x = (gutter + screen_col) as u16;
-        let cursor_y = screen_row as u16;
-        terminal.set_cursor(cursor_x, cursor_y);
-        terminal.show_cursor();
+        // Software cursor only — hide hardware cursor to avoid double blink
+        terminal.hide_cursor();
 
         // Poll for input
         match terminal.poll_input(50) {
             Some(display_protocol::InputEvent::Key(key)) => {
+                tick = 0; // reset blink — cursor visible while typing
                 editor.handle_key(key);
             }
             Some(display_protocol::InputEvent::Resize { width, height }) => {
