@@ -14,6 +14,7 @@ pub mod overlay;
 mod rectangle;
 mod register;
 pub mod syntax;
+pub mod tramp;
 pub mod ui_node;
 pub mod undo_tree;
 mod view;

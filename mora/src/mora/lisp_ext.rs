@@ -150,7 +150,7 @@ impl MoraLispBridge {
         let minibuffer_ns = eval.ns.find_or_create("mora.minibuffer");
         let region_ns = eval.ns.find_or_create("mora.region");
         let undo_ns = eval.ns.find_or_create("mora.undo");
-
+        let tramp_ns = eval.ns.find_or_create("mora.tramp");
         // Buffer operations
         let mut ns = buffer_ns.lock();
         ns.intern("buffer-name", Value::Native(prim_buffer_name));
@@ -407,6 +407,24 @@ impl MoraLispBridge {
         ns.intern("looking-at", Value::Native(prim_looking_at));
         ns.intern("buffer-list", Value::Native(prim_buffer_list));
         drop(ns);
+        // TRAMP remote file operations
+        let mut ns = tramp_ns.lock();
+        ns.intern("tramp-read-file", Value::Native(prim_tramp_read_file));
+        ns.intern("tramp-write-file", Value::Native(prim_tramp_write_file));
+        ns.intern("tramp-shell-command", Value::Native(prim_tramp_shell_command));
+        ns.intern("tramp-shell-capture", Value::Native(prim_tramp_shell_capture));
+        ns.intern("tramp-exists?", Value::Native(prim_tramp_file_exists));
+        ns.intern("tramp-mtime", Value::Native(prim_tramp_file_mtime));
+        ns.intern("tramp-list-dir", Value::Native(prim_tramp_list_dir));
+        ns.intern("tramp-mkdir", Value::Native(prim_tramp_mkdir));
+        ns.intern("tramp-delete-file", Value::Native(prim_tramp_delete_file));
+        ns.intern("tramp-rename-file", Value::Native(prim_tramp_rename_file));
+        ns.intern("tramp-ping", Value::Native(prim_tramp_ping));
+        ns.intern("tramp-connect", Value::Native(prim_tramp_connect));
+        ns.intern("tramp-disconnect", Value::Native(prim_tramp_disconnect));
+        ns.intern("tramp-connections", Value::Native(prim_tramp_connections));
+        ns.intern("tramp-parse-path", Value::Native(prim_tramp_parse_path));
+        drop(ns);
         for ns_name in [
             "mora.buffer",
             "mora.cursor",
@@ -426,13 +444,13 @@ impl MoraLispBridge {
             "mora.minibuffer",
             "mora.region",
             "mora.undo",
+            "mora.tramp",
         ] {
             eval.ns
                 .refer_all(ns_name, "user")
                 .expect("Mora host namespaces and user namespace exist");
         }
     }
-
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
         let forms = self.evaluator.read_cached(code)?;
         Ok(crate::lisp::vm::compile_and_run(&mut self.evaluator, &forms)?)
@@ -2098,7 +2116,126 @@ fn prim_buffer_list(_args: &[Value]) -> Result<Value, String> {
         Ok(Value::vector(vec![Value::string(name)]))
     })
 }
-
+// --- TRAMP remote file primitives ---
+fn parse_tramp_path_arg(args: &[Value], idx: usize) -> Result<super::tramp::RemotePath, String> {
+    let path_str = extract_string(args, idx)?;
+    super::tramp::RemotePath::parse(&path_str)
+        .ok_or_else(|| format!("invalid TRAMP path: {}", path_str))
+}
+/// (tramp-read-file "/ssh:user@host:/path") → string content
+fn prim_tramp_read_file(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let content = super::tramp::read_file(&rp)?;
+    Ok(Value::string(content))
+}
+/// (tramp-write-file "/ssh:user@host:/path" "content") → nil
+fn prim_tramp_write_file(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let content = extract_string(args, 1)?;
+    super::tramp::write_file(&rp, &content)?;
+    Ok(Value::Nil)
+}
+/// (tramp-shell-command "/ssh:user@host:/path" "ls -la") → [stdout exit-code]
+fn prim_tramp_shell_command(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let cmd = extract_string(args, 1)?;
+    let (stdout, code) = super::tramp::shell_command(&rp, &cmd)?;
+    Ok(Value::vector(vec![
+        Value::string(stdout),
+        Value::Int(code as i64),
+    ]))
+}
+/// (tramp-shell-capture "/ssh:user@host:/path" "hostname") → stdout string
+fn prim_tramp_shell_capture(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let cmd = extract_string(args, 1)?;
+    let stdout = super::tramp::shell_capture(&rp, &cmd)?;
+    Ok(Value::string(stdout))
+}
+/// (tramp-exists? "/ssh:user@host:/path") → bool
+fn prim_tramp_file_exists(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let exists = super::tramp::file_exists(&rp)?;
+    Ok(Value::Bool(exists))
+}
+/// (tramp-mtime "/ssh:user@host:/path") → unix timestamp or nil
+fn prim_tramp_file_mtime(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    match super::tramp::file_mtime(&rp) {
+        Ok(mtime) => Ok(Value::Int(mtime)),
+        Err(_) => Ok(Value::Nil),
+    }
+}
+/// (tramp-list-dir "/ssh:user@host:/path") → vector of filenames
+fn prim_tramp_list_dir(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let entries = super::tramp::list_directory(&rp)?;
+    Ok(Value::vector(
+        entries.into_iter().map(Value::string).collect(),
+    ))
+}
+/// (tramp-mkdir "/ssh:user@host:/path") → nil
+fn prim_tramp_mkdir(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    super::tramp::make_directory(&rp)?;
+    Ok(Value::Nil)
+}
+/// (tramp-delete-file "/ssh:user@host:/path") → nil
+fn prim_tramp_delete_file(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    super::tramp::delete_file(&rp)?;
+    Ok(Value::Nil)
+}
+/// (tramp-rename-file "/ssh:user@host:/old" "/new/path") → nil
+fn prim_tramp_rename_file(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let new_path = extract_string(args, 1)?;
+    super::tramp::rename_file(&rp, &new_path)?;
+    Ok(Value::Nil)
+}
+/// (tramp-ping "/ssh:user@host:/") → bool
+fn prim_tramp_ping(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    let ok = super::tramp::ping(&rp)?;
+    Ok(Value::Bool(ok))
+}
+/// (tramp-connect "/ssh:user@host:/") → target string
+fn prim_tramp_connect(args: &[Value]) -> Result<Value, String> {
+    let rp = parse_tramp_path_arg(args, 0)?;
+    super::tramp::pool().touch(&rp.ssh_target());
+    Ok(Value::string(rp.ssh_target()))
+}
+/// (tramp-disconnect "user@host") → nil
+fn prim_tramp_disconnect(args: &[Value]) -> Result<Value, String> {
+    let target = extract_string(args, 0)?;
+    super::tramp::pool().disconnect(&target);
+    Ok(Value::Nil)
+}
+/// (tramp-connections) → vector of active connections
+fn prim_tramp_connections(_args: &[Value]) -> Result<Value, String> {
+    let conns = super::tramp::pool().list();
+    Ok(Value::vector(
+        conns.into_iter().map(Value::string).collect(),
+    ))
+}
+/// (tramp-parse-path "/ssh:user@host:/path") → map with :method, :user, :host, :port, :path
+fn prim_tramp_parse_path(args: &[Value]) -> Result<Value, String> {
+    let path_str = extract_string(args, 0)?;
+    let rp = super::tramp::RemotePath::parse(&path_str)
+        .ok_or_else(|| format!("invalid TRAMP path: {}", path_str))?;
+    let mut pairs: Vec<(Value, Value)> = vec![
+        (Value::keyword("method"), Value::string(&rp.method)),
+        (Value::keyword("host"), Value::string(&rp.host)),
+        (Value::keyword("path"), Value::string(&rp.path)),
+    ];
+    if let Some(user) = &rp.user {
+        pairs.push((Value::keyword("user"), Value::string(user)));
+    }
+    if let Some(port) = rp.port {
+        pairs.push((Value::keyword("port"), Value::Int(port as i64)));
+    }
+    Ok(Value::map(pairs))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2674,6 +2811,82 @@ mod tests {
             bridge.eval("(undo-tree-can-redo?)").unwrap(),
             Value::Bool(true)
         );
+        take_editor_state();
+    }
+    // --- TRAMP Tests ---
+    #[test]
+    fn tramp_parse_path_works() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        let result = bridge
+            .eval(r#"(tramp-parse-path "/ssh:user@host:/home/user/file.txt")"#)
+            .unwrap();
+        match result {
+            Value::Map(m) => {
+                let method = m.get(&Value::keyword("method")).unwrap();
+                assert_eq!(*method, Value::string("ssh"));
+                let host = m.get(&Value::keyword("host")).unwrap();
+                assert_eq!(*host, Value::string("host"));
+                let user = m.get(&Value::keyword("user")).unwrap();
+                assert_eq!(*user, Value::string("user"));
+                let path = m.get(&Value::keyword("path")).unwrap();
+                assert_eq!(*path, Value::string("/home/user/file.txt"));
+            }
+            _ => panic!("expected map"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn tramp_parse_path_with_port() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        let result = bridge
+            .eval(r#"(tramp-parse-path "/ssh:admin@server#2222:/etc/config")"#)
+            .unwrap();
+        match result {
+            Value::Map(m) => {
+                let port = m.get(&Value::keyword("port")).unwrap();
+                assert_eq!(*port, Value::Int(2222));
+            }
+            _ => panic!("expected map"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn tramp_parse_path_no_user() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        let result = bridge
+            .eval(r#"(tramp-parse-path "/scp:example.com:/tmp/data")"#)
+            .unwrap();
+        match result {
+            Value::Map(m) => {
+                assert_eq!(*m.get(&Value::keyword("method")).unwrap(), Value::string("scp"));
+                assert!(!m.contains_key(&Value::keyword("user")));
+            }
+            _ => panic!("expected map"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn tramp_connections_empty_initially() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        let result = bridge.eval("(tramp-connections)").unwrap();
+        match result {
+            Value::Vector(v) => assert!(v.is_empty()),
+            _ => panic!("expected vector"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn tramp_invalid_path_errors() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        let result = bridge.eval(r#"(tramp-parse-path "/not-a-tramp-path")"#);
+        assert!(result.is_err());
+        let result = bridge.eval(r#"(tramp-parse-path "/ssh:")"#);
+        assert!(result.is_err());
         take_editor_state();
     }
 }
