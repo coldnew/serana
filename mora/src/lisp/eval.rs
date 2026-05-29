@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::gc::{CollectorHandle, GcHeap};
-use crate::ns::NamespaceRegistry;
-use crate::thread::ThreadPool;
-use crate::types::{FnValue, MacroValue, Param, Symbol, Value};
+use crate::lisp::gc::{CollectorHandle, GcHeap};
+use crate::lisp::ns::NamespaceRegistry;
+use crate::lisp::thread::ThreadPool;
+use crate::lisp::types::{FnValue, MacroValue, Param, Symbol, Value};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum EvalError {
@@ -139,7 +139,7 @@ pub struct Evaluator {
     collector: Option<CollectorHandle>,
     macroexpand_cache: HashMap<Symbol, Value>,
     form_cache: HashMap<u64, Vec<Value>>,
-    pub compiled_fns: HashMap<String, crate::bytecode::CompiledFunction>,
+    pub compiled_fns: HashMap<String, crate::lisp::bytecode::CompiledFunction>,
     call_stack: Vec<String>,
     in_tail_position: bool,
     pending_tail_call: Option<(FnValue, Vec<Value>)>,
@@ -212,7 +212,7 @@ impl Evaluator {
         if let Some(forms) = self.form_cache.get(&hash) {
             return Ok(forms.clone());
         }
-        let forms = crate::reader::read_all(input)
+        let forms = crate::lisp::reader::read_all(input)
             .map_err(|e| EvalError::Custom(format!("read error: {}", e)))?;
         self.form_cache.insert(hash, forms.clone());
         Ok(forms)
@@ -231,7 +231,7 @@ impl Evaluator {
         args: &[Value],
         closure: &Arc<Mutex<HashMap<Symbol, Value>>>,
     ) -> Result<Value, EvalError> {
-        use crate::bytecode::{CompiledFunction, Op};
+        use crate::lisp::bytecode::{CompiledFunction, Op};
 
         let compiled = self
             .compiled_fns
@@ -245,11 +245,11 @@ impl Evaluator {
         let mut arg_idx: usize = 0;
         for (i, param) in compiled.params.iter().enumerate() {
             match param {
-                crate::types::Param::Named(_) => {
+                crate::lisp::types::Param::Named(_) => {
                     locals[i] = args.get(arg_idx).cloned().unwrap_or(Value::Nil);
                     arg_idx += 1;
                 }
-                crate::types::Param::Rest(_) => {
+                crate::lisp::types::Param::Rest(_) => {
                     let rest: Vec<Value> = args[arg_idx..].to_vec();
                     locals[i] = Value::list(rest);
                     arg_idx = args.len();
@@ -1991,8 +1991,8 @@ impl Evaluator {
             done_clone.store(true, std::sync::atomic::Ordering::SeqCst);
         });
 
-        Ok(Value::Thread(crate::types::ThreadValue {
-            id: crate::types::next_id(),
+        Ok(Value::Thread(crate::lisp::types::ThreadValue {
+            id: crate::lisp::types::next_id(),
             handle: Arc::new(Mutex::new(Some(handle))),
             done,
         }))
@@ -2208,7 +2208,7 @@ impl Evaluator {
     fn register_builtins(&mut self) {
         let core = self.ns.find_or_create("mora.core");
         let mut ns = core.lock();
-        crate::types::builtin::register_builtins(&mut ns);
+        crate::lisp::types::builtin::register_builtins(&mut ns);
         drop(ns);
         self.ns
             .refer_all("mora.core", "user")

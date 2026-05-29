@@ -1,6 +1,6 @@
 //! Bytecode types shared between the compiler/VM and the evaluator.
 
-use crate::types::{Param, Value};
+use crate::lisp::types::{Param, Value};
 
 /// Bytecode instruction for the stack-based VM.
 #[derive(Debug, Clone)]

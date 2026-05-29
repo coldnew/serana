@@ -6,10 +6,10 @@
 
 use std::io::{self, BufRead, Write};
 
-use crate::eval::EvalError;
-use crate::types::Value;
-use crate::vm;
-use crate::MoraLisp;
+use crate::lisp::eval::EvalError;
+use crate::lisp::types::Value;
+use crate::lisp::vm;
+use crate::lisp::MoraLisp;
 
 pub struct Repl {
     lisp: MoraLisp,
@@ -28,11 +28,11 @@ impl Repl {
         }
     }
 
-    pub fn evaluator(&self) -> &crate::eval::Evaluator {
+    pub fn evaluator(&self) -> &crate::lisp::eval::Evaluator {
         &self.lisp.evaluator
     }
 
-    pub fn evaluator_mut(&mut self) -> &mut crate::eval::Evaluator {
+    pub fn evaluator_mut(&mut self) -> &mut crate::lisp::eval::Evaluator {
         &mut self.lisp.evaluator
     }
 

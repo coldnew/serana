@@ -6,9 +6,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::eval::EvalError;
-use crate::gc::{Gc, Traceable};
-use crate::ns::Namespace;
+use crate::lisp::eval::EvalError;
+use crate::lisp::gc::{Gc, Traceable};
+use crate::lisp::ns::Namespace;
 
 pub mod builtin;
 

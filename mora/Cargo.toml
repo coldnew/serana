@@ -16,9 +16,10 @@ ratatui.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 dirs.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+regex.workspace = true
 serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
-mora-lisp = { path = "../crates/mora-lisp" }
-mora-compile = { path = "../crates/mora-compile" }
 mishell-parser = { path = "../crates/mishell-parser" }
 display-protocol = { path = "../crates/display-protocol" }
 display-tui = { path = "../crates/display-tui" }

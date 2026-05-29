@@ -2193,30 +2193,20 @@ dependencies = [
  "glyphon",
  "hostname",
  "mishell-parser",
- "mora-compile",
- "mora-lisp",
+ "parking_lot",
  "pollster",
  "ratatui",
  "rayon",
+ "regex",
  "serana-tree-sitter",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
  "wgpu",
  "winit",
-]
-
-[[package]]
-name = "mora-compile"
-version = "0.1.0"
-dependencies = [
- "mora-lisp",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2233,19 +2223,6 @@ dependencies = [
  "tokio",
  "toml",
  "uuid",
-]
-
-[[package]]
-name = "mora-lisp"
-version = "0.1.0"
-dependencies = [
- "parking_lot",
- "regex",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@ use mora_bin::mora::editor_core::MoraCore;
 use mora_bin::mora::display::backend::{DisplayBackend, InputEvent};
 use mora_bin::mora::display::wgpu_backend::WgpuBackend;
 use mora_bin::mora::display::style::MoraStyle;
-use mora_compile::{CompileOptions, CompileTarget};
+use mora_bin::lisp;
 use display_protocol::{Color, FrameUpdate, Grid, WireMessage, PROTOCOL_VERSION, DisplayCmd, InputEvent as ProtoInputEvent};
 use display_tui::TuiTerminal;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -35,28 +35,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compile a .mora file to binary or shared library
-    Compile {
-        /// Input .mora file
-        input: String,
-
-        /// Output path (optional)
-        #[arg(short, long)]
-        output: Option<String>,
-
-        /// Compile to shared library instead of binary
-        #[arg(short, long)]
-        shared: bool,
-
-        /// Optimization level (0-3)
-        #[arg(short = 'O', long, default_value = "2")]
-        opt_level: u8,
-
-        /// Enable debug info
-        #[arg(long)]
-        debug: bool,
-    },
-
     /// Evaluate mora-lisp code and print result
     Eval {
         /// Code to evaluate (or - for stdin)
@@ -86,28 +64,6 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Compile {
-            input,
-            output,
-            shared,
-            opt_level,
-            debug,
-        }) => {
-            let options = CompileOptions {
-                target: if shared {
-                    CompileTarget::SharedLib
-                } else {
-                    CompileTarget::Binary
-                },
-                output,
-                opt_level,
-                debug,
-            };
-
-            let result = mora_compile::compile_file(&input, &options)?;
-            println!("Compiled to: {}", result);
-            Ok(())
-        }
 
         Some(Commands::Eval { code }) => {
             let code = if code == "-" {
@@ -118,11 +74,11 @@ fn main() -> anyhow::Result<()> {
                 code
             };
 
-            let mut lisp = mora_lisp::MoraLisp::new();
+            let mut lisp = lisp::MoraLisp::new();
             match lisp.eval(&code) {
                 Ok(result) => {
                     match &result {
-                        mora_lisp::types::Value::Nil => {}
+                        lisp::types::Value::Nil => {}
                         _ => println!("{}", result),
                     }
                     Ok(())
@@ -138,17 +94,17 @@ fn main() -> anyhow::Result<()> {
             let code = std::fs::read_to_string(&file)
                 .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", file, e))?;
 
-            let mut lisp = mora_lisp::MoraLisp::new();
+            let mut lisp = lisp::MoraLisp::new();
 
             // Set command line args
-            let args_vec: Vec<mora_lisp::types::Value> = args
+            let args_vec: Vec<lisp::types::Value> = args
                 .into_iter()
-                .map(mora_lisp::types::Value::string)
+                .map(lisp::types::Value::string)
                 .collect();
             lisp.ns_mut()
                 .current()
                 .lock()
-                .intern("*command-line-args*", mora_lisp::types::Value::vector(args_vec));
+                .intern("*command-line-args*", lisp::types::Value::vector(args_vec));
 
             match lisp.eval(&code) {
                 Ok(_) => Ok(()),
@@ -173,7 +129,7 @@ fn main() -> anyhow::Result<()> {
 
         Some(Commands::Repl) => {
             println!("mora-lisp REPL (Ctrl-D to exit)");
-            let mut repl = mora_lisp::repl::Repl::new();
+            let mut repl = lisp::repl::Repl::new();
             repl.run().map_err(|e| anyhow::anyhow!("{}", e))
         }
     }

@@ -12,9 +12,9 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::bytecode::{CompiledFunction, Op};
-use crate::eval::{EvalError, Evaluator};
-use crate::types::{FnValue, Param, Symbol, Value};
+use crate::lisp::bytecode::{CompiledFunction, Op};
+use crate::lisp::eval::{EvalError, Evaluator};
+use crate::lisp::types::{FnValue, Param, Symbol, Value};
 
 // ── Compiler ──────────────────────────────────────────────────────────────────
 
@@ -965,7 +965,7 @@ pub fn compile_and_run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MoraLisp;
+    use crate::lisp::MoraLisp;
 
     #[test]
     fn vm_push_const() {

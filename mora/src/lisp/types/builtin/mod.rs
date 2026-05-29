@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::ns::Namespace;
-use crate::types::Value;
+use crate::lisp::ns::Namespace;
+use crate::lisp::types::Value;
 pub mod string;
 pub mod core;
 pub mod math;
@@ -16,7 +16,7 @@ macro_rules! builtin_fn {
         };
         Var::new(
             sym,
-            Value::Fn(crate::types::FnValue {
+            Value::Fn(crate::lisp::types::FnValue {
                 name: Some($name.to_string()),
                 params: vec![],
                 body: Arc::new(vec![]),
@@ -82,7 +82,7 @@ pub fn call_native(name: &str, args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn invoke_fn(func: &Value, args: &[Value]) -> Result<Value, String> {
-    crate::eval::with_evaluator(|eval| match func {
+    crate::lisp::eval::with_evaluator(|eval| match func {
         Value::Fn(f) => eval
             .call_fn(f.clone(), args.to_vec())
             .map_err(|e| e.to_string()),
@@ -92,23 +92,23 @@ pub fn invoke_fn(func: &Value, args: &[Value]) -> Result<Value, String> {
 }
 
 fn native_gc_collect(_args: &[Value]) -> Result<Value, String> {
-    crate::eval::with_evaluator(|eval| {
+    crate::lisp::eval::with_evaluator(|eval| {
         let freed = eval.gc_heap.collect();
         Ok(Value::Int(freed as i64))
     })
 }
 
 fn native_gc_count(_args: &[Value]) -> Result<Value, String> {
-    crate::eval::with_evaluator(|eval| Ok(Value::Int(eval.gc_heap.object_count() as i64)))
+    crate::lisp::eval::with_evaluator(|eval| Ok(Value::Int(eval.gc_heap.object_count() as i64)))
 }
 
 fn native_gc_alloc(args: &[Value]) -> Result<Value, String> {
     if args.len() != 1 {
         return Err("gc-alloc requires exactly 1 argument".to_string());
     }
-    crate::eval::with_evaluator(|eval| {
+    crate::lisp::eval::with_evaluator(|eval| {
         let value = args[0].clone();
-        let gc = crate::gc::Gc::new(&eval.gc_heap, value);
+        let gc = crate::lisp::gc::Gc::new(&eval.gc_heap, value);
         Ok(Value::Gc(gc))
     })
 }

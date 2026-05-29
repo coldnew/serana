@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::eval::{EvalError, Evaluator};
-use crate::reader;
-use crate::types::Value;
+use crate::lisp::eval::{EvalError, Evaluator};
+use crate::lisp::reader;
+use crate::lisp::types::Value;
 
 pub struct MoraHost {
     evaluator: Evaluator,

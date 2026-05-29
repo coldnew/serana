@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use mora_lisp::eval::{EvalError, Evaluator};
-use mora_lisp::types::Value;
+use crate::lisp::eval::{EvalError, Evaluator};
+use crate::lisp::types::Value;
 
 use super::overlay::{OverlayFace, OverlayStore};
 
@@ -278,7 +278,7 @@ impl MoraLispBridge {
 
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
         let forms = self.evaluator.read_cached(code)?;
-        Ok(mora_lisp::vm::compile_and_run(&mut self.evaluator, &forms)?)
+        Ok(crate::lisp::vm::compile_and_run(&mut self.evaluator, &forms)?)
     }
 
     pub fn load_init_file(&mut self) {
@@ -908,7 +908,7 @@ fn prim_command_execute(args: &[Value]) -> Result<Value, String> {
         .ok_or_else(|| format!("command not found or ambiguous: {}", requested))?;
     let entry = command_entry(&name).ok_or_else(|| format!("command not found: {}", name))?;
 
-    mora_lisp::eval::with_evaluator(|eval| match entry.func {
+    crate::lisp::eval::with_evaluator(|eval| match entry.func {
         Value::Fn(f) => eval.call_fn(f, vec![]).map_err(|e| e.to_string()),
         Value::Native(f) => f(&[]),
         other => Err(format!("command {} is {}", name, other.type_name())),

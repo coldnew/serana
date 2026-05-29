@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::ns::Namespace;
-use crate::types::{Symbol, Value};
+use crate::lisp::ns::Namespace;
+use crate::lisp::types::{Symbol, Value};
 use super::register_native;
 use super::invoke_fn;
 
@@ -1949,7 +1949,7 @@ fn native_read_string(args: &[Value]) -> Result<Value, String> {
         return Err("read-string requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::String(s) => crate::reader::read_str(s).map_err(|e| format!("read error: {}", e)),
+        Value::String(s) => crate::lisp::reader::read_str(s).map_err(|e| format!("read error: {}", e)),
         _ => Err("read-string requires a string".to_string()),
     }
 }

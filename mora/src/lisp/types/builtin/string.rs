@@ -1,5 +1,5 @@
-use crate::ns::Namespace;
-use crate::types::Value;
+use crate::lisp::ns::Namespace;
+use crate::lisp::types::Value;
 use super::register_native;
 
 pub fn register(ns: &mut Namespace) {

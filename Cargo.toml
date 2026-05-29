@@ -2,8 +2,6 @@
 resolver = "2"
 members = [
     "crates/mora-core",
-    "crates/mora-lisp",
-    "crates/mora-compile",
     "crates/mishell-parser",
     "crates/display-protocol",
     "crates/display-protocol-jsx",

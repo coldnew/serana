@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::types::{Symbol, Value};
+use crate::lisp::types::{Symbol, Value};
 
 #[derive(Debug, Clone)]
 pub struct Var {

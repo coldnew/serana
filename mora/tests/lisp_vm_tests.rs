@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use mora_lisp::reader;
-    use mora_lisp::types::Value;
-    use mora_lisp::MoraLisp;
+    use mora_bin::lisp::reader;
+    use mora_bin::lisp::types::Value;
+    use mora_bin::lisp::MoraLisp;
 
     #[test]
     fn test_read_numbers() {

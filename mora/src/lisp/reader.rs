@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::types::{Symbol, Value};
+use crate::lisp::types::{Symbol, Value};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ReadError {
@@ -389,19 +389,19 @@ impl Reader {
                     max_arg = 1; // % alone means %1
                 }
                 for i in 1..=max_arg {
-                    params.push(crate::types::Param::Named(Symbol {
+                    params.push(crate::lisp::types::Param::Named(Symbol {
                         ns: None,
                         name: Arc::new(format!("%{}", i)),
                     }));
                 }
                 // Also check for %& (rest arg)
                 if Self::has_rest_arg(&body) {
-                    params.push(crate::types::Param::Rest(Symbol {
+                    params.push(crate::lisp::types::Param::Rest(Symbol {
                         ns: None,
                         name: Arc::new("%&".to_string()),
                     }));
                 }
-                Ok(Value::Fn(crate::types::FnValue {
+                Ok(Value::Fn(crate::lisp::types::FnValue {
                     name: None,
                     params,
                     body: Arc::new(body),
