@@ -20,3 +20,6 @@ pub use alert::{Alert, AlertLevel};
 
 mod card;
 pub use card::Card;
+
+mod dialog;
+pub use dialog::Dialog;
