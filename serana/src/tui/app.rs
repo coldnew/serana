@@ -1217,6 +1217,14 @@ impl App {
         }
         Some(msg)
     }
+
+    pub fn mode_label(&self) -> &'static str {
+        match self.mode {
+            AppMode::Normal => "NORMAL",
+            AppMode::Input => "INPUT",
+            AppMode::Processing => "PROCESSING",
+        }
+    }
 }
 
 /// Application mode.

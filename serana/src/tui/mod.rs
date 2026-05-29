@@ -11,6 +11,7 @@ pub mod symbols;
 pub mod syntax;
 pub mod theme;
 pub mod tool_execution;
+pub mod render;
 pub mod render_helpers;
 pub mod tui;
 pub mod ui;
@@ -112,9 +113,9 @@ fn run_app(
     let mut streaming_content = String::new();
 
     loop {
-        tui.terminal().draw(|frame| {
-            ui::draw(frame, app);
-        })?;
+        let (w, h) = tui.inner().size();
+        let ui = render::build_ui(app, w, h);
+        tui.render_ui(&ui)?;
 
         while let Ok(delta) = stream_rx.try_recv() {
             streaming_content.push_str(&delta);

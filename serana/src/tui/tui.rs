@@ -14,6 +14,9 @@ impl Tui {
         inner.init_with_mouse()?;
         Ok(Self { inner })
     }
+    pub fn inner(&mut self) -> &mut TuiTerminal {
+        &mut self.inner
+    }
 
     pub fn terminal(&mut self) -> &mut ratatui::Terminal<Backend> {
         self.inner.terminal()
@@ -32,6 +35,12 @@ impl Tui {
 
     pub fn poll_input(&mut self, timeout_ms: u64) -> Option<display_protocol::InputEvent> {
         self.inner.poll_input(timeout_ms)
+    }
+
+    pub fn render_ui(&mut self, node: &display_protocol::UiNode) -> io::Result<()> {
+        let (w, h) = self.inner.size();
+        let buf = display_protocol::paint::paint(node, w, h);
+        self.inner.render_screen_buffer(&buf)
     }
 
     pub fn render_frame(&mut self, frame: &display_protocol::FrameUpdate) -> io::Result<()> {
