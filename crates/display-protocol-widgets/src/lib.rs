@@ -8,3 +8,9 @@ pub mod palette;
 
 mod button;
 pub use button::{Button, ButtonStyle};
+
+mod checkbox;
+pub use checkbox::Checkbox;
+
+mod badge;
+pub use badge::{Badge, BadgeStyle};
