@@ -5,3 +5,6 @@
 //! then paint.
 
 pub mod palette;
+
+mod button;
+pub use button::{Button, ButtonStyle};
