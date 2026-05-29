@@ -1,5 +1,28 @@
 # Hermes Agent Refactor
 
+# Vivi Syntax Highlighting
+
+Assumptions:
+- Use `syntect` defaults because they cover many common languages and are already a workspace dependency.
+- Detect syntax from the opened buffer path; unnamed buffers stay plain text.
+- Keep highlighting read-only in the render layer and preserve existing editor behavior.
+
+Success criteria for this slice:
+- [x] Add Vivi syntax highlighting for path-backed buffers.
+- [x] Support common languages through syntect's default syntax set.
+- [x] Keep unnamed/unknown buffers plain.
+- [x] Add focused render tests.
+- [x] Format touched files and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Added a Vivi-local `SyntaxHighlighter` using syntect's default syntax set and the `base16-ocean.dark` theme.
+- Path-backed buffers now highlight via file extension; unnamed or unknown buffers remain plain text.
+- `render.rs` now feeds highlighted `StyledLine`s into the existing display-protocol `TextArea`.
+- Added unit coverage for unnamed plain buffers, Rust highlighting, and render-level highlighted output.
+- Added `syntect` as a Vivi dependency.
+- Verification passed with `rustfmt` on touched Vivi files and `cargo test -p vivi` (63 tests).
+
 # Vivi Ctrl Scroll Keys
 
 Assumptions:

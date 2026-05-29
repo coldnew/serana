@@ -3497,6 +3497,7 @@ dependencies = [
  "mora-bin",
  "parking_lot",
  "pulldown-cmark",
+ "ratatui",
  "regex",
  "reqwest",
  "rusqlite",
@@ -4661,9 +4662,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "crossterm",
  "display-protocol",
  "display-protocol-jsx",
  "display-tui",
+ "ratatui",
+ "syntect",
 ]
 
 [[package]]

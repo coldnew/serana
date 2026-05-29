@@ -20,3 +20,4 @@ crossterm = { workspace = true }
 ratatui = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
+syntect = { workspace = true }

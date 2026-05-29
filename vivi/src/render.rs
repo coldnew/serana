@@ -4,6 +4,7 @@ use display_protocol_jsx::jsx;
 
 use crate::editor::Editor;
 use crate::mode::Mode;
+use crate::syntax::SyntaxHighlighter;
 
 const BG: Color = Color::BLACK;
 const FG: Color = Color::new(218, 218, 218);
@@ -139,9 +140,10 @@ fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
 }
 
 fn buffer_lines(editor: &Editor) -> Vec<StyledLine> {
-    (0..editor.buffer().line_count())
-        .map(|idx| StyledLine::plain(editor.buffer().line(idx)))
-        .collect()
+    let lines: Vec<&str> = (0..editor.buffer().line_count())
+        .map(|idx| editor.buffer().line(idx))
+        .collect();
+    SyntaxHighlighter::global().highlight_buffer(&lines, editor.buffer().path())
 }
 
 fn text_area_height(height: u16) -> u16 {
@@ -225,6 +227,24 @@ mod tests {
         assert_eq!(screen.width, 80);
         assert_eq!(screen.height, 24);
         assert_eq!(screen.get(2, 0).ch, 'h');
+    }
+
+    #[test]
+    fn test_render_highlights_path_backed_rust_buffer() {
+        let path = std::env::temp_dir().join(format!(
+            "vivi-highlight-{}-{}.rs",
+            std::process::id(),
+            "rust"
+        ));
+        std::fs::write(&path, "fn main() {}").unwrap();
+
+        let editor = Editor::new(Buffer::from_file(&path).unwrap());
+        let screen = render(&editor, 80, 24);
+
+        assert_eq!(screen.get(2, 0).ch, 'f');
+        assert_ne!(screen.get(2, 0).fg, FG);
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
