@@ -7,6 +7,7 @@ use display_protocol::*;
 use display_protocol_jsx::jsx;
 
 use super::app::{App, AppMode, MessageRole, TodoStatus};
+use super::markdown;
 use super::theme::Theme;
 
 /// Build the full UI tree for the current app state.
@@ -119,7 +120,8 @@ fn build_welcome(app: &App, width: u16, theme: &Theme) -> UiNode {
     build_column(children)
 }
 
-fn build_messages(app: &App, _width: u16, theme: &Theme) -> UiNode {
+fn build_messages(app: &App, width: u16, theme: &Theme) -> UiNode {
+    let md_theme = markdown::MarkdownTheme::default();
     let mut children = Vec::new();
 
     for pending in &app.pending_messages {
@@ -132,11 +134,17 @@ fn build_messages(app: &App, _width: u16, theme: &Theme) -> UiNode {
         children.push(jsx! { <Text>{""}</Text> });
         match msg.role {
             MessageRole::User => {
-                for line in msg.content.lines() {
-                    let text = format!("  {}", line);
-                    let user_style = Style::new()
-                        .fg(Color::new(156, 163, 176))
-                        .bg(Color::new(15, 18, 22));
+                let md_width = width.saturating_sub(4) as usize;
+                let md_lines = markdown::render_markdown(&msg.content, &md_theme, md_width);
+                let prefix = "  ";
+                let user_style = Style::new()
+                    .fg(Color::new(156, 163, 176))
+                    .bg(Color::new(15, 18, 22));
+                for md_line in &md_lines {
+                    let mut text = String::from(prefix);
+                    for span in &md_line.spans {
+                        text.push_str(&span.text);
+                    }
                     children.push(jsx! {
                         <Text style={user_style}>{text.as_str()}</Text>
                     });
@@ -144,19 +152,17 @@ fn build_messages(app: &App, _width: u16, theme: &Theme) -> UiNode {
             }
             MessageRole::Agent => {
                 if let Some(ref thinking) = msg.thinking {
-                    for line in thinking.lines() {
-                        let text = format!("  · {}", line);
-                        children.push(jsx! {
-                            <Text style={theme.thinking}>{text.as_str()}</Text>
-                        });
+                    let md_width = width.saturating_sub(4) as usize;
+                    let md_lines = markdown::render_markdown(thinking, &md_theme, md_width);
+                    for md_line in &md_lines {
+                        children.push(styled_line_to_row(md_line, "  ", &theme.thinking));
                     }
                     children.push(jsx! { <Text>{""}</Text> });
                 }
-                for line in msg.content.lines() {
-                    let text = format!("    {}", line);
-                    children.push(jsx! {
-                        <Text style={theme.agent_fg}>{text.as_str()}</Text>
-                    });
+                let md_width = width.saturating_sub(4) as usize;
+                let md_lines = markdown::render_markdown(&msg.content, &md_theme, md_width);
+                for md_line in &md_lines {
+                    children.push(styled_line_to_row(md_line, "    ", &theme.agent_fg));
                 }
                 for tool in &msg.tool_calls {
                     let tool_text = format!("  ⚡ {}", tool.name);
@@ -204,6 +210,35 @@ fn build_messages(app: &App, _width: u16, theme: &Theme) -> UiNode {
     }
 
     build_column(children)
+}
+
+/// Convert a StyledLine into a Row of Span nodes with a text prefix.
+fn styled_line_to_row(line: &StyledLine, prefix: &str, base_style: &Style) -> UiNode {
+    let mut spans = vec![SpanNode {
+        content: prefix.to_string(),
+        style: *base_style,
+    }];
+    for span in &line.spans {
+        let merged = Style::default()
+            .merge(base_style)
+            .merge(&span.style);
+        spans.push(SpanNode {
+            content: span.text.clone(),
+            style: merged,
+        });
+    }
+    UiNode::Row(FlexNode {
+        children: spans.into_iter().map(|s| UiNode::Span(s)).collect(),
+        style: Style::default(),
+        gap: 0,
+        align: Align::Start,
+        justify: Justify::Start,
+        padding: Padding::default(),
+        width: None,
+        height: None,
+        flex_grow: 0.0,
+        flex_shrink: 1.0,
+    })
 }
 
 fn build_input(app: &App, width: u16, theme: &Theme) -> UiNode {
