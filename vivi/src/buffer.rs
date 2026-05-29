@@ -45,9 +45,10 @@ impl Buffer {
 
     /// Save the buffer to its path. Returns error if no path is set.
     pub fn save(&mut self) -> io::Result<()> {
-        let path = self.path.as_ref().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "No file name")
-        })?;
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No file name"))?;
         let content = self.lines.join("\n");
         fs::write(path, content)?;
         self.modified = false;
@@ -68,7 +69,8 @@ impl Buffer {
     /// Display name for the status bar.
     pub fn display_name(&self) -> String {
         match &self.path {
-            Some(p) => p.file_name()
+            Some(p) => p
+                .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "[No Name]".into()),
             None => "[No Name]".into(),
@@ -93,6 +95,16 @@ impl Buffer {
     /// Get the length of a line.
     pub fn line_len(&self, idx: usize) -> usize {
         self.lines.get(idx).map(|s| s.len()).unwrap_or(0)
+    }
+
+    /// Return a copy of all lines (for undo snapshots).
+    pub fn all_lines(&self) -> Vec<String> {
+        self.lines.clone()
+    }
+
+    /// Restore all lines from a snapshot.
+    pub fn restore_lines(&mut self, lines: Vec<String>) {
+        self.lines = lines;
     }
 
     /// Insert a character at (row, col).

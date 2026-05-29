@@ -59,9 +59,12 @@ pub struct Editor {
     pending_find_forward: bool,
     /// Till mode of pending find (t/T vs f/F).
     pending_find_till: bool,
-    /// Saved cursor/scroll before an operator+motion runs, used for `.` repeat.
-    #[allow(dead_code)]
-    last_edit: Option<SavedEdit>,
+    /// Undo stack (most recent first).
+    undo_stack: Vec<UndoState>,
+    /// Redo stack (most recent first).
+    redo_stack: Vec<UndoState>,
+    /// When true, modifications don't create new snapshots (insert mode, etc.)
+    in_change_group: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,23 +79,11 @@ enum YankRegister {
     Chars(String),
 }
 
-/// Snapshot of cursor and scroll for repeating the last edit with `.`.
+/// A snapshot of buffer + cursor for undo/redo.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct SavedEdit {
-    cursor_before: Cursor,
-    scroll_before: ScrollOffset,
-    change_kind: EditKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
-enum EditKind {
-    InsertedText(String),
-    DeletedText(usize, usize, String),
-    DeletedLines(usize, Vec<String>),
-    JoinedLines(usize),
-    ChangedLine(usize, String, String),
+struct UndoState {
+    lines: Vec<String>,
+    cursor: Cursor,
 }
 
 impl Editor {
@@ -119,7 +110,9 @@ impl Editor {
             pending_find: false,
             pending_find_forward: true,
             pending_find_till: false,
-            last_edit: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            in_change_group: false,
         }
     }
 
@@ -211,6 +204,53 @@ impl Editor {
         // Ensure cursor is in bounds after any operation
         self.clamp_cursor();
         self.update_scroll();
+    }
+
+    /// Push an undo snapshot (save current state).
+    fn push_undo_state(&mut self) {
+        if self.in_change_group {
+            return;
+        }
+        self.undo_stack.push(UndoState {
+            lines: self.buffer.all_lines(),
+            cursor: self.cursor,
+        });
+        if self.undo_stack.len() > 100 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Undo the last change.
+    fn undo(&mut self) {
+        let Some(state) = self.undo_stack.pop() else {
+            self.message = Some("Already at oldest change".into());
+            return;
+        };
+        self.redo_stack.push(UndoState {
+            lines: self.buffer.all_lines(),
+            cursor: self.cursor,
+        });
+        self.buffer.restore_lines(state.lines);
+        self.cursor = state.cursor;
+        self.cursor.preferred_col = self.cursor.col;
+        self.message = None;
+    }
+
+    /// Redo the last undone change.
+    fn redo(&mut self) {
+        let Some(state) = self.redo_stack.pop() else {
+            self.message = Some("Already at newest change".into());
+            return;
+        };
+        self.undo_stack.push(UndoState {
+            lines: self.buffer.all_lines(),
+            cursor: self.cursor,
+        });
+        self.buffer.restore_lines(state.lines);
+        self.cursor = state.cursor;
+        self.cursor.preferred_col = self.cursor.col;
+        self.message = None;
     }
 
     /// Get the effective count (defaults to 1).
@@ -396,44 +436,52 @@ impl Editor {
 
             // Enter insert mode
             KeyCode::Char('i') => {
+                self.push_undo_state();
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('I') => {
-                // Insert at beginning of line
+                self.push_undo_state();
                 let line = self.buffer.line(self.cursor.row);
                 self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('a') => {
-                // Append after cursor
+                self.push_undo_state();
                 let max_col = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < max_col {
                     self.set_cursor_col(self.cursor.col + 1);
                 }
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('A') => {
-                // Append at end of line
+                self.push_undo_state();
                 self.set_cursor_col(self.buffer.line_len(self.cursor.row));
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('o') => {
-                // Open line below
+                self.push_undo_state();
                 let new_row = self.cursor.row + 1;
                 self.buffer.insert_line(new_row, String::new());
                 self.cursor.row = new_row;
                 self.set_cursor_col(0);
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('O') => {
-                // Open line above
+                self.push_undo_state();
                 self.buffer.insert_line(self.cursor.row, String::new());
                 self.set_cursor_col(0);
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
 
             // Delete operations
             KeyCode::Char('x') => {
+                self.push_undo_state();
                 let n = self.take_count();
                 for _ in 0..n {
                     if self.cursor.col < self.buffer.line_len(self.cursor.row) {
@@ -442,6 +490,7 @@ impl Editor {
                 }
             }
             KeyCode::Char('X') => {
+                self.push_undo_state();
                 let n = self.take_count();
                 for _ in 0..n {
                     if self.cursor.col > 0 {
@@ -454,7 +503,7 @@ impl Editor {
                 self.pending_operator = Some(OperatorKind::Delete);
             }
             KeyCode::Char('D') => {
-                // Delete to end of line
+                self.push_undo_state();
                 let len = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < len {
                     self.buffer
@@ -465,26 +514,29 @@ impl Editor {
                 self.pending_operator = Some(OperatorKind::Change);
             }
             KeyCode::Char('C') => {
-                // Change to end of line
+                self.push_undo_state();
                 let len = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < len {
                     self.buffer
                         .replace_range(self.cursor.row, self.cursor.col, len, "");
                 }
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('S') => {
-                // Substitute entire line
+                self.push_undo_state();
                 let _ = self.buffer.delete_line(self.cursor.row);
                 self.buffer.insert_line(self.cursor.row, String::new());
                 self.set_cursor_col(0);
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('s') => {
-                // Substitute character
+                self.push_undo_state();
                 if self.cursor.col < self.buffer.line_len(self.cursor.row) {
                     self.buffer.delete_char(self.cursor.row, self.cursor.col);
                 }
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
 
@@ -557,6 +609,11 @@ impl Editor {
                 self.mode = Mode::Replace;
             }
 
+            // Undo
+            KeyCode::Char('u') => {
+                self.undo();
+            }
+
             // Visual mode
             KeyCode::Char('v') => {
                 self.mode = Mode::Visual;
@@ -581,6 +638,7 @@ impl Editor {
 
             // Join lines
             KeyCode::Char('J') => {
+                self.push_undo_state();
                 let n = self.take_count();
                 for _ in 0..n {
                     if self.buffer.join_lines(self.cursor.row).is_some() {
@@ -619,6 +677,7 @@ impl Editor {
 
             // Toggle case
             KeyCode::Char('~') => {
+                self.push_undo_state();
                 let line_len = self.buffer.line_len(self.cursor.row);
                 let col = self.cursor.col;
                 if col < line_len {
@@ -736,9 +795,16 @@ impl Editor {
             KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Char('c') => {
                 let n = self.take_count();
                 match op {
-                    OperatorKind::Delete => self.delete_n_lines(n),
+                    OperatorKind::Delete => {
+                        self.push_undo_state();
+                        self.delete_n_lines(n);
+                    }
                     OperatorKind::Yank => self.yank_n_lines(n),
-                    OperatorKind::Change => self.change_n_lines(n),
+                    OperatorKind::Change => {
+                        self.push_undo_state();
+                        self.in_change_group = true;
+                        self.change_n_lines(n);
+                    }
                 }
                 return;
             }
@@ -763,6 +829,7 @@ impl Editor {
 
         match op {
             OperatorKind::Delete => {
+                self.push_undo_state();
                 if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
                     // Forward motion: delete from saved to end
                     self.apply_delete_range((saved_row, saved_col), (end_row, end_col));
@@ -787,6 +854,7 @@ impl Editor {
                 self.cursor.col = saved_col;
             }
             OperatorKind::Change => {
+                self.push_undo_state();
                 if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
                     self.apply_delete_range((saved_row, saved_col), (end_row, end_col));
                     self.cursor.row = saved_row;
@@ -796,6 +864,7 @@ impl Editor {
                     self.cursor.row = end_row;
                     self.cursor.col = end_col;
                 }
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
         }
@@ -816,6 +885,7 @@ impl Editor {
             KeyCode::Char('y') => { self.scroll_one_line_up(); true }
             KeyCode::Char('a') => { self.increment_number(true); true }
             KeyCode::Char('x') => { self.increment_number(false); true }
+            KeyCode::Char('r') => { self.redo(); true }
             _ => false,
         }
     }
@@ -1152,6 +1222,7 @@ impl Editor {
     fn handle_insert(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc | KeyCode::Char('\x1b') => {
+                self.in_change_group = false;
                 self.mode = Mode::Normal;
                 if self.cursor.col > 0 {
                     self.cursor.col -= 1;
@@ -1162,6 +1233,7 @@ impl Editor {
                 match c {
                     '\x03' => {
                         // Ctrl+C — exit insert
+                        self.in_change_group = false;
                         self.mode = Mode::Normal;
                         self.cursor.preferred_col = self.cursor.col;
                     }
@@ -1277,6 +1349,7 @@ impl Editor {
     fn handle_replace(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc | KeyCode::Char('\x1b') | KeyCode::Char('\x03') => {
+                self.in_change_group = false;
                 self.mode = Mode::Normal;
                 self.cursor.preferred_col = self.cursor.col;
             }

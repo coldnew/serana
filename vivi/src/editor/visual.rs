@@ -24,6 +24,7 @@ impl Editor {
                 }
             }
             KeyCode::Char('d') | KeyCode::Char('x') => {
+                self.push_undo_state();
                 self.delete_selection();
                 self.mode = Mode::Normal;
                 self.selection = None;
@@ -34,31 +35,38 @@ impl Editor {
                 self.selection = None;
             }
             KeyCode::Char('c') | KeyCode::Char('s') => {
+                self.push_undo_state();
                 self.delete_selection();
+                self.in_change_group = true;
                 self.mode = Mode::Insert;
                 self.selection = None;
             }
             KeyCode::Char('>') => {
+                self.push_undo_state();
                 self.indent_selection(4);
                 self.mode = Mode::Normal;
                 self.selection = None;
             }
             KeyCode::Char('<') => {
+                self.push_undo_state();
                 self.dedent_selection(4);
                 self.mode = Mode::Normal;
                 self.selection = None;
             }
             KeyCode::Char('U') => {
+                self.push_undo_state();
                 self.case_selection(true);
                 self.mode = Mode::Normal;
                 self.selection = None;
             }
             KeyCode::Char('u') => {
+                self.push_undo_state();
                 self.case_selection(false);
                 self.mode = Mode::Normal;
                 self.selection = None;
             }
             KeyCode::Char('~') => {
+                self.push_undo_state();
                 self.toggle_case_selection();
                 self.mode = Mode::Normal;
                 self.selection = None;
