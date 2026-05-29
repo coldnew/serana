@@ -23,6 +23,7 @@ serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
 mishell-parser = { path = "../crates/mishell-parser" }
 display-protocol = { path = "../crates/display-protocol" }
 display-tui = { path = "../crates/display-tui" }
+display-protocol-jsx = { path = "../crates/display-protocol-jsx" }
 tokio.workspace = true
 thiserror.workspace = true
 hostname = "0.4"

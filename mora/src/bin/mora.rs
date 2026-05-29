@@ -4,7 +4,7 @@ use mora_bin::mora::display::backend::{DisplayBackend, InputEvent};
 use mora_bin::mora::display::wgpu_backend::WgpuBackend;
 use mora_bin::mora::display::style::MoraStyle;
 use mora_bin::lisp;
-use display_protocol::{Color, FrameUpdate, Grid, WireMessage, PROTOCOL_VERSION, DisplayCmd, InputEvent as ProtoInputEvent};
+use display_protocol::{FrameUpdate, WireMessage, PROTOCOL_VERSION, DisplayCmd};
 use display_tui::TuiTerminal;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -365,14 +365,13 @@ fn run_client(addr: &str) -> anyhow::Result<()> {
     let hello = WireMessage::from_json_line(line.trim().as_bytes())
         .map_err(|e| anyhow::anyhow!("Protocol error: {}", e))?;
 
-    let (width, height) = match &hello {
+    let (_width, _height) = match &hello {
         WireMessage::ServerHello { version, width, height } => {
             eprintln!("Server protocol v{}, size {}x{}", version, width, height);
             (*width, *height)
         }
         _ => anyhow::bail!("Expected ServerHello, got {:?}", hello),
     };
-
     let client_hello = WireMessage::ClientHello { version: PROTOCOL_VERSION };
     stream.write_all(&client_hello.to_json_line().unwrap())?;
     stream.flush()?;

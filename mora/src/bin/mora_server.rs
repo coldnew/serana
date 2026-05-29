@@ -1,5 +1,5 @@
 use clap::Parser;
-use display_protocol::{DisplayCmd, FrameUpdate, InputEvent, WireMessage, PROTOCOL_VERSION};
+use display_protocol::{DisplayCmd, WireMessage, PROTOCOL_VERSION};
 use mora_bin::mora::editor_core::MoraCore;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

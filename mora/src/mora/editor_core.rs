@@ -1,16 +1,12 @@
-use crate::mora::display::style::{MoraColor, MoraStyle};
 use crate::mora::editor::MoraEditor;
-use crate::mora::ui::EditorWidget;
 use crate::mora::ui_node;
-use crate::mora::display::backend::{InputEvent, MouseKind};
+use crate::mora::display::backend::InputEvent;
 use crate::mora::display::event::{MoraKeyEvent, MoraKeyCode};
 use display_protocol::{
-    Cell, Color, CursorState, CursorStyle, FrameUpdate, Grid, StatusLine, Style,
+    Cell, Color, CursorState, CursorStyle, FrameUpdate, Grid, Style,
     DisplayCmd, InputEvent as ProtoInputEvent, KeyEvent, KeyCode,
     compute_layout, paint,
 };
-use ratatui::layout::Rect;
-use ratatui::widgets::Widget;
 use std::path::Path;
 
 /// Headless editor engine. Produces FrameUpdate protocol messages
@@ -49,61 +45,11 @@ impl MoraCore {
         self.editor.set_height(editor_height);
     }
 
-    /// Render the current editor state as a FrameUpdate.
-    pub fn render_frame(&self) -> FrameUpdate {
-        let area = Rect::new(0, 0, self.width, self.height);
-        let mut ratatui_buf = ratatui::buffer::Buffer::empty(area);
-        let widget = EditorWidget::new(&self.editor);
-        widget.render(area, &mut ratatui_buf);
-
-        let mut grid = Grid::new(self.width, self.height);
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let cell = &ratatui_buf[(x, y)];
-                let fg: Color = display_tui::conversions::color_from_ratatui(cell.fg);
-                let bg: Color = display_tui::conversions::color_from_ratatui(cell.bg);
-                let style = Style {
-                    fg: Some(fg),
-                    bg: Some(bg),
-                    ..Style::default()
-                };
-                let ch = cell.symbol().chars().next().unwrap_or(' ');
-                grid.set(x, y, Cell { ch, style });
-            }
-        }
-
-        let cursor_visible = !matches!(
-            self.editor.mode(),
-            crate::mora::keymap::EditorMode::Insert
-                | crate::mora::keymap::EditorMode::Normal
-        ) || true; // always visible in most modes
-
-        let cursor_style = match self.editor.mode() {
-            crate::mora::keymap::EditorMode::Insert => CursorStyle::Bar,
-            crate::mora::keymap::EditorMode::Normal => CursorStyle::Block,
-            _ => CursorStyle::Block,
-        };
-
-        FrameUpdate {
-            grid,
-            cursor: CursorState {
-                x: self.editor.buffer.cursor.col as u16,
-                y: self.editor.buffer.cursor.row as u16,
-                visible: cursor_visible,
-                style: cursor_style,
-            },
-            status_line: StatusLine::default(),
-            command_line: None,
-            help_bar: None,
-            full_redraw: true,
-        }
-    }
-
     /// Render editor state using the declarative UiNode pipeline.
     /// Builds a UiNode tree → layout → paint → Grid.
     pub fn render_ui_frame(&self) -> FrameUpdate {
         let ui = ui_node::build_ui(&self.editor, self.width, self.height);
-        let layout = compute_layout(&ui, self.width, self.height);
+        let _layout = compute_layout(&ui, self.width, self.height);
         let buf = paint(&ui, self.width, self.height);
 
         let mut grid = Grid::new(self.width, self.height);
@@ -139,7 +85,7 @@ impl MoraCore {
                 visible: cursor_visible,
                 style: cursor_style,
             },
-            status_line: StatusLine::default(),
+            status_line: Default::default(),
             command_line: None,
             help_bar: None,
             full_redraw: true,
@@ -215,8 +161,13 @@ fn proto_key_to_mora(key: KeyEvent) -> MoraKeyEvent {
         KeyCode::PageUp => MoraKeyCode::PageUp,
         KeyCode::PageDown => MoraKeyCode::PageDown,
         KeyCode::F(n) => MoraKeyCode::F(n),
-        KeyCode::Insert => MoraKeyCode::Insert,
-        KeyCode::BackTab => MoraKeyCode::BackTab,
+        _ => MoraKeyCode::Char('\0'),
     };
-    MoraKeyEvent::new(code, Default::default())
+    let modifiers = crate::mora::display::event::MoraKeyModifiers {
+        ctrl: key.modifiers.ctrl,
+        alt: key.modifiers.alt,
+        shift: key.modifiers.shift,
+        super_key: key.modifiers.super_key,
+    };
+    MoraKeyEvent::new(code, modifiers)
 }
