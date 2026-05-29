@@ -162,7 +162,7 @@ fn run_app(
         match events.next()? {
             Event::Input(display_protocol::InputEvent::Key(key_event)) => {
                 // Convert display-protocol KeyEvent to crossterm KeyEvent for app
-                let crossterm_key: crossterm::event::KeyEvent = key_event.into();
+                let crossterm_key = display_tui::conversions::key_event_to_crossterm(key_event);
                 if !app.handle_key_event(crossterm_key)? || app.should_quit {
                     return Ok(());
                 }

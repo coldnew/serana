@@ -158,7 +158,7 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
                     {
                         break;
                     }
-                    editor.handle_key(MoraKeyEvent::from(key));
+                    editor.handle_key(display_tui::conversions::key_event_from_crossterm(key));
                 }
             }
 

@@ -60,8 +60,8 @@ impl MoraCore {
         for y in 0..self.height {
             for x in 0..self.width {
                 let cell = &ratatui_buf[(x, y)];
-                let fg: Color = MoraColor::from(cell.fg).into();
-                let bg: Color = MoraColor::from(cell.bg).into();
+                let fg: Color = display_tui::conversions::color_from_ratatui(cell.fg);
+                let bg: Color = display_tui::conversions::color_from_ratatui(cell.bg);
                 let style = Style {
                     fg: Some(fg),
                     bg: Some(bg),

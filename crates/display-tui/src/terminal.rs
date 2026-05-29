@@ -3,12 +3,11 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use display_protocol::{Cell, FrameUpdate, Grid, InputEvent, Style};
+use display_protocol::{Cell, FrameUpdate, Grid, InputEvent};
 use ratatui::{
     backend::CrosstermBackend,
     buffer::Buffer as RatatuiBuffer,
     layout::Rect,
-    style::{Color, Style as RatatuiStyle},
     Terminal,
 };
 use std::io;
@@ -97,8 +96,8 @@ impl TuiTerminal {
                     let cell = grid.get(x, y);
                     let ratatui_cell = buf.get_mut(x, y);
                     ratatui_cell.set_symbol(&cell.ch.to_string());
-                    ratatui_cell.set_fg(Color::from(cell.style.fg.unwrap_or(display_protocol::Color::WHITE)));
-                    ratatui_cell.set_bg(Color::from(cell.style.bg.unwrap_or(display_protocol::Color::BLACK)));
+                    ratatui_cell.set_fg(crate::conversions::color_to_ratatui(cell.style.fg.unwrap_or(display_protocol::Color::WHITE)));
+                    ratatui_cell.set_bg(crate::conversions::color_to_ratatui(cell.style.bg.unwrap_or(display_protocol::Color::BLACK)));
                 }
             }
         })?;
@@ -161,8 +160,8 @@ pub fn grid_to_ratatui_buf(grid: &Grid) -> RatatuiBuffer {
             let cell = grid.get(x, y);
             let ratatui_cell = buf.get_mut(x, y);
             ratatui_cell.set_symbol(&cell.ch.to_string());
-            ratatui_cell.set_fg(Color::from(cell.style.fg.unwrap_or(display_protocol::Color::WHITE)));
-            ratatui_cell.set_bg(Color::from(cell.style.bg.unwrap_or(display_protocol::Color::BLACK)));
+            ratatui_cell.set_fg(crate::conversions::color_to_ratatui(cell.style.fg.unwrap_or(display_protocol::Color::WHITE)));
+            ratatui_cell.set_bg(crate::conversions::color_to_ratatui(cell.style.bg.unwrap_or(display_protocol::Color::BLACK)));
         }
     }
     buf

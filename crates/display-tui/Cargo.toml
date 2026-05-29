@@ -9,6 +9,6 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-display-protocol = { path = "../display-protocol", features = ["tui"] }
+display-protocol = { path = "../display-protocol" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }

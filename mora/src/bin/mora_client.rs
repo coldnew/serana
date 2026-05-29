@@ -59,10 +59,10 @@ fn grid_to_ratatui_buf(grid: &Grid) -> ratatui::buffer::Buffer {
             let cell = grid.get(x, y);
             let ratatui_cell = buf.get_mut(x, y);
             ratatui_cell.set_symbol(&cell.ch.to_string());
-            ratatui_cell.set_fg(ratatui::style::Color::from(
+            ratatui_cell.set_fg(display_tui::conversions::color_to_ratatui(
                 cell.style.fg.unwrap_or(Color::WHITE),
             ));
-            ratatui_cell.set_bg(ratatui::style::Color::from(
+            ratatui_cell.set_bg(display_tui::conversions::color_to_ratatui(
                 cell.style.bg.unwrap_or(Color::BLACK),
             ));
         }

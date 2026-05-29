@@ -53,7 +53,7 @@ impl<'a> Widget for EditorWidget<'a> {
         );
 
         let help = status_line::render_help_bar(editor.mode(), area.width as usize);
-        buf.set_line(help_area.x, help_area.y, &ratatui::text::Line::from(help), help_area.width);
+        buf.set_line(help_area.x, help_area.y, &display_tui::conversions::styled_line_to_ratatui(help), help_area.width);
 
         if editor.windows.len() > 1 {
             render_multi_windows(editor, editor_area, buf);
@@ -62,11 +62,11 @@ impl<'a> Widget for EditorWidget<'a> {
         }
 
         let status = status_line::render_status_line(editor, area.width as usize);
-        buf.set_line(status_area.x, status_area.y, &ratatui::text::Line::from(status), status_area.width);
+        buf.set_line(status_area.x, status_area.y, &display_tui::conversions::styled_line_to_ratatui(status), status_area.width);
 
         if cmd_height > 0 {
             let cmd = status_line::render_command_line(editor, area.width as usize);
-            buf.set_line(cmd_area.x, cmd_area.y, &ratatui::text::Line::from(cmd), cmd_area.width);
+            buf.set_line(cmd_area.x, cmd_area.y, &display_tui::conversions::styled_line_to_ratatui(cmd), cmd_area.width);
         }
     }
 }
@@ -157,7 +157,7 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
             }
             buf[(area.x + col as u16, y)]
                 .set_char(ch)
-                .set_style(Style::from(gutter_style_actual));
+                .set_style(display_tui::conversions::style_to_ratatui(gutter_style_actual));
         }
 
         let line_text = text_buf.line(line_idx);
@@ -229,11 +229,11 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
                     }
                     buf[(text_x + display_col, y)]
                         .set_char(' ')
-                        .set_style(Style::from(overlay_style));
+                        .set_style(display_tui::conversions::style_to_ratatui(overlay_style));
                     display_col += 1;
                 }
             } else {
-                buf[(x, y)].set_char(ch).set_style(Style::from(overlay_style));
+                buf[(x, y)].set_char(ch).set_style(display_tui::conversions::style_to_ratatui(overlay_style));
                 display_col += 1;
             }
             byte_col += ch.len_utf8();
@@ -249,7 +249,7 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
                     .chars()
                     .nth(text_buf.cursor.col.min(line_text.len().saturating_sub(1)))
                     .unwrap_or(' ');
-                buf[(x, y)].set_char(ch).set_style(Style::from(cursor_style));
+                buf[(x, y)].set_char(ch).set_style(display_tui::conversions::style_to_ratatui(cursor_style));
             }
         }
 
@@ -259,9 +259,9 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
                 sel_end.map_or(false, |end| line_idx > start.row && line_idx < end.row)
             });
             buf[(x, y)].set_char(' ').set_style(if fill_sel {
-                Style::from(selection_style)
+                display_tui::conversions::style_to_ratatui(selection_style)
             } else if is_current {
-                Style::from(MoraStyle::new().bg(MoraColor::new(25, 28, 35)))
+                display_tui::conversions::style_to_ratatui(MoraStyle::new().bg(MoraColor::new(25, 28, 35)))
             } else {
                 Style::default()
             });
@@ -277,7 +277,7 @@ fn render_editor_area(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buffer
             break;
         }
         let tilde_style = MoraStyle::new().fg(MoraColor::new(55, 60, 72));
-        buf[(area.x, y)].set_char('~').set_style(Style::from(tilde_style));
+        buf[(area.x, y)].set_char('~').set_style(display_tui::conversions::style_to_ratatui(tilde_style));
         for col in 1..area.width {
             buf[(area.x + col, y)].set_char(' ');
         }
@@ -313,7 +313,7 @@ fn render_multi_windows(editor: &MoraEditor, area: Rect, buf: &mut ratatui::buff
 
         for x in area.x..area.x + area.width {
             if y_offset > area.y {
-                buf[(x, y_offset - 1)].set_char('─').set_style(Style::from(border));
+                buf[(x, y_offset - 1)].set_char('─').set_style(display_tui::conversions::style_to_ratatui(border));
             }
         }
 
@@ -382,7 +382,7 @@ fn render_window_content(
             }
             buf[(area.x + col as u16, y)]
                 .set_char(ch)
-                .set_style(Style::from(gutter_style_actual));
+                .set_style(display_tui::conversions::style_to_ratatui(gutter_style_actual));
         }
 
         let line_text = text_buf.line(line_idx);
@@ -417,11 +417,11 @@ fn render_window_content(
                     }
                     buf[(text_x + display_col, y)]
                         .set_char(' ')
-                        .set_style(Style::from(style));
+                        .set_style(display_tui::conversions::style_to_ratatui(style));
                     display_col += 1;
                 }
             } else {
-                buf[(x, y)].set_char(ch).set_style(Style::from(style));
+                buf[(x, y)].set_char(ch).set_style(display_tui::conversions::style_to_ratatui(style));
                 display_col += 1;
             }
             byte_col += ch.len_utf8();
@@ -436,14 +436,14 @@ fn render_window_content(
                     .chars()
                     .nth(cursor.col.min(line_text.len().saturating_sub(1)))
                     .unwrap_or(' ');
-                buf[(x, y)].set_char(ch).set_style(Style::from(cursor_style));
+                buf[(x, y)].set_char(ch).set_style(display_tui::conversions::style_to_ratatui(cursor_style));
             }
         }
 
         while display_col < text_width {
             let x = text_x + display_col;
             buf[(x, y)].set_char(' ').set_style(if is_current {
-                Style::from(MoraStyle::new().bg(MoraColor::new(25, 28, 35)))
+                display_tui::conversions::style_to_ratatui(MoraStyle::new().bg(MoraColor::new(25, 28, 35)))
             } else {
                 Style::default()
             });
@@ -459,7 +459,7 @@ fn render_window_content(
             break;
         }
         let tilde_style = MoraStyle::new().fg(MoraColor::new(55, 60, 72));
-        buf[(area.x, y)].set_char('~').set_style(Style::from(tilde_style));
+        buf[(area.x, y)].set_char('~').set_style(display_tui::conversions::style_to_ratatui(tilde_style));
         for col in 1..area.width {
             buf[(area.x + col, y)].set_char(' ');
         }
@@ -480,7 +480,7 @@ fn render_window_content(
             }
             buf[(area.x + col as u16, status_y)]
                 .set_char(ch)
-                .set_style(Style::from(status_style));
+                .set_style(display_tui::conversions::style_to_ratatui(status_style));
         }
     }
 }

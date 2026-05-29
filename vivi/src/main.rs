@@ -98,8 +98,8 @@ fn main() -> Result<()> {
                     ratatui_cell.set_symbol(&cell.ch.to_string());
                     let proto_fg = display_protocol::Color::new(cell.fg.r, cell.fg.g, cell.fg.b);
                     let proto_bg = display_protocol::Color::new(cell.bg.r, cell.bg.g, cell.bg.b);
-                    ratatui_cell.set_fg(ratatui::style::Color::from(proto_fg));
-                    ratatui_cell.set_bg(ratatui::style::Color::from(proto_bg));
+                    ratatui_cell.set_fg(display_tui::conversions::color_to_ratatui(proto_fg));
+                    ratatui_cell.set_bg(display_tui::conversions::color_to_ratatui(proto_bg));
                 }
             }
             // Position cursor

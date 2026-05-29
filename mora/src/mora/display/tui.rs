@@ -7,15 +7,14 @@ use ratatui::{
     backend::CrosstermBackend,
     buffer::Buffer as RatatuiBuffer,
     layout::{Rect, Size},
-    style::{Color, Modifier, Style},
     Terminal,
 };
 use std::io;
 use std::time::Duration;
 
 use super::backend::{DisplayBackend, InputEvent, MouseKind, MoraRect, CellBuffer};
-use super::event::{MoraKeyCode, MoraKeyEvent, MoraKeyModifiers};
-use super::style::{MoraColor, MoraStyle};
+use super::event::MoraKeyCode;
+use super::style::MoraStyle;
 
 pub struct TuiBackend {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
@@ -76,14 +75,14 @@ impl DisplayBackend for TuiBackend {
     fn set_cell(&mut self, x: u16, y: u16, ch: char, style: MoraStyle) {
         let buf = self.terminal.current_buffer_mut();
         if x < buf.area.width && y < buf.area.height {
-            let ratatui_style: Style = style.into();
+            let ratatui_style = display_tui::conversions::style_to_ratatui(style);
             buf[(x, y)].set_char(ch).set_style(ratatui_style);
         }
     }
 
     fn set_line(&mut self, x: u16, y: u16, text: &str, style: MoraStyle) {
         let buf = self.terminal.current_buffer_mut();
-        let ratatui_style: Style = style.into();
+        let ratatui_style = display_tui::conversions::style_to_ratatui(style);
         for (i, ch) in text.chars().enumerate() {
             let cx = x + i as u16;
             if cx >= buf.area.width {
@@ -99,7 +98,7 @@ impl DisplayBackend for TuiBackend {
         if event::poll(Duration::from_millis(timeout_ms)).ok()? {
             match event::read().ok()? {
                 Event::Key(key) => {
-                    let mora_key: MoraKeyEvent = key.into();
+                    let mora_key = display_tui::conversions::key_event_from_crossterm(key);
                     Some(InputEvent::Key(mora_key))
                 }
                 Event::Resize(w, h) => Some(InputEvent::Resize(w, h)),
@@ -147,7 +146,7 @@ impl DisplayBackend for TuiBackend {
                 for y in 0..buf.height.min(area.height) {
                     for x in 0..buf.width.min(area.width) {
                         let cell = buf.get(x, y);
-                        let ratatui_style: Style = cell.style.into();
+                        let ratatui_style = display_tui::conversions::style_to_ratatui(cell.style);
                         ratatui_buf[(x, y)].set_char(cell.ch).set_style(ratatui_style);
                     }
                 }
