@@ -26,3 +26,6 @@ pub use dialog::Dialog;
 
 mod form;
 pub use form::{Form, FormField};
+
+mod accordion;
+pub use accordion::Accordion;
