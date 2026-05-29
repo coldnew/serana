@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use display_protocol::{KeyCode, KeyEvent, KeyModifiers, Selection, SelectionMode};
 
 use crate::buffer::Buffer;
@@ -6,6 +7,7 @@ use crate::mode::Mode;
 
 mod commands;
 mod motion;
+use motion::Motion;
 mod visual;
 
 const SCROLL_MARGIN: usize = 3;
@@ -59,8 +61,6 @@ pub struct Editor {
     pending_find_forward: bool,
     /// Till mode of pending find (t/T vs f/F).
     pending_find_till: bool,
-    /// Whether the last motion was `$` (inclusive for operators like d/c/y).
-    last_motion_inclusive: bool,
     /// Undo stack (most recent first).
     undo_stack: Vec<UndoState>,
     /// Redo stack (most recent first).
@@ -112,7 +112,6 @@ impl Editor {
             pending_find: false,
             pending_find_forward: true,
             pending_find_till: false,
-            last_motion_inclusive: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             in_change_group: false,
@@ -256,7 +255,11 @@ impl Editor {
         self.message = None;
     }
 
-    /// Get the effective count (defaults to 1).
+    /// Get the effective count (defaults to 1), without consuming it.
+    fn peek_count(&self) -> usize {
+        self.count.unwrap_or(1)
+    }
+    /// Get the effective count (defaults to 1) and clear it.
     fn take_count(&mut self) -> usize {
         self.count.take().unwrap_or(1)
     }
@@ -322,69 +325,38 @@ impl Editor {
             return;
         }
 
+        // Try single-key motion first.
+        // Special case: '0' is a motion (line start) only when no count is
+        // pending — otherwise it extends the count (e.g., "50" → count 50).
+        if let KeyCode::Char('0') = key.code {
+            if self.count.is_some() {
+                let digit = 0usize;
+                self.count = Some(self.count.unwrap_or(0) * 10 + digit);
+                return;
+            }
+            self.take_count(); // consume the default 1
+            let (row, col) = Motion::LineStart.apply(&self.cursor, &self.buffer, self.term_height as usize);
+            self.cursor.row = row;
+            self.set_cursor_col(col);
+            return;
+        }
+        let count = self.peek_count();
+        if let Some(motion) = Motion::from_key(key.code, count) {
+            self.take_count(); // consume count now that motion matched
+            let term_height = self.term_height as usize;
+            let (row, col) = motion.apply(&self.cursor, &self.buffer, term_height);
+            self.cursor.row = row;
+            if motion.is_vertical() {
+                // Vertical motions clamp col but preserve preferred_col.
+                self.cursor.col = col;
+            } else {
+                self.set_cursor_col(col);
+            }
+            return;
+        }
         match key.code {
-            // Movement
-            KeyCode::Char('h') | KeyCode::Left => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    if self.cursor.col > 0 {
-                        self.set_cursor_col(self.cursor.col - 1);
-                    }
-                }
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_cursor_down(1);
-                }
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_cursor_up(1);
-                }
-            }
-            KeyCode::Char('l') | KeyCode::Right => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    let max_col = self.buffer.line_len(self.cursor.row).saturating_sub(1);
-                    if self.cursor.col < max_col {
-                        self.set_cursor_col(self.cursor.col + 1);
-                    }
-                }
-            }
-
-            // Word motion
-            KeyCode::Char('w') => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_word_forward();
-                }
-            }
-            KeyCode::Char('b') => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_word_backward();
-                }
-            }
-            KeyCode::Char('e') => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_word_end();
-                }
-            }
-
-            // Line motion
-            KeyCode::Char('$') => {
-                let len = self.buffer.line_len(self.cursor.row);
-                self.set_cursor_col(if len > 0 { len - 1 } else { 0 });
-                self.last_motion_inclusive = true;
-            }
-            KeyCode::Char('^') => {
-                // First non-blank character
-                let line = self.buffer.line(self.cursor.row);
-                self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
-            }
+            // Motions that need extra state (G uses count as absolute line,
+            // H/L/M need scroll offset, g is a two-key prefix)
             KeyCode::Char('G') => {
                 let last = self.buffer.line_count().saturating_sub(1);
                 if self.count.is_some() {
@@ -399,15 +371,11 @@ impl Editor {
             KeyCode::Char('g') => {
                 self.pending_g = true;
             }
-
-            // Screen-relative motion
             KeyCode::Char('H') => {
-                // Top of screen
                 self.cursor.row = self.scroll.row;
                 self.apply_preferred_col();
             }
             KeyCode::Char('L') => {
-                // Bottom of screen
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let bottom = (self.scroll.row + text_height - 1)
                     .min(self.buffer.line_count().saturating_sub(1));
@@ -415,29 +383,11 @@ impl Editor {
                 self.apply_preferred_col();
             }
             KeyCode::Char('M') => {
-                // Middle of screen
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let mid = self.scroll.row + text_height / 2;
                 self.cursor.row = mid.min(self.buffer.line_count().saturating_sub(1));
                 self.apply_preferred_col();
             }
-
-            // Page up/down
-            KeyCode::PageDown | KeyCode::Char('\x06') => {
-                let text_height = (self.term_height as usize).saturating_sub(2);
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_cursor_down(text_height);
-                }
-            }
-            KeyCode::PageUp | KeyCode::Char('\x02') => {
-                let text_height = (self.term_height as usize).saturating_sub(2);
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.move_cursor_up(text_height);
-                }
-            }
-
             // Enter insert mode
             KeyCode::Char('i') => {
                 self.push_undo_state();
@@ -793,7 +743,6 @@ impl Editor {
     fn execute_operator_motion(&mut self, op: OperatorKind, key: KeyEvent) {
         // Consume the pending operator
         self.pending_operator = None;
-
         // Handle line-wise operator (dd, yy, cc)
         match key.code {
             KeyCode::Char('d') | KeyCode::Char('y') | KeyCode::Char('c') => {
@@ -814,73 +763,56 @@ impl Editor {
             }
             _ => {}
         }
-
-        // For operator + motion, save cursor and apply motion
-        // Then apply operation over the range [saved_cursor, cursor)
+        // Try to resolve the key as a motion
         let saved_row = self.cursor.row;
         let saved_col = self.cursor.col;
-        let saved_scroll = self.scroll;
-        // Apply the motion
-        let prev_count = self.count.take();
-        self.last_motion_inclusive = false;
-        self.handle_normal(key);
-        let end_row = self.cursor.row;
-        let mut end_col = self.cursor.col;
-        // Inclusive motions (like $) extend the range by one so the
-        // exclusive upper bound [..ec) still covers the last char.
-        if self.last_motion_inclusive && end_row == saved_row {
-            let line_len = self.buffer.line_len(end_row);
-            end_col = (end_col + 1).min(line_len);
+        let count = self.peek_count();
+        let term_height = self.term_height as usize;
+        let motion = match Motion::from_key(key.code, count) {
+            Some(m) => { self.take_count(); m }
+            None => return,
+        };
+        let (end_row, end_col) = motion.apply(&self.cursor, &self.buffer, term_height);
+        // Inclusive motions extend the range by one so the exclusive
+        // upper bound [..ec) still covers the last char.
+        let mut ec = end_col;
+        if motion.is_inclusive() && end_row == saved_row {
+            ec = (ec + 1).min(self.buffer.line_len(end_row));
         }
-
-        // Restore scroll (don't want the motion to scroll independently)
-        self.scroll = saved_scroll;
-
+        let forward = end_row > saved_row || (end_row == saved_row && ec > saved_col);
+        let from = if forward { (saved_row, saved_col) } else { (end_row, ec) };
+        let to = if forward { (end_row, ec) } else { (saved_row, saved_col) };
         match op {
             OperatorKind::Delete => {
                 self.push_undo_state();
-                if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
-                    // Forward motion: delete from saved to end
-                    self.apply_delete_range((saved_row, saved_col), (end_row, end_col));
+                self.apply_delete_range(from, to);
+                if forward {
                     self.cursor.row = saved_row;
                     self.cursor.col = saved_col;
-                } else if end_row < saved_row || (end_row == saved_row && end_col < saved_col) {
-                    // Backward motion: delete from end to saved
-                    self.apply_delete_range((end_row, end_col), (saved_row, saved_col));
+                } else {
                     self.cursor.row = end_row;
-                    self.cursor.col = end_col;
+                    self.cursor.col = ec;
                 }
             }
             OperatorKind::Yank => {
-                if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
-                    let text = self.extract_range((saved_row, saved_col), (end_row, end_col));
-                    self.yank_register = YankRegister::Chars(text);
-                } else {
-                    let text = self.extract_range((end_row, end_col), (saved_row, saved_col));
-                    self.yank_register = YankRegister::Chars(text);
-                }
+                let text = self.extract_range(from, to);
+                self.yank_register = YankRegister::Chars(text);
                 self.cursor.row = saved_row;
                 self.cursor.col = saved_col;
             }
             OperatorKind::Change => {
                 self.push_undo_state();
-                if end_row > saved_row || (end_row == saved_row && end_col > saved_col) {
-                    self.apply_delete_range((saved_row, saved_col), (end_row, end_col));
+                self.apply_delete_range(from, to);
+                if forward {
                     self.cursor.row = saved_row;
                     self.cursor.col = saved_col;
                 } else {
-                    self.apply_delete_range((end_row, end_col), (saved_row, saved_col));
                     self.cursor.row = end_row;
-                    self.cursor.col = end_col;
+                    self.cursor.col = ec;
                 }
                 self.in_change_group = true;
                 self.mode = Mode::Insert;
             }
-        }
-
-        // Restore count if consumed
-        if let Some(c) = prev_count {
-            self.count = Some(c);
         }
     }
 
