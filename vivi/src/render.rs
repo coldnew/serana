@@ -91,19 +91,27 @@ pub fn line_number_width(line_count: usize, screen_width: usize) -> usize {
 
     // digit_count(line_count.max(1)) + 1 for the separator column
     let n = line_count.max(1);
-    let digits = if n < 10 { 1 }
-        else if n < 100 { 2 }
-        else if n < 1_000 { 3 }
-        else if n < 10_000 { 4 }
-        else if n < 100_000 { 5 }
-        else if n < 1_000_000 { 6 }
-        else { n.ilog10() as usize + 1 };
+    let digits = if n < 10 {
+        1
+    } else if n < 100 {
+        2
+    } else if n < 1_000 {
+        3
+    } else if n < 10_000 {
+        4
+    } else if n < 100_000 {
+        5
+    } else if n < 1_000_000 {
+        6
+    } else {
+        n.ilog10() as usize + 1
+    };
     (digits + 1).min(screen_width)
 }
 
 fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
     let text_height = text_area_height(height);
-    let lines = buffer_lines(editor, editor.scroll().row, text_height as usize);
+    let lines = buffer_lines(editor);
     let text_style = Style::new().fg(FG).bg(BG);
     let selection_style = Style::new().fg(FG).bg(VISUAL_BG);
     let status_style = Style::new().fg(STATUS_FG).bg(STATUS_BG);
@@ -148,22 +156,13 @@ fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
     tree
 }
 
-fn buffer_lines(editor: &Editor, scroll_top: usize, visible_height: usize) -> Vec<StyledLine> {
+fn buffer_lines(editor: &Editor) -> Vec<StyledLine> {
     let total = editor.buffer().line_count();
-    if total == 0 || visible_height == 0 {
+    if total == 0 {
         return Vec::new();
     }
-    let start = scroll_top.min(total.saturating_sub(1));
-    let count = visible_height.min(total - start);
-    let lines: Vec<&str> = (start..start + count)
-        .map(|idx| editor.buffer().line(idx))
-        .collect();
-    SyntaxHighlighter::global().highlight_range(
-        &lines,
-        editor.buffer().path(),
-        0,
-        count,
-    )
+    let lines: Vec<&str> = (0..total).map(|idx| editor.buffer().line(idx)).collect();
+    SyntaxHighlighter::global().highlight_buffer(&lines, editor.buffer().path())
 }
 
 fn text_area_height(height: u16) -> u16 {
@@ -325,5 +324,215 @@ mod tests {
         let screen = render(&editor, 20, 10);
         assert_eq!(screen.width, 20);
         assert_eq!(screen.height, 10);
+    }
+
+    #[test]
+    fn test_G_cursor_not_on_filler_line() {
+        use display_protocol::KeyEvent;
+
+        for n in 1..=50 {
+            let mut buf = Buffer::new();
+            buf.replace_range(0, 0, 0, "line0");
+            for i in 1..n {
+                buf.insert_line(i, format!("line{}", i));
+            }
+            let mut editor = Editor::new(buf);
+            editor.set_term_size(80, 24);
+
+            editor.handle_key(KeyEvent::char('G'));
+
+            // Cursor must be on a valid line
+            assert!(
+                editor.cursor().row < editor.buffer().line_count(),
+                "G on {}-line file: cursor.row={} >= line_count={}",
+                n,
+                editor.cursor().row,
+                editor.buffer().line_count()
+            );
+
+            // Rendered cursor must be within the text area
+            let (cx, cy) = cursor_position(&editor, 80, 24);
+            let text_height = 22u16;
+            assert!(
+                cy < text_height,
+                "G on {}-line file: cursor y={} >= text_height={}",
+                n,
+                cy,
+                text_height
+            );
+
+            // The cell at cursor position must not be a filler '~'
+            let screen = render(&editor, 80, 24);
+            let ch = screen.get(cx, cy).ch;
+            assert_ne!(
+                ch, '~',
+                "G on {}-line file: cursor on filler line at ({}, {}), cursor.row={}, scroll.row={}",
+                n, cx, cy, editor.cursor().row, editor.scroll().row
+            );
+        }
+    }
+    #[test]
+    fn test_G_cursor_various_term_sizes() {
+        use display_protocol::KeyEvent;
+
+        let term_sizes = [(80, 24), (80, 10), (40, 6), (80, 4)];
+        let file_sizes = [1, 2, 3, 5, 10, 22, 50, 100, 200];
+
+        for &(tw, th) in &term_sizes {
+            for &n in &file_sizes {
+                let mut buf = Buffer::new();
+                buf.replace_range(0, 0, 0, "line0");
+                for i in 1..n {
+                    buf.insert_line(i, format!("line{}", i));
+                }
+                let mut editor = Editor::new(buf);
+                editor.set_term_size(tw, th);
+
+                editor.handle_key(KeyEvent::char('G'));
+
+                assert!(
+                    editor.cursor().row < editor.buffer().line_count(),
+                    "G on {}-line file, {}x{} term: cursor.row={} >= line_count={}",
+                    n,
+                    tw,
+                    th,
+                    editor.cursor().row,
+                    editor.buffer().line_count()
+                );
+
+                let (cx, cy) = cursor_position(&editor, tw, th);
+                let text_height = th.saturating_sub(2);
+                if text_height > 0 {
+                    assert!(
+                        cy < text_height,
+                        "G on {}-line file, {}x{} term: cursor y={} >= text_height={}",
+                        n,
+                        tw,
+                        th,
+                        cy,
+                        text_height
+                    );
+
+                    let screen = render(&editor, tw, th);
+                    let ch = screen.get(cx, cy).ch;
+                    assert_ne!(
+                        ch, '~',
+                        "G on {}-line file, {}x{} term: cursor on filler at ({}, {}), cursor.row={}, scroll.row={}",
+                        n, tw, th, cx, cy, editor.cursor().row, editor.scroll().row
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_g_integration_from_disk() {
+        use display_protocol::KeyEvent;
+        use std::fs;
+
+        for n in [1, 2, 3, 5, 10, 50, 100] {
+            let path =
+                std::env::temp_dir().join(format!("vivi-g-integ-{}-{}.txt", std::process::id(), n));
+            let content: String = (0..n).map(|i| format!("line{}\n", i)).collect();
+            fs::write(&path, &content).unwrap();
+
+            let buf = Buffer::from_file(&path).unwrap();
+            let line_count = buf.line_count();
+            let mut editor = Editor::new(buf);
+            editor.set_term_size(80, 24);
+
+            editor.handle_key(KeyEvent::char('G'));
+
+            assert_eq!(
+                editor.cursor().row,
+                line_count - 1,
+                "G on {}-line file: cursor.row={} expected {}",
+                n,
+                editor.cursor().row,
+                line_count - 1
+            );
+
+            // Check every screen row
+            let screen = render(&editor, 80, 24);
+            let text_height: usize = 22;
+
+            for row in 0..text_height {
+                let ch = screen.get(0, row as u16).ch;
+                let line_idx = editor.scroll().row + row;
+
+                if line_idx < line_count {
+                    assert_ne!(
+                        ch, '~',
+                        "G on {}-line file: row {} (line_idx={}) has '~' but should have content. scroll.row={}",
+                        n, row, line_idx, editor.scroll().row
+                    );
+                }
+            }
+
+            // Cursor must map to a valid content row
+            let (cx, cy) = cursor_position(&editor, 80, 24);
+            let cursor_line_idx = editor.scroll().row + cy as usize;
+            assert!(
+                cursor_line_idx < line_count,
+                "G on {}-line file: cursor y={} maps to line_idx={} >= line_count={}. scroll.row={}, cursor.row={}",
+                n, cy, cursor_line_idx, line_count, editor.scroll().row, editor.cursor().row
+            );
+
+            let _ = fs::remove_file(&path);
+        }
+    }
+
+    #[test]
+    fn test_g_main_loop_simulation() {
+        // Simulates the exact flow in main.rs:
+        //   screen = render(&editor, w, h)
+        //   draw_mode_cursor(&mut screen, &editor, true)
+        use display_protocol::KeyEvent;
+
+        for n in [1, 2, 3, 5, 10, 50] {
+            let mut buf = Buffer::new();
+            buf.replace_range(0, 0, 0, "line0");
+            for i in 1..n {
+                buf.insert_line(i, format!("line{}", i));
+            }
+            let mut editor = Editor::new(buf);
+            editor.set_term_size(80, 24);
+
+            // Simulate opening the file and pressing G
+            editor.handle_key(KeyEvent::char('G'));
+
+            // Simulate the main loop render cycle
+            let mut screen = render(&editor, 80, 24);
+            draw_mode_cursor(&mut screen, &editor, true);
+
+            // Where is the cursor drawn?
+            let (cx, cy) = cursor_position(&editor, 80, 24);
+            assert!(cx < 80 && cy < 22, "cursor out of bounds: ({}, {})", cx, cy);
+
+            // What character is UNDER the cursor?
+            let ch = screen.get(cx, cy).ch;
+            assert_ne!(
+                ch,
+                '~',
+                "G on {}-line file: cursor drawn on '~' at screen ({}, {}). \
+                cursor.row={}, scroll.row={}, line_count={}",
+                n,
+                cx,
+                cy,
+                editor.cursor().row,
+                editor.scroll().row,
+                editor.buffer().line_count()
+            );
+
+            // Also verify the cursor bg is set (draw_mode_cursor applied)
+            assert_eq!(
+                screen.get(cx, cy).bg,
+                CURSOR_BG,
+                "G on {}-line file: cursor bg not applied at ({}, {})",
+                n,
+                cx,
+                cy
+            );
+        }
     }
 }
