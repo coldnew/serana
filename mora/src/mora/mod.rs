@@ -1,7 +1,7 @@
 mod buffer;
 pub mod display;
-pub mod editor_core;
 mod editor;
+pub mod editor_core;
 mod keymap;
 mod kill_ring;
 pub mod lisp_ext;
