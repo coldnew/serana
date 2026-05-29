@@ -1,5 +1,27 @@
 # Hermes Agent Refactor
 
+# Vivi Smooth Cursor Movement
+
+Assumptions:
+- "Not smooth" mainly means vertical movement loses the desired column on short lines.
+- Add a small scroll margin so cursor movement does not feel pinned to the viewport edge.
+- Keep the change local to cursor/scroll behavior.
+
+Success criteria for this slice:
+- [x] Preserve preferred cursor column across vertical movement.
+- [x] Apply a small scroll margin for vertical and horizontal scrolling.
+- [x] Add focused editor tests for ragged-line movement and scroll margin.
+- [x] Format touched files and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Vertical movement now uses `Cursor::preferred_col`, so moving through short lines restores the original column when a longer line is reached.
+- Horizontal movement, line motions, insert/replace edits, and line-opening operations now update the preferred column.
+- Full-page and half-page Ctrl scrolling reuse the preferred-column vertical movement path.
+- Scroll updates now keep a small vertical and horizontal margin instead of waiting until the cursor reaches the viewport edge.
+- Added tests for preferred-column movement across ragged lines and early scroll-margin movement.
+- Verification passed with `rustfmt` on `vivi/src/editor.rs` and `cargo test -p vivi` (65 tests).
+
 # Vivi Syntax Highlighting
 
 Assumptions:

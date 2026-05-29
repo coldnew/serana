@@ -8,6 +8,9 @@ mod commands;
 mod motion;
 mod visual;
 
+const SCROLL_MARGIN: usize = 3;
+const HORIZONTAL_SCROLL_MARGIN: usize = 5;
+
 /// The main editor state.
 pub struct Editor {
     buffer: Buffer,
@@ -155,18 +158,26 @@ impl Editor {
             crate::render::line_number_width(self.buffer.line_count(), self.term_width as usize);
         let text_width = (self.term_width as usize).saturating_sub(gutter);
 
-        // Vertical scroll
-        if self.cursor.row < self.scroll.row {
-            self.scroll.row = self.cursor.row;
-        } else if self.cursor.row >= self.scroll.row + text_height {
-            self.scroll.row = self.cursor.row - text_height + 1;
+        if text_height == 0 || text_width == 0 {
+            return;
         }
 
+        // Vertical scroll
+        let scroll_margin = SCROLL_MARGIN.min(text_height.saturating_sub(1) / 2);
+        if self.cursor.row < self.scroll.row + scroll_margin {
+            self.scroll.row = self.cursor.row.saturating_sub(scroll_margin);
+        } else if self.cursor.row + scroll_margin >= self.scroll.row + text_height {
+            self.scroll.row = (self.cursor.row + scroll_margin + 1).saturating_sub(text_height);
+        }
+        let max_scroll_row = self.buffer.line_count().saturating_sub(text_height);
+        self.scroll.row = self.scroll.row.min(max_scroll_row);
+
         // Horizontal scroll
-        if self.cursor.col < self.scroll.col {
-            self.scroll.col = self.cursor.col;
-        } else if self.cursor.col >= self.scroll.col + text_width {
-            self.scroll.col = self.cursor.col - text_width + 1;
+        let col_margin = HORIZONTAL_SCROLL_MARGIN.min(text_width.saturating_sub(1) / 2);
+        if self.cursor.col < self.scroll.col + col_margin {
+            self.scroll.col = self.cursor.col.saturating_sub(col_margin);
+        } else if self.cursor.col + col_margin >= self.scroll.col + text_width {
+            self.scroll.col = (self.cursor.col + col_margin + 1).saturating_sub(text_width);
         }
     }
 
@@ -188,26 +199,20 @@ impl Editor {
                 let n = self.take_count();
                 for _ in 0..n {
                     if self.cursor.col > 0 {
-                        self.cursor.col -= 1;
+                        self.set_cursor_col(self.cursor.col - 1);
                     }
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => {
                 let n = self.take_count();
                 for _ in 0..n {
-                    if self.cursor.row + 1 < self.buffer.line_count() {
-                        self.cursor.row += 1;
-                        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
-                    }
+                    self.move_cursor_down(1);
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 let n = self.take_count();
                 for _ in 0..n {
-                    if self.cursor.row > 0 {
-                        self.cursor.row -= 1;
-                        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
-                    }
+                    self.move_cursor_up(1);
                 }
             }
             KeyCode::Char('l') | KeyCode::Right => {
@@ -215,7 +220,7 @@ impl Editor {
                 for _ in 0..n {
                     let max_col = self.buffer.line_len(self.cursor.row).saturating_sub(1);
                     if self.cursor.col < max_col {
-                        self.cursor.col += 1;
+                        self.set_cursor_col(self.cursor.col + 1);
                     }
                 }
             }
@@ -242,16 +247,16 @@ impl Editor {
 
             // Line motion
             KeyCode::Char('0') => {
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
             }
             KeyCode::Char('$') => {
                 let len = self.buffer.line_len(self.cursor.row);
-                self.cursor.col = if len > 0 { len - 1 } else { 0 };
+                self.set_cursor_col(if len > 0 { len - 1 } else { 0 });
             }
             KeyCode::Char('^') => {
                 // First non-blank character
                 let line = self.buffer.line(self.cursor.row);
-                self.cursor.col = line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0);
+                self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
             }
             KeyCode::Char('G') => {
                 if self.count.is_some() {
@@ -262,7 +267,7 @@ impl Editor {
                     // Go to end of file
                     self.cursor.row = self.buffer.line_count().saturating_sub(1);
                 }
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
                 self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
             KeyCode::Char('g') => {
@@ -280,7 +285,7 @@ impl Editor {
             KeyCode::Char('H') => {
                 // Top of screen
                 self.cursor.row = self.scroll.row;
-                self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+                self.apply_preferred_col();
             }
             KeyCode::Char('L') => {
                 // Bottom of screen
@@ -288,14 +293,14 @@ impl Editor {
                 let bottom = (self.scroll.row + text_height - 1)
                     .min(self.buffer.line_count().saturating_sub(1));
                 self.cursor.row = bottom;
-                self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+                self.apply_preferred_col();
             }
             KeyCode::Char('M') => {
                 // Middle of screen
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let mid = self.scroll.row + text_height / 2;
                 self.cursor.row = mid.min(self.buffer.line_count().saturating_sub(1));
-                self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+                self.apply_preferred_col();
             }
 
             // Page up/down
@@ -303,17 +308,15 @@ impl Editor {
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let n = self.take_count();
                 for _ in 0..n {
-                    self.move_lines_down(text_height);
+                    self.move_cursor_down(text_height);
                 }
-                self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
             KeyCode::PageUp | KeyCode::Char('\x02') => {
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let n = self.take_count();
                 for _ in 0..n {
-                    self.move_lines_up(text_height);
+                    self.move_cursor_up(text_height);
                 }
-                self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
 
             // Enter insert mode
@@ -323,20 +326,20 @@ impl Editor {
             KeyCode::Char('I') => {
                 // Insert at beginning of line
                 let line = self.buffer.line(self.cursor.row);
-                self.cursor.col = line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0);
+                self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('a') => {
                 // Append after cursor
                 let max_col = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < max_col {
-                    self.cursor.col += 1;
+                    self.set_cursor_col(self.cursor.col + 1);
                 }
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('A') => {
                 // Append at end of line
-                self.cursor.col = self.buffer.line_len(self.cursor.row);
+                self.set_cursor_col(self.buffer.line_len(self.cursor.row));
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('o') => {
@@ -344,13 +347,13 @@ impl Editor {
                 let new_row = self.cursor.row + 1;
                 self.buffer.insert_line(new_row, String::new());
                 self.cursor.row = new_row;
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('O') => {
                 // Open line above
                 self.buffer.insert_line(self.cursor.row, String::new());
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
                 self.mode = Mode::Insert;
             }
 
@@ -396,7 +399,7 @@ impl Editor {
                 // Substitute entire line
                 let _ = self.buffer.delete_line(self.cursor.row);
                 self.buffer.insert_line(self.cursor.row, String::new());
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
                 self.mode = Mode::Insert;
             }
             KeyCode::Char('s') => {
@@ -436,7 +439,7 @@ impl Editor {
                             }
                         }
                         self.cursor.row += 1;
-                        self.cursor.col = 0;
+                        self.set_cursor_col(0);
                     }
                     YankRegister::Chars(text) => {
                         let col = self.cursor.col + 1;
@@ -455,7 +458,7 @@ impl Editor {
                                 self.buffer.insert_line(self.cursor.row + i, line.clone());
                             }
                         }
-                        self.cursor.col = 0;
+                        self.set_cursor_col(0);
                     }
                     YankRegister::Chars(text) => {
                         for _ in 0..n {
@@ -599,50 +602,61 @@ impl Editor {
         }
         self.yank_register = YankRegister::Lines(lines);
         self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+        self.cursor.preferred_col = self.cursor.col;
     }
 
     fn move_pages_down(&mut self) {
         let text_height = (self.term_height as usize).saturating_sub(2);
         let n = self.take_count();
         for _ in 0..n {
-            self.move_lines_down(text_height);
+            self.move_cursor_down(text_height);
         }
-        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
     }
 
     fn move_pages_up(&mut self) {
         let text_height = (self.term_height as usize).saturating_sub(2);
         let n = self.take_count();
         for _ in 0..n {
-            self.move_lines_up(text_height);
+            self.move_cursor_up(text_height);
         }
-        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
     }
 
     fn move_half_pages_down(&mut self) {
         let half_page = (self.term_height as usize).saturating_sub(2).max(1) / 2;
         let n = self.take_count();
         for _ in 0..n {
-            self.move_lines_down(half_page.max(1));
+            self.move_cursor_down(half_page.max(1));
         }
-        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
     }
 
     fn move_half_pages_up(&mut self) {
         let half_page = (self.term_height as usize).saturating_sub(2).max(1) / 2;
         let n = self.take_count();
         for _ in 0..n {
-            self.move_lines_up(half_page.max(1));
+            self.move_cursor_up(half_page.max(1));
         }
-        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
     }
 
-    fn move_lines_down(&mut self, lines: usize) {
+    fn set_cursor_col(&mut self, col: usize) {
+        self.cursor.col = col;
+        self.cursor.preferred_col = col;
+    }
+
+    fn apply_preferred_col(&mut self) {
+        self.cursor.col = self
+            .cursor
+            .preferred_col
+            .min(self.buffer.line_len(self.cursor.row));
+    }
+
+    fn move_cursor_down(&mut self, lines: usize) {
         self.cursor.row = (self.cursor.row + lines).min(self.buffer.line_count().saturating_sub(1));
+        self.apply_preferred_col();
     }
 
-    fn move_lines_up(&mut self, lines: usize) {
+    fn move_cursor_up(&mut self, lines: usize) {
         self.cursor.row = self.cursor.row.saturating_sub(lines);
+        self.apply_preferred_col();
     }
 
     // ─── Insert Mode ───────────────────────────────────────────────
@@ -655,27 +669,28 @@ impl Editor {
                 if self.cursor.col > 0 {
                     self.cursor.col -= 1;
                 }
+                self.cursor.preferred_col = self.cursor.col;
             }
             KeyCode::Char(ch) => {
                 self.buffer
                     .insert_char(self.cursor.row, self.cursor.col, ch);
-                self.cursor.col += 1;
+                self.set_cursor_col(self.cursor.col + 1);
             }
             KeyCode::Enter => {
                 let col = self.cursor.col;
                 self.buffer.split_line(self.cursor.row, col);
                 self.cursor.row += 1;
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
             }
             KeyCode::Backspace => {
                 if self.cursor.col > 0 {
-                    self.cursor.col -= 1;
+                    self.set_cursor_col(self.cursor.col - 1);
                     self.buffer.delete_char(self.cursor.row, self.cursor.col);
                 } else if self.cursor.row > 0 {
                     let prev_len = self.buffer.line_len(self.cursor.row - 1);
                     self.buffer.join_lines(self.cursor.row - 1);
                     self.cursor.row -= 1;
-                    self.cursor.col = prev_len;
+                    self.set_cursor_col(prev_len);
                 }
             }
             KeyCode::Delete => {
@@ -690,7 +705,7 @@ impl Editor {
                 for _ in 0..4 {
                     self.buffer
                         .insert_char(self.cursor.row, self.cursor.col, ' ');
-                    self.cursor.col += 1;
+                    self.set_cursor_col(self.cursor.col + 1);
                 }
             }
             _ => {}
@@ -745,6 +760,7 @@ impl Editor {
         match key.code {
             KeyCode::Esc => {
                 self.mode = Mode::Normal;
+                self.cursor.preferred_col = self.cursor.col;
             }
             KeyCode::Char(ch) => {
                 let len = self.buffer.line_len(self.cursor.row);
@@ -756,19 +772,19 @@ impl Editor {
                         &ch.to_string(),
                     );
                     if self.cursor.col < self.buffer.line_len(self.cursor.row) - 1 {
-                        self.cursor.col += 1;
+                        self.set_cursor_col(self.cursor.col + 1);
                     }
                 } else {
                     self.buffer
                         .insert_char(self.cursor.row, self.cursor.col, ch);
-                    self.cursor.col += 1;
+                    self.set_cursor_col(self.cursor.col + 1);
                 }
             }
             KeyCode::Enter => {
                 let col = self.cursor.col;
                 self.buffer.split_line(self.cursor.row, col);
                 self.cursor.row += 1;
-                self.cursor.col = 0;
+                self.set_cursor_col(0);
             }
             _ => {}
         }
@@ -858,6 +874,38 @@ mod tests {
         // h moves left
         ed.handle_key(key('h'));
         assert_eq!(ed.cursor().col, 0);
+    }
+
+    #[test]
+    fn test_vertical_movement_preserves_preferred_column() {
+        let mut ed = make_multiline_editor(&["abcdef", "x", "abcdef"]);
+
+        for _ in 0..5 {
+            ed.handle_key(key('l'));
+        }
+        assert_eq!(ed.cursor().col, 5);
+
+        ed.handle_key(key('j'));
+        assert_eq!(ed.cursor().row, 1);
+        assert_eq!(ed.cursor().col, 1);
+
+        ed.handle_key(key('j'));
+        assert_eq!(ed.cursor().row, 2);
+        assert_eq!(ed.cursor().col, 5);
+    }
+
+    #[test]
+    fn test_scroll_margin_moves_view_before_cursor_hits_edge() {
+        let mut ed = make_multiline_editor(&["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+        ed.set_term_size(80, 6);
+
+        ed.handle_key(key('j'));
+        ed.handle_key(key('j'));
+        assert_eq!(ed.scroll().row, 0);
+
+        ed.handle_key(key('j'));
+        assert_eq!(ed.cursor().row, 3);
+        assert_eq!(ed.scroll().row, 1);
     }
 
     #[test]
