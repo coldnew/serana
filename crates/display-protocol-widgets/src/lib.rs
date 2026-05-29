@@ -32,6 +32,24 @@ pub use form::{Form, FormField};
 mod accordion;
 pub use accordion::Accordion;
 
+mod separator;
+pub use separator::{Separator, SeparatorStyle};
+
+mod progress;
+pub use progress::ProgressBar;
+
+mod scroll_pane;
+pub use scroll_pane::ScrollPane;
+
+mod tabs;
+pub use tabs::Tabs;
+
+mod table;
+pub use table::Table;
+
+mod toggle;
+pub use toggle::Toggle;
+
 /// Renders text as a keyboard shortcut key (e.g. `Ctrl+K`).
 pub fn kbd(text: impl Into<String>) -> UiNode {
     use display_protocol::{Border, Padding, Style, BoxNode};
