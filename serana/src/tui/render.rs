@@ -14,10 +14,10 @@ use super::theme::Theme;
 pub fn build_ui(app: &App, width: u16, height: u16) -> UiNode {
     let theme = Theme::default();
     let showing_welcome = app.show_welcome && app.messages.is_empty();
-
     let header_h: u16 = if showing_welcome { 0 } else { 3 };
+    let status_h: u16 = 1;
     let input_h: u16 = 3;
-    let _content_h = height.saturating_sub(header_h + input_h);
+    let _content_h = height.saturating_sub(header_h + status_h + input_h);
 
     let mut children = Vec::new();
 
@@ -30,7 +30,7 @@ pub fn build_ui(app: &App, width: u16, height: u16) -> UiNode {
     } else {
         children.push(build_messages(app, width, &theme));
     }
-
+    children.push(build_status_bar(app, width, &theme));
     children.push(build_input(app, width, &theme));
 
     if let Some(ref dialog) = app.active_dialog {
@@ -241,7 +241,60 @@ fn styled_line_to_row(line: &StyledLine, prefix: &str, base_style: &Style) -> Ui
     })
 }
 
-fn build_input(app: &App, width: u16, theme: &Theme) -> UiNode {
+fn build_status_bar(app: &App, _width: u16, theme: &Theme) -> UiNode {
+    let mode_label = app.mode_label();
+    let mode_style = match app.mode {
+        AppMode::Normal => Style::new().fg(Color::new(0, 255, 136)).bold(),
+        AppMode::Input => Style::new().fg(Color::new(0, 180, 255)).bold(),
+        AppMode::Processing => Style::new().fg(Color::new(255, 71, 87)).bold(),
+    };
+    let bg = Style::new().bg(Color::new(31, 37, 45));
+
+    let mut left_items = vec![jsx! {
+        <Span style={mode_style.merge(&bg)}>{mode_label}</Span>
+    }];
+
+    if let Some(ref branch) = app.git_branch {
+        let branch_text = format!(" {}", branch);
+        left_items.push(jsx! {
+            <Span style={theme.dim.merge(&bg)}>{branch_text.as_str()}</Span>
+        });
+    }
+
+    let mut right_items = Vec::new();
+
+    // Model
+    let model_text = format!("{} ", app.model);
+    right_items.push(jsx! {
+        <Span style={theme.muted.merge(&bg)}>{model_text.as_str()}</Span>
+    });
+
+    // Iterations
+    if app.iterations_max > 0 {
+        let iter_text = format!("{}/{} ", app.iterations_used, app.iterations_max);
+        right_items.push(jsx! {
+            <Span style={theme.dim.merge(&bg)}>{iter_text.as_str()}</Span>
+        });
+    }
+
+    // Tokens
+    if app.tokens_input > 0 {
+        let total = app.tokens_input + app.tokens_output;
+        let token_text = format!("{}k ", total / 1000);
+        right_items.push(jsx! {
+            <Span style={theme.dim.merge(&bg)}>{token_text.as_str()}</Span>
+        });
+    }
+
+    let status_node = UiNode::StatusBar(StatusBarNode {
+        left: left_items,
+        right: right_items,
+        style: bg,
+    });
+    status_node
+}
+
+fn build_input(app: &App, _width: u16, theme: &Theme) -> UiNode {
     let border_style = match app.mode {
         AppMode::Normal => Style::new().fg(Color::new(156, 163, 176)),
         AppMode::Input => Style::new().fg(Color::new(0, 180, 255)),
@@ -260,10 +313,8 @@ fn build_input(app: &App, width: u16, theme: &Theme) -> UiNode {
         app.editor.content()
     };
 
-    let status = build_status_text(app, width);
-
     jsx! {
-        <Box border style={border_style} height={3} title={status.as_str()}>
+        <Box border style={border_style} height={3}>
             <Text style={theme.muted}>{content.as_str()}</Text>
         </Box>
     }
@@ -340,16 +391,6 @@ fn build_dialog(dialog: &super::dialog::Dialog, width: u16, height: u16) -> UiNo
             {build_column(children)}
         </Box>
     }
-}
-
-fn build_status_text(app: &App, _width: u16) -> String {
-    let mut parts = Vec::new();
-    parts.push(format!(" {}", app.mode_label()));
-    if let Some(ref branch) = app.git_branch {
-        parts.push(format!(" {}", branch));
-    }
-    parts.push(format!(" {}", app.model));
-    parts.join(" │")
 }
 
 fn center_text(text: &str, width: usize) -> String {
