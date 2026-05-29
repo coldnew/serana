@@ -60,7 +60,7 @@ impl Separator {
 
         let ch = match self.style {
             SeparatorStyle::Solid => '─',
-            SeparatorStyle::Dashed => '─', // paint.rs renders differently with style
+            SeparatorStyle::Dashed => '┄',
             SeparatorStyle::Dotted => '·',
             SeparatorStyle::Spacer => ' ',
         };

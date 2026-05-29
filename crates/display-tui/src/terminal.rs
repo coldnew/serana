@@ -85,7 +85,6 @@ impl TuiTerminal {
         Ok(())
     }
 
-    /// Render a display-protocol FrameUpdate to the terminal.
     pub fn render_frame(&mut self, frame: &FrameUpdate) -> Result<(), io::Error> {
         let grid = &frame.grid;
         self.terminal.draw(|f| {
@@ -96,8 +95,7 @@ impl TuiTerminal {
                     let cell = grid.get(x, y);
                     let ratatui_cell = buf.get_mut(x, y);
                     ratatui_cell.set_symbol(&cell.ch.to_string());
-                    ratatui_cell.set_fg(crate::conversions::color_to_ratatui(cell.style.fg.unwrap_or(display_protocol::Color::WHITE)));
-                    ratatui_cell.set_bg(crate::conversions::color_to_ratatui(cell.style.bg.unwrap_or(display_protocol::Color::BLACK)));
+                    ratatui_cell.set_style(crate::conversions::style_to_ratatui(cell.style));
                 }
             }
         })?;
@@ -160,8 +158,7 @@ pub fn grid_to_ratatui_buf(grid: &Grid) -> RatatuiBuffer {
             let cell = grid.get(x, y);
             let ratatui_cell = buf.get_mut(x, y);
             ratatui_cell.set_symbol(&cell.ch.to_string());
-            ratatui_cell.set_fg(crate::conversions::color_to_ratatui(cell.style.fg.unwrap_or(display_protocol::Color::WHITE)));
-            ratatui_cell.set_bg(crate::conversions::color_to_ratatui(cell.style.bg.unwrap_or(display_protocol::Color::BLACK)));
+            ratatui_cell.set_style(crate::conversions::style_to_ratatui(cell.style));
         }
     }
     buf

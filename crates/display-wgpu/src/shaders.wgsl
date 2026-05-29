@@ -73,22 +73,57 @@ fn vs_main(inst: InstanceInput, @builtin(vertex_index) vid: u32) -> VertexOutput
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Atlas layout: 16x16 grid of 16x16 pixel glyphs in a 256x256 texture
+    var uv = in.uv;
+
+    // Italic: skew UV horizontally
+    if (in.flags & 4u) != 0u {
+        uv.x = uv.x + (0.5 - uv.y) * 0.3;
+        // Clamp to valid range
+        uv.x = clamp(uv.x, 0.0, 1.0);
+    }
+
     let col = in.char_idx % 16u;
     let row = in.char_idx / 16u;
-    let atlas_uv = (vec2<f32>(f32(col), f32(row)) + in.uv) / 16.0;
+    let atlas_uv = (vec2<f32>(f32(col), f32(row)) + uv) / 16.0;
 
-    let glyph_alpha = textureSample(atlas, atlas_sampler, atlas_uv).r;
+    var glyph_alpha = textureSample(atlas, atlas_sampler, atlas_uv).r;
 
-    // Reverse video: swap fg/bg
+    // Bold: increase effective coverage by boosting alpha
+    if (in.flags & 2u) != 0u {
+        glyph_alpha = min(glyph_alpha * 1.5, 1.0);
+    }
+
     var fg = in.fg;
     var bg = in.bg;
+
+    // Reverse video: swap fg/bg
     if (in.flags & 1u) != 0u {
         let tmp = fg;
         fg = bg;
         bg = tmp;
     }
 
+    // Dim: reduce fg brightness to 50%
+    if (in.flags & 32u) != 0u {
+        fg = vec4<f32>(fg.rgb * 0.5, fg.a);
+    }
+
     // Blend: glyph pixels get fg color, empty pixels get bg color
-    let color = mix(bg, fg, glyph_alpha);
+    var color = mix(bg, fg, glyph_alpha);
+
+    // Underline: draw a line at the bottom 15% of the cell
+    if (in.flags & 8u) != 0u {
+        if in.uv.y > 0.85 {
+            color = vec4<f32>(fg.rgb, 1.0);
+        }
+    }
+
+    // Strikethrough: draw a line at the middle 10% of the cell
+    if (in.flags & 16u) != 0u {
+        if in.uv.y > 0.45 && in.uv.y < 0.55 {
+            color = vec4<f32>(fg.rgb, 1.0);
+        }
+    }
+
     return vec4<f32>(color.rgb, 1.0);
 }

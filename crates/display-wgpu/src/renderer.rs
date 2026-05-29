@@ -19,7 +19,8 @@ struct CellInstance {
     bg_color: u32,
     /// Character code (index into atlas grid).
     char_code: u32,
-    /// Style flags (bit 0 = reverse).
+    /// Style flags: bit0=reverse, bit1=bold, bit2=italic, bit3=underline,
+    /// bit4=strikethrough, bit5=dim, bit6=blink.
     flags: u32,
 }
 
@@ -42,7 +43,13 @@ fn pack_color(c: Color) -> u32 {
 
 fn style_flags(cell: &ScreenCell) -> u32 {
     let mut flags = 0u32;
-    if cell.reverse { flags |= 1; }
+    if cell.reverse { flags |= 1 << 0; }
+    if cell.bold { flags |= 1 << 1; }
+    if cell.italic { flags |= 1 << 2; }
+    if cell.underline { flags |= 1 << 3; }
+    if cell.strikethrough { flags |= 1 << 4; }
+    if cell.dim { flags |= 1 << 5; }
+    if cell.blink { flags |= 1 << 6; }
     flags
 }
 
