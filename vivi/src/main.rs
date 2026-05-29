@@ -101,7 +101,8 @@ fn main() -> Result<()> {
                     if sc.underline {
                         style = style.add_modifier(Modifier::UNDERLINED);
                         if let Some(uc) = sc.underline_color {
-                            style = style.underline_color(display_tui::conversions::color_to_ratatui(uc));
+                            style = style
+                                .underline_color(display_tui::conversions::color_to_ratatui(uc));
                         }
                     }
                     if sc.dim {

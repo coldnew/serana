@@ -59,7 +59,10 @@ pub struct CursorPos {
 
 impl From<Cursor> for CursorPos {
     fn from(c: Cursor) -> Self {
-        Self { row: c.row, col: c.col }
+        Self {
+            row: c.row,
+            col: c.col,
+        }
     }
 }
 
