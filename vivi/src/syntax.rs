@@ -35,18 +35,42 @@ impl SyntaxHighlighter {
         })
     }
 
+   /// Highlight all lines (used when buffer is small or path is unknown).
     pub fn highlight_buffer(&self, lines: &[&str], path: Option<&Path>) -> Vec<StyledLine> {
+        self.highlight_range(lines, path, 0, lines.len())
+    }
+
+    /// Highlight only lines [start, start+len) for efficient per-frame rendering.
+    /// Lines outside the range are returned as plain text.
+    pub fn highlight_range(
+        &self,
+        lines: &[&str],
+        path: Option<&Path>,
+        start: usize,
+        len: usize,
+    ) -> Vec<StyledLine> {
+        let total = lines.len();
+        let end = (start + len).min(total);
+
         let Some(path) = path else {
-            return plain_lines(lines);
+            return lines[start..end]
+                .iter()
+                .map(|l| StyledLine::plain(*l))
+                .collect();
         };
 
         let syntax = match self.syntax_set.find_syntax_for_file(path) {
             Ok(Some(syntax)) => syntax,
-            _ => return plain_lines(lines),
+            _ => {
+                return lines[start..end]
+                    .iter()
+                    .map(|l| StyledLine::plain(*l))
+                    .collect();
+            }
         };
 
         let mut highlighter = HighlightLines::new(syntax, &self.theme);
-        lines
+        lines[start..end]
             .iter()
             .map(
                 |line| match highlighter.highlight_line(line, &self.syntax_set) {
@@ -65,11 +89,6 @@ impl SyntaxHighlighter {
             .collect()
     }
 }
-
-fn plain_lines(lines: &[&str]) -> Vec<StyledLine> {
-    lines.iter().map(|line| StyledLine::plain(*line)).collect()
-}
-
 fn syntect_style_to_display(style: syntect::highlighting::Style) -> Style {
     let mut display = Style::default().fg(color_to_display(style.foreground));
 

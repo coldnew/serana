@@ -89,16 +89,25 @@ pub fn line_number_width(line_count: usize, screen_width: usize) -> usize {
         return 0;
     }
 
-    (line_count.max(1).to_string().len() + 1).min(screen_width)
+    // digit_count(line_count.max(1)) + 1 for the separator column
+    let n = line_count.max(1);
+    let digits = if n < 10 { 1 }
+        else if n < 100 { 2 }
+        else if n < 1_000 { 3 }
+        else if n < 10_000 { 4 }
+        else if n < 100_000 { 5 }
+        else if n < 1_000_000 { 6 }
+        else { n.ilog10() as usize + 1 };
+    (digits + 1).min(screen_width)
 }
 
 fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
-    let lines = buffer_lines(editor);
     let text_height = text_area_height(height);
+    let lines = buffer_lines(editor, editor.scroll().row, text_height as usize);
     let text_style = Style::new().fg(FG).bg(BG);
     let selection_style = Style::new().fg(FG).bg(VISUAL_BG);
     let status_style = Style::new().fg(STATUS_FG).bg(STATUS_BG);
-    let mode_label = format!(" {} ", editor.mode().indicator());
+    let mode_label = editor.mode().mode_label();
     let mode_bg = mode_bg(editor.mode());
     let file_status = file_status(editor);
     let status_right = status_right(editor);
@@ -119,7 +128,7 @@ fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
             />
             <StatusBar style={status_style}>
                 <Left>
-                    <Text bold bg={mode_bg} color={STATUS_MODE_FG}>{mode_label.as_str()}</Text>
+                    <Text bold bg={mode_bg} color={STATUS_MODE_FG}>{mode_label}</Text>
                     <Text bold bg={STATUS_BG} color={STATUS_FG}>{file_status.as_str()}</Text>
                 </Left>
                 <Right>
@@ -139,11 +148,22 @@ fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
     tree
 }
 
-fn buffer_lines(editor: &Editor) -> Vec<StyledLine> {
-    let lines: Vec<&str> = (0..editor.buffer().line_count())
+fn buffer_lines(editor: &Editor, scroll_top: usize, visible_height: usize) -> Vec<StyledLine> {
+    let total = editor.buffer().line_count();
+    if total == 0 || visible_height == 0 {
+        return Vec::new();
+    }
+    let start = scroll_top.min(total.saturating_sub(1));
+    let count = visible_height.min(total - start);
+    let lines: Vec<&str> = (start..start + count)
         .map(|idx| editor.buffer().line(idx))
         .collect();
-    SyntaxHighlighter::global().highlight_buffer(&lines, editor.buffer().path())
+    SyntaxHighlighter::global().highlight_range(
+        &lines,
+        editor.buffer().path(),
+        0,
+        count,
+    )
 }
 
 fn text_area_height(height: u16) -> u16 {

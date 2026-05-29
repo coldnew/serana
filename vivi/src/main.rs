@@ -1,18 +1,11 @@
 use anyhow::Result;
 use clap::Parser as ClapParser;
 use display_tui::{install_panic_hook, TuiTerminal};
-use ratatui::style::{Color as RatColor, Modifier, Style as RatStyle};
+use ratatui::style::{Modifier, Style as RatStyle};
 use std::path::PathBuf;
 
-mod buffer;
-mod cursor;
-mod editor;
-mod mode;
-mod render;
-mod syntax;
-
-use buffer::Buffer;
-use editor::Editor;
+use vivi::buffer::Buffer;
+use vivi::editor::Editor;
 
 #[derive(ClapParser)]
 #[command(name = "vivi")]
@@ -36,15 +29,7 @@ fn main() -> Result<()> {
 
     // Load or create buffer
     let buffer = match &cli.file {
-        Some(path) => {
-            if path.exists() {
-                Buffer::from_file(path)?
-            } else {
-                let mut buf = Buffer::new();
-                buf.save_as(path)?;
-                buf
-            }
-        }
+        Some(path) => Buffer::from_file(path)?,
         None => Buffer::new(),
     };
 
@@ -57,25 +42,20 @@ fn main() -> Result<()> {
 
     // Execute startup command if given
     if let Some(cmd) = &cli.command {
-        editor.handle_key(display_protocol::KeyEvent::new(
-            display_protocol::KeyCode::Char(':'),
-            display_protocol::KeyModifiers::EMPTY,
-        ));
         for ch in cmd.chars() {
             editor.handle_key(display_protocol::KeyEvent::char(ch));
         }
-        editor.handle_key(display_protocol::KeyEvent::new(
-            display_protocol::KeyCode::Enter,
-            display_protocol::KeyModifiers::EMPTY,
-        ));
+        if cmd.starts_with('q') {
+            editor.handle_key(display_protocol::KeyEvent::new(
+                display_protocol::KeyCode::Enter,
+                display_protocol::KeyModifiers::EMPTY,
+            ));
+        }
     }
 
     // If + flag, go to last line
     if cli.plus {
-        editor.handle_key(display_protocol::KeyEvent::new(
-            display_protocol::KeyCode::Char('G'),
-            display_protocol::KeyModifiers::EMPTY,
-        ));
+        editor.handle_key(display_protocol::KeyEvent::char('G'));
     }
 
     // Hide hardware cursor — we render a software cursor on the ScreenBuffer
@@ -95,10 +75,10 @@ fn main() -> Result<()> {
         editor.set_term_size(w, h);
 
         // Render via ScreenBuffer → paint_into → ratatui
-        let mut screen = render::render(&editor, w, h);
+        let mut screen = vivi::render::render(&editor, w, h);
 
         // Software cursor: per-mode shape, blinks at vim rate
-        render::draw_mode_cursor(&mut screen, &editor, cursor_blink_on);
+        vivi::render::draw_mode_cursor(&mut screen, &editor, cursor_blink_on);
 
         // Paint ScreenBuffer → ratatui, copying all cell attributes
         terminal.terminal().draw(|frame| {

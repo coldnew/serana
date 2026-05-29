@@ -9,6 +9,10 @@ authors.workspace = true
 name = "vivi"
 path = "src/main.rs"
 
+[[bench]]
+name = "render_bench"
+harness = false
+
 [lints]
 workspace = true
 
@@ -21,3 +25,6 @@ ratatui = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 syntect = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"

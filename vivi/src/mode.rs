@@ -29,6 +29,18 @@ impl Mode {
             Mode::Replace => "REPLACE",
         }
     }
+
+    /// Padded label for the status bar mode indicator (avoids format!).
+    pub fn mode_label(&self) -> &'static str {
+        match self {
+            Mode::Normal => " NORMAL ",
+            Mode::Insert => " INSERT ",
+            Mode::Command => " COMMAND ",
+            Mode::Visual => " VISUAL ",
+            Mode::VisualLine => " V-LINE ",
+            Mode::Replace => " REPLACE ",
+        }
+    }
 }
 
 impl fmt::Display for Mode {

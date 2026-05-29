@@ -52,11 +52,6 @@ enum YankRegister {
     Chars(String),
 }
 
-impl YankRegister {
-    fn is_lines(&self) -> bool {
-        matches!(self, YankRegister::Lines(_))
-    }
-}
 
 impl Editor {
     pub fn new(buffer: Buffer) -> Self {
@@ -430,7 +425,7 @@ impl Editor {
             }
             KeyCode::Char('p') => {
                 let n = self.take_count();
-                match self.yank_register.clone() {
+                match &self.yank_register {
                     YankRegister::Lines(lines) => {
                         for _ in 0..n {
                             for (i, line) in lines.iter().enumerate() {
@@ -442,6 +437,7 @@ impl Editor {
                         self.set_cursor_col(0);
                     }
                     YankRegister::Chars(text) => {
+                        let text = text.clone();
                         let col = self.cursor.col + 1;
                         for _ in 0..n {
                             self.buffer.insert_str(self.cursor.row, col, &text);
@@ -451,7 +447,7 @@ impl Editor {
             }
             KeyCode::Char('P') => {
                 let n = self.take_count();
-                match self.yank_register.clone() {
+                match &self.yank_register {
                     YankRegister::Lines(lines) => {
                         for _ in 0..n {
                             for (i, line) in lines.iter().enumerate() {
@@ -461,6 +457,7 @@ impl Editor {
                         self.set_cursor_col(0);
                     }
                     YankRegister::Chars(text) => {
+                        let text = text.clone();
                         for _ in 0..n {
                             self.buffer
                                 .insert_str(self.cursor.row, self.cursor.col, &text);
