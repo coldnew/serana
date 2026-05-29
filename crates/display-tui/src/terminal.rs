@@ -1,17 +1,12 @@
 use crossterm::{
-    event::{self, Event},
+    cursor::SetCursorStyle,
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use display_protocol::{Cell, FrameUpdate, Grid, InputEvent};
-use ratatui::{
-    backend::CrosstermBackend,
-    buffer::Buffer as RatatuiBuffer,
-    layout::Rect,
-    Terminal,
-};
+use display_protocol::buffer::ScreenBuffer;
+use display_protocol::{CursorStyle, FrameUpdate, Grid, InputEvent};
+use ratatui::{backend::CrosstermBackend, buffer::Buffer as RatatuiBuffer, layout::Rect, Terminal};
 use std::io;
-use std::time::Duration;
 
 /// Shared TUI terminal for mora and serana.
 ///
@@ -60,6 +55,7 @@ impl TuiTerminal {
         execute!(
             self.terminal.backend_mut(),
             LeaveAlternateScreen,
+            SetCursorStyle::DefaultUserShape,
             crossterm::event::DisableMouseCapture,
             crossterm::cursor::Show
         )?;
@@ -69,7 +65,10 @@ impl TuiTerminal {
 
     /// Get terminal size (width, height).
     pub fn size(&self) -> (u16, u16) {
-        let size = self.terminal.size().unwrap_or(ratatui::layout::Size::new(80, 24));
+        let size = self
+            .terminal
+            .size()
+            .unwrap_or(ratatui::layout::Size::new(80, 24));
         (size.width, size.height)
     }
 
@@ -102,6 +101,23 @@ impl TuiTerminal {
         Ok(())
     }
 
+    pub fn render_screen_buffer(&mut self, screen: &ScreenBuffer) -> Result<(), io::Error> {
+        self.terminal.draw(|frame| {
+            let area = frame.area();
+            let buf = frame.buffer_mut();
+            for y in 0..screen.height.min(area.height) {
+                for x in 0..screen.width.min(area.width) {
+                    let cell = screen.get(x, y);
+                    let ratatui_cell = &mut buf[(x, y)];
+                    ratatui_cell.set_symbol(&cell.ch.to_string());
+                    ratatui_cell.set_fg(crate::conversions::color_to_ratatui(cell.fg));
+                    ratatui_cell.set_bg(crate::conversions::color_to_ratatui(cell.bg));
+                }
+            }
+        })?;
+        Ok(())
+    }
+
     /// Poll for input with timeout. Returns display-protocol InputEvent.
     pub fn poll_input(&mut self, timeout_ms: u64) -> Option<InputEvent> {
         super::input::poll_input(timeout_ms)
@@ -127,6 +143,16 @@ impl TuiTerminal {
         let _ = self.terminal.set_cursor_position((x, y));
     }
 
+    /// Set hardware cursor style when supported by the terminal emulator.
+    pub fn set_cursor_style(&mut self, style: CursorStyle) {
+        let style = match style {
+            CursorStyle::Block => SetCursorStyle::SteadyBlock,
+            CursorStyle::Underline => SetCursorStyle::SteadyUnderScore,
+            CursorStyle::Bar => SetCursorStyle::SteadyBar,
+        };
+        let _ = execute!(self.terminal.backend_mut(), style);
+    }
+
     /// Clear the terminal.
     pub fn clear(&mut self) {
         let _ = self.terminal.clear();
@@ -144,6 +170,7 @@ pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
         let _ = crossterm::execute!(io::stdout(), LeaveAlternateScreen);
+        let _ = crossterm::execute!(io::stdout(), SetCursorStyle::DefaultUserShape);
         let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Show);
         default_hook(info);
     }));

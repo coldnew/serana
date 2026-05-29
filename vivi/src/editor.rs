@@ -91,6 +91,10 @@ impl Editor {
         &self.command_input
     }
 
+    pub fn command_cursor(&self) -> usize {
+        self.command_cursor
+    }
+
     pub fn message(&self) -> Option<&str> {
         self.message.as_deref()
     }

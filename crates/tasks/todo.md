@@ -1,5 +1,54 @@
 # Hermes Agent Refactor
 
+# Vivi JSX/display-tui UI Refactor
+
+Assumptions:
+- `display-tui` is the requested terminal rendering layer.
+- Keep the Vim-like look from the previous UI slice, but express the layout through `display-protocol-jsx` and `display_protocol::UiNode`.
+- Keep small post-processing only for Vim-specific filler rows/cursor overlay that the generic `TextArea` node does not model.
+
+Success criteria for this slice:
+- [x] Build Vivi's editor layout with `display_protocol_jsx::jsx!`.
+- [x] Paint the JSX UI tree through `display_protocol::paint_into`.
+- [x] Route Vivi's terminal painting through `display-tui` instead of a local ratatui cell loop.
+- [x] Preserve Vim-like filler rows, status line, command row, and mode-aware cursor behavior.
+- [x] Format touched files and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Vivi render now builds a `display_protocol::UiNode` tree with `display_protocol_jsx::jsx!`.
+- The JSX tree uses `TextArea`, `StatusBar`, and `Text` nodes, then paints through `display_protocol::paint_into`.
+- Runtime visual selection is patched onto the generated `TextArea` node because JSX optional props wrap values statically.
+- Vim-specific `~` filler rows remain as small `ScreenBuffer` post-processing because the generic `TextArea` node does not model Vim filler lines.
+- Added `TuiTerminal::render_screen_buffer` so Vivi uses `display-tui` instead of owning a local ratatui cell loop.
+- Vivi now uses the hardware cursor with display-protocol cursor styles for mode-specific cursor shape.
+- Verification passed with `rustfmt` on touched files and `cargo test -p vivi` (50 tests).
+- Existing warnings remain for unrelated deprecated `ratatui` calls, an unreachable pattern in input handling, and pre-existing Vivi dead-code/test-name warnings.
+
+# Vivi Vim-Like Terminal UI
+
+Assumptions:
+- Make the terminal UI feel closer to Vim without changing editing semantics.
+- Prefer the real terminal cursor so cursor shape can change by mode.
+- Keep the existing line-number gutter because Vivi already exposes `set number` as always on.
+
+Success criteria for this slice:
+- [x] Render Vim-like filler `~` lines and status/message rows.
+- [x] Use a hardware cursor with mode-specific shapes.
+- [x] Keep cursor positioning consistent with line-number gutter and command mode.
+- [x] Add focused render tests.
+- [x] Format touched Rust files and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Replaced Vivi's widget-tree render path with a direct Vim-like terminal painter: line-number gutter, `~` filler rows, reverse-video status line, and bottom command/mode message row.
+- Added `render::cursor_position` so normal/visual/insert cursor placement follows the text gutter and command mode places the cursor after `:` input.
+- Switched Vivi from a software cursor overlay to the hardware terminal cursor.
+- Added terminal cursor style support in `display-tui`, resetting the user cursor shape on cleanup and panic.
+- Mode cursor shapes now map to block for normal/visual, bar for insert/command, and underline for replace.
+- Verification passed with `rustfmt` on touched files and `cargo test -p vivi` (49 tests).
+- Existing warnings remain for unrelated deprecated `ratatui` calls, an unreachable pattern in input handling, and pre-existing Vivi dead-code/test-name warnings.
+
 # Vivi Maintainability Refactor
 
 Assumptions:
