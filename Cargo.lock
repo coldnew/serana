@@ -894,6 +894,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "display-protocol-widgets"
+version = "0.1.0"
+dependencies = [
+ "display-protocol",
+]
+
+[[package]]
 name = "display-tui"
 version = "0.1.0"
 dependencies = [

@@ -8,6 +8,7 @@ members = [
     "crates/display-protocol",
     "crates/display-protocol-jsx",
     "crates/display-protocol-rsx",
+    "crates/display-protocol-widgets",
     "crates/display-tui",
     "mishell",
     "mora",
