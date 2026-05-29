@@ -67,6 +67,18 @@ pub use status_bar::StatusBar;
 
 mod popup;
 pub use popup::Popup;
+
+mod list;
+pub use list::List;
+
+mod span;
+pub use span::Span;
+
+mod menu;
+pub use menu::{Menu, context_menu};
+
+mod canvas;
+pub use canvas::Canvas;
 /// Renders text as a keyboard shortcut key (e.g. `Ctrl+K`).
 pub fn kbd(text: impl Into<String>) -> UiNode {
     use display_protocol::{Border, Padding, Style, BoxNode};
