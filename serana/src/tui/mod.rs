@@ -89,6 +89,7 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
         response_tx,
         &mut response_rx,
         &mut stream_rx,
+        cancel_token,
     );
 
     tui.restore()?;
@@ -108,6 +109,7 @@ fn run_app(
     response_tx: mpsc::UnboundedSender<AgentResponse>,
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
     stream_rx: &mut mpsc::UnboundedReceiver<String>,
+    cancel_token: serana_core::CancelToken,
 ) -> Result<()> {
     let mut pending_request: Option<tokio::task::JoinHandle<()>> = None;
     let mut streaming_content = String::new();
@@ -165,8 +167,25 @@ fn run_app(
             Event::Input(display_protocol::InputEvent::Key(key_event)) => {
                 // Convert display-protocol KeyEvent to crossterm KeyEvent for app
                 let crossterm_key = display_tui::conversions::key_event_to_crossterm(key_event);
+                let was_processing = app.mode == app::AppMode::Processing;
                 if !app.handle_key_event(crossterm_key)? || app.should_quit {
                     return Ok(());
+                }
+
+                // Cancel agent if Esc was pressed during Processing
+                if was_processing && app.mode != app::AppMode::Processing {
+                    cancel_token.cancel();
+                    if let Some(handle) = pending_request.take() {
+                        handle.abort();
+                    }
+                    app.clear_pending_response();
+                    streaming_content.clear();
+                    app.messages.push(app::ChatMessage {
+                        role: app::MessageRole::System,
+                        content: "Interrupted by user".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
                 }
 
                 if app.mode == app::AppMode::Processing && pending_request.is_none() {
