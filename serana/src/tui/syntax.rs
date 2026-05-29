@@ -1,7 +1,6 @@
 use std::sync::OnceLock;
 
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Span;
+use display_protocol::{Color, Style, StyledSpan};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{FontStyle, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
@@ -35,7 +34,7 @@ impl SyntaxHighlighter {
         })
     }
 
-    pub fn highlight_lines(&self, code: &str, lang: &str) -> Vec<Vec<Span<'static>>> {
+    pub fn highlight_lines(&self, code: &str, lang: &str) -> Vec<Vec<StyledSpan>> {
         let syntax = self
             .syntax_set
             .find_syntax_by_token(lang)
@@ -46,9 +45,9 @@ impl SyntaxHighlighter {
 
         for line in LinesWithEndings::from(code) {
             if let Ok(ranges) = highlighter.highlight_line(line, &self.syntax_set) {
-                let spans: Vec<Span<'static>> = ranges
+                let spans: Vec<StyledSpan> = ranges
                     .into_iter()
-                    .map(|(s, text)| Span::styled(text.to_string(), syntect_style_to_ratatui(s)))
+                    .map(|(s, text)| StyledSpan::new(text.to_string(), syntect_style_to_display(s)))
                     .collect();
                 result.push(spans);
             }
@@ -58,23 +57,23 @@ impl SyntaxHighlighter {
     }
 }
 
-fn syntect_style_to_ratatui(style: syntect::highlighting::Style) -> Style {
+fn syntect_style_to_display(style: syntect::highlighting::Style) -> Style {
     let mut s = Style::default();
     if style.foreground != syntect::highlighting::Color::BLACK {
-        s = s.fg(color_to_ratatui(style.foreground));
+        s = s.fg(color_to_display(style.foreground));
     }
     if style.font_style.contains(FontStyle::BOLD) {
-        s = s.add_modifier(Modifier::BOLD);
+        s = s.bold();
     }
     if style.font_style.contains(FontStyle::ITALIC) {
-        s = s.add_modifier(Modifier::ITALIC);
+        s = s.italic();
     }
     if style.font_style.contains(FontStyle::UNDERLINE) {
-        s = s.add_modifier(Modifier::UNDERLINED);
+        s = s.underline();
     }
     s
 }
 
-fn color_to_ratatui(c: syntect::highlighting::Color) -> Color {
-    Color::Rgb(c.r, c.g, c.b)
+fn color_to_display(c: syntect::highlighting::Color) -> Color {
+    Color::new(c.r, c.g, c.b)
 }

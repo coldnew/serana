@@ -1,6 +1,5 @@
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
+use display_protocol::{Color, Style, StyledLine, StyledSpan};
 
 use super::syntax::SyntaxHighlighter;
 use super::theme;
@@ -18,30 +17,38 @@ pub struct MarkdownTheme {
     pub hr: Style,
 }
 
+/// Convert a ratatui Color to display-protocol Color.
+fn dp_color(c: ratatui::style::Color) -> Color {
+    match c {
+        ratatui::style::Color::Rgb(r, g, b) => Color::new(r, g, b),
+        _ => Color::BLACK,
+    }
+}
+
 impl Default for MarkdownTheme {
     fn default() -> Self {
         Self {
             heading: Style::new()
-                .fg(theme::CORAL)
-                .add_modifier(ratatui::style::Modifier::BOLD),
+                .fg(dp_color(theme::CORAL))
+                .bold(),
             link: Style::new()
-                .fg(theme::AQUAMARINE)
-                .add_modifier(ratatui::style::Modifier::UNDERLINED),
-            code: Style::new().fg(theme::CODE_PURPLE),
-            code_block: Style::new().fg(theme::SEAFOAM_GREEN),
+                .fg(dp_color(theme::AQUAMARINE))
+                .underline(),
+            code: Style::new().fg(dp_color(theme::CODE_PURPLE)),
+            code_block: Style::new().fg(dp_color(theme::SEAFOAM_GREEN)),
             quote: Style::new()
-                .fg(theme::MUTED_TEAL)
-                .add_modifier(ratatui::style::Modifier::ITALIC),
-            list_bullet: Style::new().fg(theme::CORAL),
-            bold: Style::new().add_modifier(ratatui::style::Modifier::BOLD),
-            italic: Style::new().add_modifier(ratatui::style::Modifier::ITALIC),
-            strikethrough: Style::new().add_modifier(ratatui::style::Modifier::CROSSED_OUT),
-            hr: Style::new().fg(theme::DARK_BORDER),
+                .fg(dp_color(theme::MUTED_TEAL))
+                .italic(),
+            list_bullet: Style::new().fg(dp_color(theme::CORAL)),
+            bold: Style::new().bold(),
+            italic: Style::new().italic(),
+            strikethrough: Style::new().strikethrough(),
+            hr: Style::new().fg(dp_color(theme::DARK_BORDER)),
         }
     }
 }
 
-pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<Line<'static>> {
+pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<StyledLine> {
     if text.trim().is_empty() {
         return Vec::new();
     }
@@ -62,8 +69,8 @@ pub fn render_markdown(text: &str, theme: &MarkdownTheme, width: usize) -> Vec<L
 struct MarkdownRenderer<'a> {
     theme: &'a MarkdownTheme,
     width: usize,
-    lines: Vec<Line<'static>>,
-    current_spans: Vec<Span<'static>>,
+    lines: Vec<StyledLine>,
+    current_spans: Vec<StyledSpan>,
     link_target: Option<String>,
     link_text: String,
     image_target: Option<String>,
@@ -118,7 +125,7 @@ impl<'a> MarkdownRenderer<'a> {
         }
     }
 
-    fn render_events(mut self, parser: Parser<'_>) -> Vec<Line<'static>> {
+    fn render_events(mut self, parser: Parser<'_>) -> Vec<StyledLine> {
         for event in parser {
             self.handle_event(event);
         }
@@ -152,10 +159,10 @@ impl<'a> MarkdownRenderer<'a> {
                 } else if self.link_target.is_some() {
                     self.link_text.push_str(&code);
                     self.current_spans
-                        .push(Span::styled(code.to_string(), self.theme.code));
+                        .push(StyledSpan::new(code.to_string(), self.theme.code));
                 } else {
                     self.current_spans
-                        .push(Span::styled(code.to_string(), self.theme.code));
+                        .push(StyledSpan::new(code.to_string(), self.theme.code));
                 }
             }
             Event::SoftBreak | Event::HardBreak => {
@@ -169,28 +176,29 @@ impl<'a> MarkdownRenderer<'a> {
                 let n = self.width.min(80);
                 self.flush_line();
                 self.lines
-                    .push(Line::from(Span::styled("─".repeat(n), self.theme.hr)));
+                    .push(StyledLine::new(vec![StyledSpan::new("─".repeat(n), self.theme.hr)]));
             }
             Event::TaskListMarker(checked) => {
                 let marker = if checked { "[x] " } else { "[ ] " };
                 self.current_spans
-                    .push(Span::styled(marker.to_string(), self.theme.list_bullet));
+                    .push(StyledSpan::new(marker.to_string(), self.theme.list_bullet));
             }
             Event::Html(html) | Event::InlineHtml(html) => {
                 self.push_text(html.trim());
             }
             Event::FootnoteReference(label) => {
                 self.current_spans
-                    .push(Span::styled(format!("[^{}]", label), self.theme.link));
+                    .push(StyledSpan::new(format!("[^{}]", label), self.theme.link));
             }
             Event::InlineMath(math) => {
                 self.current_spans
-                    .push(Span::styled(format!("${}$", math), self.theme.code));
+                    .push(StyledSpan::new(format!("${}$", math.replace('\n', " ")), self.theme.code));
             }
             Event::DisplayMath(math) => {
                 self.flush_line();
+                let single_line: String = math.chars().filter(|&c| c != '\n').collect();
                 self.current_spans
-                    .push(Span::styled(format!("$${}$$", math), self.theme.code_block));
+                    .push(StyledSpan::new(format!("$${}$$", single_line), self.theme.code_block));
                 self.flush_line();
             }
         }
@@ -204,7 +212,7 @@ impl<'a> MarkdownRenderer<'a> {
                 if level != HeadingLevel::H1 {
                     let prefix = "#".repeat(level as usize) + " ";
                     self.current_spans
-                        .push(Span::styled(prefix.to_string(), self.theme.heading));
+                        .push(StyledSpan::new(prefix.to_string(), self.theme.heading));
                 }
             }
             Tag::BlockQuote(_) => {
@@ -224,7 +232,7 @@ impl<'a> MarkdownRenderer<'a> {
                     format!("```{}", self.code_block_lang)
                 };
                 self.lines
-                    .push(Line::from(Span::styled(fence, self.theme.code_block)));
+                    .push(StyledLine::new(vec![StyledSpan::new(fence, self.theme.code_block)]));
             }
             Tag::List(ordered) => {
                 if self.in_list {
@@ -242,9 +250,9 @@ impl<'a> MarkdownRenderer<'a> {
                 } else {
                     "- ".to_string()
                 };
-                self.current_spans.push(Span::raw(indent));
+                self.current_spans.push(StyledSpan::plain(indent));
                 self.current_spans
-                    .push(Span::styled(bullet.to_string(), self.theme.list_bullet));
+                    .push(StyledSpan::new(bullet.to_string(), self.theme.list_bullet));
             }
             Tag::Emphasis => {
                 self.style_stack.push(self.theme.italic);
@@ -288,7 +296,7 @@ impl<'a> MarkdownRenderer<'a> {
             Tag::FootnoteDefinition(label) => {
                 self.flush_line();
                 self.current_spans
-                    .push(Span::styled(format!("[^{}]: ", label), self.theme.link));
+                    .push(StyledSpan::new(format!("[^{}]: ", label), self.theme.link));
             }
             Tag::DefinitionList => {
                 self.flush_line();
@@ -301,7 +309,7 @@ impl<'a> MarkdownRenderer<'a> {
                 self.flush_line();
                 self.in_definition_definition = true;
                 self.current_spans
-                    .push(Span::styled(": ".to_string(), self.theme.list_bullet));
+                    .push(StyledSpan::new(": ".to_string(), self.theme.list_bullet));
             }
             Tag::MetadataBlock(_) | Tag::HtmlBlock => {}
         }
@@ -311,12 +319,12 @@ impl<'a> MarkdownRenderer<'a> {
         match tag {
             TagEnd::Paragraph => {
                 self.flush_line();
-                self.lines.push(Line::from(""));
+                self.lines.push(StyledLine::plain(""));
             }
             TagEnd::Heading { .. } => {
                 self.flush_line();
                 self.current_style = None;
-                self.lines.push(Line::from(""));
+                self.lines.push(StyledLine::plain(""));
             }
             TagEnd::BlockQuote(_) => {
                 self.in_blockquote = false;
@@ -328,7 +336,7 @@ impl<'a> MarkdownRenderer<'a> {
                 let indent = " ".repeat(self.code_block_indent);
                 let code = self.code_block_lines.join("");
                 let has_lang = !self.code_block_lang.is_empty();
-                let mut rendered_lines: Vec<Vec<Span<'static>>> = Vec::new();
+                let mut rendered_lines: Vec<Vec<StyledSpan>> = Vec::new();
                 if has_lang {
                     let highlighted =
                         SyntaxHighlighter::global().highlight_lines(&code, &self.code_block_lang);
@@ -343,12 +351,12 @@ impl<'a> MarkdownRenderer<'a> {
                         } else {
                             format!("{}{}", indent, line)
                         };
-                        rendered_lines.push(vec![Span::styled(display, self.theme.code_block)]);
+                        rendered_lines.push(vec![StyledSpan::new(display, self.theme.code_block)]);
                     }
                 } else {
                     for spans in &mut rendered_lines {
                         if !spans.is_empty() {
-                            spans.insert(0, Span::styled(indent.clone(), self.theme.code_block));
+                            spans.insert(0, StyledSpan::new(indent.clone(), self.theme.code_block));
                         }
                     }
                 }
@@ -358,8 +366,8 @@ impl<'a> MarkdownRenderer<'a> {
                 self.code_block_lines.clear();
                 self.code_block_lang.clear();
                 self.lines
-                    .push(Line::from(Span::styled("```", self.theme.code_block)));
-                self.lines.push(Line::from(""));
+                    .push(StyledLine::new(vec![StyledSpan::new("```", self.theme.code_block)]));
+                self.lines.push(StyledLine::plain(""));
             }
             TagEnd::List(_) => {
                 if self.list_depth > 0 {
@@ -380,7 +388,7 @@ impl<'a> MarkdownRenderer<'a> {
                     let text = std::mem::take(&mut self.link_text);
                     if !target.is_empty() && !link_text_matches_target(&text, &target) {
                         self.current_spans
-                            .push(Span::styled(format!(" ({})", target), self.theme.link));
+                            .push(StyledSpan::new(format!(" ({})", target), self.theme.link));
                     }
                 }
                 self.style_stack.pop();
@@ -389,7 +397,7 @@ impl<'a> MarkdownRenderer<'a> {
             TagEnd::Image => {
                 if let Some(target) = self.image_target.take() {
                     let alt = std::mem::take(&mut self.image_alt);
-                    self.current_spans.push(Span::styled(
+                    self.current_spans.push(StyledSpan::new(
                         format_image_placeholder(&alt, &target, self.width),
                         self.theme.link,
                     ));
@@ -400,7 +408,7 @@ impl<'a> MarkdownRenderer<'a> {
                 let table = std::mem::take(&mut self.current_table);
                 self.lines
                     .extend(render_table_lines(table, self.width, self.theme));
-                self.lines.push(Line::from(""));
+                self.lines.push(StyledLine::plain(""));
             }
             TagEnd::TableHead => {
                 if self.in_table && !self.current_table_row.is_empty() {
@@ -424,11 +432,11 @@ impl<'a> MarkdownRenderer<'a> {
             }
             TagEnd::FootnoteDefinition => {
                 self.flush_line();
-                self.lines.push(Line::from(""));
+                self.lines.push(StyledLine::plain(""));
             }
             TagEnd::DefinitionList => {
                 self.flush_line();
-                self.lines.push(Line::from(""));
+                self.lines.push(StyledLine::plain(""));
             }
             TagEnd::DefinitionListTitle => {
                 self.flush_line();
@@ -446,14 +454,14 @@ impl<'a> MarkdownRenderer<'a> {
         if let Some(style) = self.current_style {
             self.push_styled(text, style);
         } else {
-            self.current_spans.push(Span::raw(text.to_string()));
+            self.current_spans.push(StyledSpan::plain(text.to_string()));
         }
     }
 
     fn push_styled(&mut self, text: &str, style: Style) {
         if !text.is_empty() {
             self.current_spans
-                .push(Span::styled(text.to_string(), style));
+                .push(StyledSpan::new(text.to_string(), style));
         }
     }
 
@@ -463,14 +471,14 @@ impl<'a> MarkdownRenderer<'a> {
             let continuation_prefix = if self.in_list {
                 list_continuation_prefix(&spans)
             } else if self.in_definition_definition {
-                vec![Span::raw("  ")]
+                vec![StyledSpan::plain("  ")]
             } else {
                 Vec::new()
             };
             if self.in_blockquote {
-                let mut quoted = vec![Span::styled("│ ".to_string(), self.theme.quote)];
+                let mut quoted = vec![StyledSpan::new("│ ".to_string(), self.theme.quote)];
                 quoted.append(&mut spans);
-                let mut quoted_prefix = vec![Span::styled("│ ".to_string(), self.theme.quote)];
+                let mut quoted_prefix = vec![StyledSpan::new("│ ".to_string(), self.theme.quote)];
                 quoted_prefix.extend(continuation_prefix);
                 self.lines
                     .extend(wrap_spans(quoted, self.width, quoted_prefix));
@@ -482,10 +490,10 @@ impl<'a> MarkdownRenderer<'a> {
     }
 }
 
-fn list_continuation_prefix(spans: &[Span<'static>]) -> Vec<Span<'static>> {
+fn list_continuation_prefix(spans: &[StyledSpan]) -> Vec<StyledSpan> {
     let mut width = 0;
     for span in spans {
-        let text = span.content.as_ref();
+        let text = span.text.as_str();
         if text.trim().is_empty() {
             width += text.chars().count();
             continue;
@@ -507,17 +515,17 @@ fn list_continuation_prefix(spans: &[Span<'static>]) -> Vec<Span<'static>> {
     if width == 0 {
         Vec::new()
     } else {
-        vec![Span::raw(" ".repeat(width))]
+        vec![StyledSpan::plain(" ".repeat(width))]
     }
 }
 
 fn wrap_spans(
-    spans: Vec<Span<'static>>,
+    spans: Vec<StyledSpan>,
     width: usize,
-    continuation_prefix: Vec<Span<'static>>,
-) -> Vec<Line<'static>> {
+    continuation_prefix: Vec<StyledSpan>,
+) -> Vec<StyledLine> {
     if width == 0 {
-        return vec![Line::from("")];
+        return vec![StyledLine::plain("")];
     }
 
     let continuation_prefix = clamp_spans(continuation_prefix, width.saturating_sub(1));
@@ -528,11 +536,11 @@ fn wrap_spans(
 
     for span in spans {
         let style = span.style;
-        let mut text = span.content.to_string();
+        let mut text = span.text.to_string();
         while !text.is_empty() {
             let remaining = width.saturating_sub(current_width);
             if remaining == 0 {
-                lines.push(Line::from(std::mem::take(&mut current)));
+                lines.push(StyledLine::new(std::mem::take(&mut current)));
                 current_width = 0;
                 if !continuation_prefix.is_empty() {
                     current.extend(clone_spans(&continuation_prefix));
@@ -543,16 +551,16 @@ fn wrap_spans(
 
             let text_width = text.chars().count();
             if text_width <= remaining {
-                current.push(Span::styled(text, style));
+                current.push(StyledSpan::new(text, style));
                 current_width += text_width;
                 break;
             }
 
             let (head, tail) = split_at_char_width(&text, remaining);
             if !head.is_empty() {
-                current.push(Span::styled(head, style));
+                current.push(StyledSpan::new(head, style));
             }
-            lines.push(Line::from(std::mem::take(&mut current)));
+            lines.push(StyledLine::new(std::mem::take(&mut current)));
             current_width = 0;
             text = tail;
             if !continuation_prefix.is_empty() {
@@ -563,41 +571,41 @@ fn wrap_spans(
     }
 
     if !current.is_empty() || lines.is_empty() {
-        lines.push(Line::from(current));
+        lines.push(StyledLine::new(current));
     }
     lines
 }
 
-fn clone_spans(spans: &[Span<'static>]) -> Vec<Span<'static>> {
+fn clone_spans(spans: &[StyledSpan]) -> Vec<StyledSpan> {
     spans
         .iter()
-        .map(|span| Span::styled(span.content.to_string(), span.style))
+        .map(|span| StyledSpan::new(span.text.to_string(), span.style))
         .collect()
 }
 
-fn clamp_spans(spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
+fn clamp_spans(spans: Vec<StyledSpan>, width: usize) -> Vec<StyledSpan> {
     let mut remaining = width;
     let mut out = Vec::new();
     for span in spans {
         if remaining == 0 {
             break;
         }
-        let text = span.content.to_string();
+        let text = span.text.to_string();
         let text_width = text.chars().count();
         if text_width <= remaining {
-            out.push(Span::styled(text, span.style));
+            out.push(StyledSpan::new(text, span.style));
             remaining -= text_width;
         } else {
             let (head, _) = split_at_char_width(&text, remaining);
-            out.push(Span::styled(head, span.style));
+            out.push(StyledSpan::new(head, span.style));
             remaining = 0;
         }
     }
     out
 }
 
-fn spans_width(spans: &[Span<'static>]) -> usize {
-    spans.iter().map(|span| span.content.chars().count()).sum()
+fn spans_width(spans: &[StyledSpan]) -> usize {
+    spans.iter().map(|span| span.text.chars().count()).sum()
 }
 
 fn split_at_char_width(text: &str, width: usize) -> (String, String) {
@@ -613,7 +621,7 @@ fn render_table_lines(
     rows: Vec<Vec<String>>,
     width: usize,
     theme: &MarkdownTheme,
-) -> Vec<Line<'static>> {
+) -> Vec<StyledLine> {
     if width < 5 || rows.is_empty() {
         return Vec::new();
     }
@@ -628,18 +636,18 @@ fn render_table_lines(
         return rows
             .into_iter()
             .map(|row| {
-                Line::from(Span::styled(
+                StyledLine::new(vec![StyledSpan::new(
                     truncate_to_width(&row.join(" | "), width),
                     theme.code_block,
-                ))
+                )])
             })
             .collect();
     }
 
     let cell_budget = width - overhead;
     let mut column_widths = vec![cell_budget / column_count; column_count];
-    for width in column_widths.iter_mut().take(cell_budget % column_count) {
-        *width += 1;
+    for w in column_widths.iter_mut().take(cell_budget % column_count) {
+        *w += 1;
     }
 
     let mut lines = Vec::new();
@@ -664,16 +672,16 @@ fn table_border_line(
     right: &str,
     widths: &[usize],
     theme: &MarkdownTheme,
-) -> Line<'static> {
+) -> StyledLine {
     let cells = widths
         .iter()
         .map(|width| "─".repeat(*width + 2))
         .collect::<Vec<_>>()
         .join(separator);
-    Line::from(Span::styled(
+    StyledLine::new(vec![StyledSpan::new(
         format!("{}{}{}", left, cells, right),
         theme.hr,
-    ))
+    )])
 }
 
 fn table_row_line(
@@ -681,20 +689,20 @@ fn table_row_line(
     widths: &[usize],
     theme: &MarkdownTheme,
     style: Style,
-) -> Line<'static> {
+) -> StyledLine {
     let mut spans = Vec::new();
-    spans.push(Span::styled("│".to_string(), theme.hr));
+    spans.push(StyledSpan::new("│".to_string(), theme.hr));
     for (idx, width) in widths.iter().enumerate() {
         let cell = row.get(idx).map(String::as_str).unwrap_or("");
         let text = truncate_to_width(cell, *width);
         let pad = " ".repeat(width.saturating_sub(text.chars().count()));
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(text, style));
-        spans.push(Span::raw(pad));
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled("│".to_string(), theme.hr));
+        spans.push(StyledSpan::plain(" "));
+        spans.push(StyledSpan::new(text, style));
+        spans.push(StyledSpan::plain(pad));
+        spans.push(StyledSpan::plain(" "));
+        spans.push(StyledSpan::new("│".to_string(), theme.hr));
     }
-    Line::from(spans)
+    StyledLine::new(spans)
 }
 
 fn truncate_to_width(text: &str, width: usize) -> String {
@@ -789,11 +797,8 @@ mod tests {
         assert!(lines
             .iter()
             .flat_map(|line| line.spans.iter())
-            .any(|span| span.content == "removed"
-                && span
-                    .style
-                    .add_modifier
-                    .contains(ratatui::style::Modifier::CROSSED_OUT)));
+            .any(|span| span.text == "removed"
+                && span.style.strikethrough));
     }
 
     #[test]
@@ -826,11 +831,8 @@ mod tests {
         assert!(lines
             .iter()
             .flat_map(|line| line.spans.iter())
-            .any(|span| span.content == "example"
-                && span
-                    .style
-                    .add_modifier
-                    .contains(ratatui::style::Modifier::UNDERLINED)));
+            .any(|span| span.text == "example"
+                && span.style.underline));
     }
 
     #[test]
@@ -1002,11 +1004,8 @@ mod tests {
         assert!(lines
             .iter()
             .flat_map(|line| line.spans.iter())
-            .any(|span| span.content == "Term"
-                && span
-                    .style
-                    .add_modifier
-                    .contains(ratatui::style::Modifier::BOLD)));
+            .any(|span| span.text == "Term"
+                && span.style.bold));
     }
 
     #[test]

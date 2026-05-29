@@ -5,6 +5,7 @@ use ratatui::widgets::{
     Block, BorderType, Borders, Clear, List, ListItem, Padding, Paragraph, Wrap,
 };
 use ratatui::Frame;
+use display_protocol::{StyledLine as DpStyledLine, StyledSpan as DpStyledSpan, Style as DpStyle};
 
 use super::app::{App, AppMode, ChatMessage, MessageRole, TodoItem, TodoStatus};
 use super::editor::Editor;
@@ -243,28 +244,28 @@ fn render_message_para(
             let md_lines = render_markdown(&msg.content, &md_theme, width.saturating_sub(4));
             for md_line in md_lines {
                 let mut spans = vec![Span::styled("  ".to_string(), user_style)];
-                spans.extend(md_line.spans.into_iter().map(|span| {
-                    Span::styled(span.content.into_owned(), span.style.patch(user_style))
-                }));
+                for span in md_line.spans {
+                    let merged = dp_to_ratatui_style(DpStyle::default().merge(&span.style).merge(&dp_from_ratatui_style(user_style)));
+                    spans.push(Span::styled(span.text, merged));
+                }
                 lines.push(Line::from(spans));
             }
         }
         MessageRole::Agent => {
             lines.push(Line::from(""));
-
             if let Some(ref thinking) = msg.thinking {
                 lines.extend(render_thinking_lines(thinking, width, theme));
                 lines.push(Line::from(""));
             }
-
             let md_theme = super::markdown::MarkdownTheme::default();
             let md_lines = render_markdown(&msg.content, &md_theme, width.saturating_sub(4));
             for md_line in md_lines {
                 let mut prefixed = vec![Span::raw("    ")];
-                prefixed.extend(md_line.spans.into_iter());
+                for span in md_line.spans {
+                    prefixed.push(Span::styled(span.text, dp_to_ratatui_style(span.style)));
+                }
                 lines.push(Line::from(prefixed));
             }
-
             for tool in &msg.tool_calls {
                 let tool_lines =
                     super::tool_execution::render_tool_call(tool, symbols, width.saturating_sub(2));
@@ -279,27 +280,70 @@ fn render_message_para(
             )));
         }
     }
-
     lines
 }
-
+fn dp_from_ratatui_style(s: Style) -> DpStyle {
+    let mut dp = DpStyle::default();
+    if let Some(fg) = s.fg {
+        if let ratatui::style::Color::Rgb(r, g, b) = fg {
+            dp = dp.fg(display_protocol::Color::new(r, g, b));
+        }
+    }
+    if let Some(bg) = s.bg {
+        if let ratatui::style::Color::Rgb(r, g, b) = bg {
+            dp = dp.bg(display_protocol::Color::new(r, g, b));
+        }
+    }
+    if s.add_modifier.contains(ratatui::style::Modifier::BOLD) {
+        dp = dp.bold();
+    }
+    if s.add_modifier.contains(ratatui::style::Modifier::ITALIC) {
+        dp = dp.italic();
+    }
+    if s.add_modifier.contains(ratatui::style::Modifier::UNDERLINED) {
+        dp = dp.underline();
+    }
+    if s.add_modifier.contains(ratatui::style::Modifier::CROSSED_OUT) {
+        dp = dp.strikethrough();
+    }
+    dp
+}
+fn dp_to_ratatui_style(dp: DpStyle) -> Style {
+    let mut s = Style::default();
+    if let Some(c) = dp.fg {
+        s = s.fg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
+    }
+    if let Some(c) = dp.bg {
+        s = s.bg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
+    }
+    if dp.bold {
+        s = s.add_modifier(ratatui::style::Modifier::BOLD);
+    }
+    if dp.italic {
+        s = s.add_modifier(ratatui::style::Modifier::ITALIC);
+    }
+    if dp.underline {
+        s = s.add_modifier(ratatui::style::Modifier::UNDERLINED);
+    }
+    if dp.strikethrough {
+        s = s.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
+    }
+    s
+}
 fn render_thinking_lines(text: &str, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let md_theme = super::markdown::MarkdownTheme::default();
     let md_lines = render_markdown(text, &md_theme, width.saturating_sub(4));
+    let thinking_dp = dp_from_ratatui_style(theme.thinking);
     md_lines
         .into_iter()
-        .map(|line| {
+        .map(|md_line| {
             let mut spans = vec![Span::styled("  ".to_string(), theme.thinking)];
-            spans.extend(md_line_spans_with_style(line, theme.thinking));
+            for span in md_line.spans {
+                let merged = dp_to_ratatui_style(DpStyle::default().merge(&span.style).merge(&thinking_dp));
+                spans.push(Span::styled(span.text, merged));
+            }
             Line::from(spans)
         })
-        .collect()
-}
-
-fn md_line_spans_with_style(line: Line<'static>, style: Style) -> Vec<Span<'static>> {
-    line.spans
-        .into_iter()
-        .map(|span| Span::styled(span.content.into_owned(), span.style.patch(style)))
         .collect()
 }
 

@@ -210,6 +210,21 @@ impl StyledLine {
     }
 }
 
+impl std::fmt::Display for StyledSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
+impl std::fmt::Display for StyledLine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for span in &self.spans {
+            f.write_str(&span.text)?;
+        }
+        Ok(())
+    }
+}
+
 /// Selection mode for text and list selections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum SelectionMode {
