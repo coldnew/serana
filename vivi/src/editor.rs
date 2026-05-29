@@ -32,6 +32,9 @@ pub struct Editor {
     yank_register: YankRegister,
     /// Visual mode selection (anchor/head model).
     selection: Option<Selection>,
+    /// Pending normal-mode delete operator. `d` waits for a motion; `dd`
+    /// deletes lines.
+    pending_delete: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -68,6 +71,7 @@ impl Editor {
             count: None,
             yank_register: YankRegister::Lines(vec![]),
             selection: None,
+            pending_delete: false,
         }
     }
 
@@ -169,6 +173,11 @@ impl Editor {
     // ─── Normal Mode ───────────────────────────────────────────────
 
     fn handle_normal(&mut self, key: KeyEvent) {
+        if self.pending_delete {
+            self.handle_pending_delete(key);
+            return;
+        }
+
         match key.code {
             // Movement
             KeyCode::Char('h') | KeyCode::Left => {
@@ -363,16 +372,7 @@ impl Editor {
                 }
             }
             KeyCode::Char('d') => {
-                // dd - delete line
-                let n = self.take_count();
-                let mut lines = Vec::new();
-                for _ in 0..n {
-                    if let Some(line) = self.buffer.delete_line(self.cursor.row) {
-                        lines.push(line);
-                    }
-                }
-                self.yank_register = YankRegister::Lines(lines);
-                self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+                self.pending_delete = true;
             }
             KeyCode::Char('D') => {
                 // Delete to end of line
@@ -543,10 +543,39 @@ impl Editor {
             KeyCode::Esc => {
                 self.count = None;
                 self.selection = None;
+                self.pending_delete = false;
             }
 
             _ => {}
         }
+    }
+
+    fn handle_pending_delete(&mut self, key: KeyEvent) {
+        self.pending_delete = false;
+
+        match key.code {
+            KeyCode::Char('d') => {
+                self.delete_current_lines();
+            }
+            KeyCode::Esc => {
+                self.count = None;
+            }
+            _ => {
+                self.count = None;
+            }
+        }
+    }
+
+    fn delete_current_lines(&mut self) {
+        let n = self.take_count();
+        let mut lines = Vec::new();
+        for _ in 0..n {
+            if let Some(line) = self.buffer.delete_line(self.cursor.row) {
+                lines.push(line);
+            }
+        }
+        self.yank_register = YankRegister::Lines(lines);
+        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
     }
 
     // ─── Insert Mode ───────────────────────────────────────────────
@@ -721,6 +750,14 @@ mod tests {
         key_code(KeyCode::Backspace)
     }
 
+    fn ex(ed: &mut Editor, command: &str) {
+        ed.handle_key(key(':'));
+        for ch in command.chars() {
+            ed.handle_key(key(ch));
+        }
+        ed.handle_key(enter());
+    }
+
     #[test]
     fn test_initial_state() {
         let ed = make_editor("hello");
@@ -789,10 +826,33 @@ mod tests {
         let mut ed = make_multiline_editor(&["line1", "line2", "line3"]);
 
         ed.handle_key(key('d'));
+        ed.handle_key(key('d'));
 
         assert_eq!(ed.buffer().line_count(), 2);
         assert_eq!(ed.buffer().line(0), "line2");
         assert_eq!(ed.buffer().line(1), "line3");
+    }
+
+    #[test]
+    fn test_single_d_waits_for_delete_operator() {
+        let mut ed = make_multiline_editor(&["line1", "line2", "line3"]);
+
+        ed.handle_key(key('d'));
+
+        assert_eq!(ed.buffer().line_count(), 3);
+        assert_eq!(ed.buffer().line(0), "line1");
+    }
+
+    #[test]
+    fn test_count_prefix_dd_deletes_multiple_lines() {
+        let mut ed = make_multiline_editor(&["line1", "line2", "line3"]);
+
+        ed.handle_key(key('2'));
+        ed.handle_key(key('d'));
+        ed.handle_key(key('d'));
+
+        assert_eq!(ed.buffer().line_count(), 1);
+        assert_eq!(ed.buffer().line(0), "line3");
     }
 
     #[test]
@@ -833,13 +893,69 @@ mod tests {
     fn test_command_mode_not_found() {
         let mut ed = make_editor("");
 
-        ed.handle_key(key(':'));
-        ed.handle_key(key('x'));
-        ed.handle_key(key('y'));
-        ed.handle_key(key('z'));
-        ed.handle_key(enter());
+        ex(&mut ed, "xyz");
         assert!(!ed.should_quit());
         assert!(ed.message().is_some());
+    }
+
+    #[test]
+    fn test_ex_line_address() {
+        let mut ed = make_multiline_editor(&["one", "two", "three"]);
+
+        ex(&mut ed, "3");
+        assert_eq!(ed.cursor().row, 2);
+        assert_eq!(ed.cursor().col, 0);
+    }
+
+    #[test]
+    fn test_ex_last_line_address() {
+        let mut ed = make_multiline_editor(&["one", "two", "three"]);
+
+        ex(&mut ed, "$");
+        assert_eq!(ed.cursor().row, 2);
+        assert_eq!(ed.cursor().col, 0);
+    }
+
+    #[test]
+    fn test_ex_invalid_line_address_reports_range_error() {
+        let mut ed = make_multiline_editor(&["one", "two"]);
+
+        ex(&mut ed, "9");
+        assert_eq!(ed.cursor().row, 0);
+        assert_eq!(ed.message(), Some("Invalid range: 9"));
+    }
+
+    #[test]
+    fn test_ex_quit_bang_modified_buffer() {
+        let mut ed = make_editor("");
+        ed.handle_key(key('i'));
+        ed.handle_key(key('x'));
+        ed.handle_key(esc());
+
+        ex(&mut ed, "q!");
+        assert!(ed.should_quit());
+    }
+
+    #[test]
+    fn test_ex_edit_bang_reloads_current_file() {
+        let path = std::env::temp_dir().join(format!(
+            "vivi-edit-bang-{}-{}.txt",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::write(&path, "file text").unwrap();
+
+        let mut ed = Editor::new(Buffer::from_file(&path).unwrap());
+        ed.handle_key(key('A'));
+        ed.handle_key(key('!'));
+        ed.handle_key(esc());
+        assert_eq!(ed.buffer().line(0), "file text!");
+
+        ex(&mut ed, "e!");
+        assert_eq!(ed.buffer().line(0), "file text");
+        assert!(!ed.buffer().is_modified());
+
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

@@ -10,6 +10,12 @@ const FG: Color = Color::new(218, 218, 218);
 const DIM: Color = Color::new(102, 102, 102);
 const STATUS_FG: Color = Color::BLACK;
 const STATUS_BG: Color = Color::new(218, 218, 218);
+const STATUS_MODE_FG: Color = Color::WHITE;
+const NORMAL_MODE_BG: Color = Color::new(60, 60, 60);
+const INSERT_MODE_BG: Color = Color::new(0, 128, 0);
+const VISUAL_MODE_BG: Color = Color::new(100, 100, 200);
+const COMMAND_MODE_BG: Color = Color::new(180, 140, 60);
+const REPLACE_MODE_BG: Color = Color::new(180, 60, 60);
 const VISUAL_BG: Color = Color::new(70, 80, 110);
 const CURSOR_BG: Color = Color::new(204, 204, 204);
 const REPLACE_CURSOR: Color = Color::new(255, 100, 100);
@@ -91,7 +97,9 @@ fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
     let text_style = Style::new().fg(FG).bg(BG);
     let selection_style = Style::new().fg(FG).bg(VISUAL_BG);
     let status_style = Style::new().fg(STATUS_FG).bg(STATUS_BG);
-    let status_left = status_left(editor);
+    let mode_label = format!(" {} ", editor.mode().indicator());
+    let mode_bg = mode_bg(editor.mode());
+    let file_status = file_status(editor);
     let status_right = status_right(editor);
     let command_text = command_line_text(editor);
 
@@ -110,7 +118,8 @@ fn build_ui(editor: &Editor, _width: u16, height: u16) -> UiNode {
             />
             <StatusBar style={status_style}>
                 <Left>
-                    <Text bold bg={STATUS_BG} color={STATUS_FG}>{status_left.as_str()}</Text>
+                    <Text bold bg={mode_bg} color={STATUS_MODE_FG}>{mode_label.as_str()}</Text>
+                    <Text bold bg={STATUS_BG} color={STATUS_FG}>{file_status.as_str()}</Text>
                 </Left>
                 <Right>
                     <Text bg={STATUS_BG} color={STATUS_FG}>{status_right.as_str()}</Text>
@@ -139,7 +148,17 @@ fn text_area_height(height: u16) -> u16 {
     height.saturating_sub(2)
 }
 
-fn status_left(editor: &Editor) -> String {
+fn mode_bg(mode: Mode) -> Color {
+    match mode {
+        Mode::Normal => NORMAL_MODE_BG,
+        Mode::Insert => INSERT_MODE_BG,
+        Mode::Visual | Mode::VisualLine => VISUAL_MODE_BG,
+        Mode::Command => COMMAND_MODE_BG,
+        Mode::Replace => REPLACE_MODE_BG,
+    }
+}
+
+fn file_status(editor: &Editor) -> String {
     let modified = if editor.buffer().is_modified() {
         " [+]"
     } else {
@@ -192,7 +211,8 @@ mod tests {
         let buf = render(&editor, 80, 24);
         assert_eq!(buf.width, 80);
         assert_eq!(buf.height, 24);
-        assert_eq!(buf.get(0, 22).bg, STATUS_BG);
+        assert_eq!(buf.get(0, 22).bg, NORMAL_MODE_BG);
+        assert_eq!(buf.get(8, 22).bg, STATUS_BG);
     }
 
     #[test]
@@ -234,6 +254,18 @@ mod tests {
         let screen = render(&editor, 80, 24);
         let text: String = (0..12).map(|x| screen.get(x, 23).ch).collect();
         assert_eq!(text, "-- INSERT --");
+    }
+
+    #[test]
+    fn test_modeline_mode_color_changes_by_mode() {
+        let mut editor = Editor::new(Buffer::new());
+
+        let normal = render(&editor, 80, 24);
+        assert_eq!(normal.get(0, 22).bg, NORMAL_MODE_BG);
+
+        editor.handle_key(display_protocol::KeyEvent::char('i'));
+        let insert = render(&editor, 80, 24);
+        assert_eq!(insert.get(0, 22).bg, INSERT_MODE_BG);
     }
 
     #[test]

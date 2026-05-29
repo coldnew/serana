@@ -1,5 +1,67 @@
 # Hermes Agent Refactor
 
+# Vivi dd Delete Operator
+
+Assumptions:
+- Fix only the observed Vim mismatch: single `d` should not delete a line; `dd` should.
+- Keep broader operator-motion support like `dw` out of this slice.
+
+Success criteria for this slice:
+- [x] Make normal-mode `d` enter a pending delete state.
+- [x] Make `dd` delete the current line, preserving count behavior like `2dd`.
+- [x] Add focused editor tests.
+- [x] Format touched files and run focused Vivi tests.
+- [x] Commit the completed Vivi changes.
+
+Review:
+- Normal-mode `d` now enters a pending delete state instead of deleting immediately.
+- `dd` deletes the current line, and count prefixes still apply (`2dd` deletes two lines).
+- Unsupported pending delete inputs clear the pending operator and count.
+- Added tests for single `d`, `dd`, and `2dd`.
+- Verification passed with `rustfmt` on `vivi/src/editor.rs` and `cargo test -p vivi` (58 tests).
+
+# Vivi Ex Commands
+
+Assumptions:
+- Keep this to common Ex commands missing from Vivi's current `:` command parser.
+- Treat line addresses like `:3` and `:$` as first-class Ex commands because Vivi's command input does not include the leading `:`.
+- Add bang variants for existing write/quit/edit commands without changing editing semantics elsewhere.
+
+Success criteria for this slice:
+- [x] Support Ex line address commands.
+- [x] Support common bang variants for write/quit/edit.
+- [x] Add focused editor command tests.
+- [x] Format touched files and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- `:3` and `:$` now move the cursor to addressed lines through the normal command mode path.
+- Invalid line addresses now report `Invalid range`.
+- Existing write/quit/edit commands now parse `!` bang variants consistently.
+- `:edit!` with no path reloads the current file and discards unsaved changes; `:edit` protects modified buffers.
+- Added focused tests for line addresses, invalid addresses, `:q!`, and `:e!`.
+- Verification passed with `rustfmt` on touched Vivi files and `cargo test -p vivi` (56 tests).
+
+# Vivi Colored Modeline
+
+Assumptions:
+- Restore the previous mode-colored modeline behavior as a colored mode segment.
+- Keep the rest of the modeline neutral so file and position text remain easy to scan.
+
+Success criteria for this slice:
+- [x] Add mode-dependent modeline color.
+- [x] Keep the JSX/display-tui render path.
+- [x] Add focused render coverage.
+- [x] Format touched file and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Restored a mode-colored modeline segment while leaving file/status text on the neutral modeline background.
+- Mode colors now match the earlier palette: gray normal, green insert, blue visual, amber command, red replace.
+- Kept the JSX/display-tui render path intact by styling the `StatusBar` child `Text` nodes.
+- Added render coverage proving the modeline mode segment changes color between normal and insert.
+- Verification passed with `rustfmt` on `vivi/src/render.rs` and `cargo test -p vivi` (51 tests).
+
 # Vivi JSX/display-tui UI Refactor
 
 Assumptions:
