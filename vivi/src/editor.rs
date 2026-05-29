@@ -59,6 +59,8 @@ pub struct Editor {
     pending_find_forward: bool,
     /// Till mode of pending find (t/T vs f/F).
     pending_find_till: bool,
+    /// Whether the last motion was `$` (inclusive for operators like d/c/y).
+    last_motion_inclusive: bool,
     /// Undo stack (most recent first).
     undo_stack: Vec<UndoState>,
     /// Redo stack (most recent first).
@@ -110,6 +112,7 @@ impl Editor {
             pending_find: false,
             pending_find_forward: true,
             pending_find_till: false,
+            last_motion_inclusive: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             in_change_group: false,
@@ -375,6 +378,7 @@ impl Editor {
             KeyCode::Char('$') => {
                 let len = self.buffer.line_len(self.cursor.row);
                 self.set_cursor_col(if len > 0 { len - 1 } else { 0 });
+                self.last_motion_inclusive = true;
             }
             KeyCode::Char('^') => {
                 // First non-blank character
@@ -816,13 +820,18 @@ impl Editor {
         let saved_row = self.cursor.row;
         let saved_col = self.cursor.col;
         let saved_scroll = self.scroll;
-
         // Apply the motion
         let prev_count = self.count.take();
+        self.last_motion_inclusive = false;
         self.handle_normal(key);
-
         let end_row = self.cursor.row;
-        let end_col = self.cursor.col;
+        let mut end_col = self.cursor.col;
+        // Inclusive motions (like $) extend the range by one so the
+        // exclusive upper bound [..ec) still covers the last char.
+        if self.last_motion_inclusive && end_row == saved_row {
+            let line_len = self.buffer.line_len(end_row);
+            end_col = (end_col + 1).min(line_len);
+        }
 
         // Restore scroll (don't want the motion to scroll independently)
         self.scroll = saved_scroll;
