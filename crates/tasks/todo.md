@@ -1,5 +1,26 @@
 # Hermes Agent Refactor
 
+# Vivi Ctrl Scroll Keys
+
+Assumptions:
+- Fix Ctrl key handling for the display-tui key representation.
+- Include vi/vim's related page scroll keys: Ctrl-F/Ctrl-B full page and Ctrl-D/Ctrl-U half page.
+- Keep behavior cursor-driven, letting existing scroll update logic reveal the target line.
+
+Success criteria for this slice:
+- [x] Make Ctrl-F and Ctrl-B work from normal mode.
+- [x] Add Ctrl-D and Ctrl-U half-page movement.
+- [x] Add focused editor tests using `KeyModifiers::CONTROL`.
+- [x] Format touched files and run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Normal mode now handles Ctrl-F/Ctrl-B using `KeyModifiers::CONTROL`, matching `display-tui` input events.
+- Ctrl-F/Ctrl-B move a full visible page; Ctrl-D/Ctrl-U move half a visible page.
+- Ctrl-key dispatch runs before plain character commands, so Ctrl-B no longer falls through to word-back motion and Ctrl-D no longer arms delete.
+- Added focused tests for full-page and half-page Ctrl scrolling.
+- Verification passed with `rustfmt` on `vivi/src/editor.rs` and `cargo test -p vivi` (60 tests).
+
 # Vivi dd Delete Operator
 
 Assumptions:

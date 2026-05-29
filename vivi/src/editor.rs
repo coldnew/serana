@@ -178,6 +178,10 @@ impl Editor {
             return;
         }
 
+        if key.modifiers.ctrl && self.handle_ctrl_normal(key) {
+            return;
+        }
+
         match key.code {
             // Movement
             KeyCode::Char('h') | KeyCode::Left => {
@@ -296,21 +300,18 @@ impl Editor {
 
             // Page up/down
             KeyCode::PageDown | KeyCode::Char('\x06') => {
-                // Ctrl-F
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let n = self.take_count();
                 for _ in 0..n {
-                    self.cursor.row = (self.cursor.row + text_height)
-                        .min(self.buffer.line_count().saturating_sub(1));
+                    self.move_lines_down(text_height);
                 }
                 self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
             KeyCode::PageUp | KeyCode::Char('\x02') => {
-                // Ctrl-B
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let n = self.take_count();
                 for _ in 0..n {
-                    self.cursor.row = self.cursor.row.saturating_sub(text_height);
+                    self.move_lines_up(text_height);
                 }
                 self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
@@ -566,6 +567,28 @@ impl Editor {
         }
     }
 
+    fn handle_ctrl_normal(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            KeyCode::Char('f') => {
+                self.move_pages_down();
+                true
+            }
+            KeyCode::Char('b') => {
+                self.move_pages_up();
+                true
+            }
+            KeyCode::Char('d') => {
+                self.move_half_pages_down();
+                true
+            }
+            KeyCode::Char('u') => {
+                self.move_half_pages_up();
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn delete_current_lines(&mut self) {
         let n = self.take_count();
         let mut lines = Vec::new();
@@ -576,6 +599,50 @@ impl Editor {
         }
         self.yank_register = YankRegister::Lines(lines);
         self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+    }
+
+    fn move_pages_down(&mut self) {
+        let text_height = (self.term_height as usize).saturating_sub(2);
+        let n = self.take_count();
+        for _ in 0..n {
+            self.move_lines_down(text_height);
+        }
+        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+    }
+
+    fn move_pages_up(&mut self) {
+        let text_height = (self.term_height as usize).saturating_sub(2);
+        let n = self.take_count();
+        for _ in 0..n {
+            self.move_lines_up(text_height);
+        }
+        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+    }
+
+    fn move_half_pages_down(&mut self) {
+        let half_page = (self.term_height as usize).saturating_sub(2).max(1) / 2;
+        let n = self.take_count();
+        for _ in 0..n {
+            self.move_lines_down(half_page.max(1));
+        }
+        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+    }
+
+    fn move_half_pages_up(&mut self) {
+        let half_page = (self.term_height as usize).saturating_sub(2).max(1) / 2;
+        let n = self.take_count();
+        for _ in 0..n {
+            self.move_lines_up(half_page.max(1));
+        }
+        self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
+    }
+
+    fn move_lines_down(&mut self, lines: usize) {
+        self.cursor.row = (self.cursor.row + lines).min(self.buffer.line_count().saturating_sub(1));
+    }
+
+    fn move_lines_up(&mut self, lines: usize) {
+        self.cursor.row = self.cursor.row.saturating_sub(lines);
     }
 
     // ─── Insert Mode ───────────────────────────────────────────────
@@ -738,6 +805,10 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::EMPTY)
     }
 
+    fn ctrl_key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
     fn esc() -> KeyEvent {
         key_code(KeyCode::Esc)
     }
@@ -787,6 +858,30 @@ mod tests {
         // h moves left
         ed.handle_key(key('h'));
         assert_eq!(ed.cursor().col, 0);
+    }
+
+    #[test]
+    fn test_ctrl_f_and_ctrl_b_scroll_full_page() {
+        let mut ed = make_multiline_editor(&["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+        ed.set_term_size(80, 6);
+
+        ed.handle_key(ctrl_key('f'));
+        assert_eq!(ed.cursor().row, 4);
+
+        ed.handle_key(ctrl_key('b'));
+        assert_eq!(ed.cursor().row, 0);
+    }
+
+    #[test]
+    fn test_ctrl_d_and_ctrl_u_scroll_half_page() {
+        let mut ed = make_multiline_editor(&["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+        ed.set_term_size(80, 6);
+
+        ed.handle_key(ctrl_key('d'));
+        assert_eq!(ed.cursor().row, 2);
+
+        ed.handle_key(ctrl_key('u'));
+        assert_eq!(ed.cursor().row, 0);
     }
 
     #[test]
