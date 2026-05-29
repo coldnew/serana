@@ -17,7 +17,7 @@ pub fn register(ns: &mut Namespace) {
     register_native(ns, "mora.string/join", native_join);
     register_native(ns, "mora.string/last-index-of", native_last_index_of);
     register_native(ns, "mora.string/lower-case", native_lower_case);
-    register_native(ns, "mora.string/re-quote-replacement", super::native_identity);
+    register_native(ns, "mora.string/re-quote-replacement", super::core::native_identity);
     register_native(ns, "mora.string/replace", native_replace_with_regex);
     register_native(ns, "mora.string/replace-first", native_replace_first_regex);
     register_native(ns, "mora.string/reverse", native_str_reverse);
