@@ -5,17 +5,14 @@ pub mod editor;
 pub mod event;
 pub mod image;
 pub mod markdown;
+pub mod render;
 pub mod slash_commands;
 pub mod status_line;
 pub mod symbols;
 pub mod syntax;
 pub mod theme;
 pub mod tool_execution;
-pub mod render;
-pub mod render_helpers;
 pub mod tui;
-pub mod ui;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
