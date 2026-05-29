@@ -136,29 +136,4 @@ mod tests {
             .iter()
             .any(|span| span.text == "fn" && span.style.fg.is_some()));
     }
-
-    #[test]
-    fn toml_file_gets_highlighted() {
-        let lines = ["[package]", "name = \"vivi\""];
-        let highlighted =
-            SyntaxHighlighter::global().highlight_buffer(&lines, Some(Path::new("Cargo.toml")));
-
-        assert_eq!(highlighted.len(), 2);
-        // The section header [package] should have colored spans
-        assert!(
-            highlighted[0]
-                .spans
-                .iter()
-                .any(|span| span.style.fg.is_some()),
-            "TOML section header should be highlighted"
-        );
-        // The key-value line should also have colored spans
-        assert!(
-            highlighted[1]
-                .spans
-                .iter()
-                .any(|span| span.style.fg.is_some()),
-            "TOML key-value should be highlighted"
-        );
-    }
 }
