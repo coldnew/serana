@@ -30,7 +30,13 @@ pub fn build_ui(app: &App, width: u16, height: u16) -> UiNode {
     } else {
         children.push(build_messages(app, width, &theme));
     }
+
     children.push(build_status_bar(app, width, &theme));
+
+    if app.mode == AppMode::Processing {
+        children.push(build_processing_indicator(app, width, &theme));
+    }
+
     children.push(build_input(app, width, &theme));
 
     if let Some(ref dialog) = app.active_dialog {
@@ -290,6 +296,49 @@ fn build_status_bar(app: &App, _width: u16, theme: &Theme) -> UiNode {
         style: bg,
     });
     status_node
+}
+
+fn build_processing_indicator(app: &App, width: u16, theme: &Theme) -> UiNode {
+    let frames = ["◌", "◜", "◠", "◝", "◞", "◡", "◟", "●"];
+    let frame = frames[(app.tick_count as usize / 4) % frames.len()];
+    let elapsed = app.session_elapsed();
+
+    let mut items = Vec::new();
+
+    // Blank line
+    items.push(jsx! { <Text>{""}</Text> });
+
+    // Spinner line
+    let indicator = format!("  {} Working  {}  Esc to interrupt", frame, elapsed);
+    items.push(jsx! {
+        <Text style={Style::new().fg(Color::new(212, 192, 144))}>{indicator.as_str()}</Text>
+    });
+
+    // Streaming content preview
+    if !app.pending_messages.is_empty() {
+        let preview: String = app.pending_messages.iter()
+            .flat_map(|m| m.lines())
+            .rev()
+            .take(3)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        let display_width = width.saturating_sub(6) as usize;
+        for line in preview.lines() {
+            let truncated = if line.len() > display_width {
+                format!("{}…", &line[..display_width])
+            } else {
+                line.to_string()
+            };
+            items.push(jsx! {
+                <Text style={theme.dim}>{format!("    {}", truncated).as_str()}</Text>
+            });
+        }
+    }
+
+    build_column(items)
 }
 
 fn build_tool_call(tool: &super::app::ToolCall, width: u16, theme: &Theme) -> Vec<UiNode> {
