@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::ns::Namespace;
 use crate::types::Value;
 pub mod string;
+pub mod math;
 
 
 macro_rules! builtin_fn {
@@ -143,8 +144,10 @@ pub fn register_builtins(ns: &mut Namespace) {
     register_native(ns, "seq", native_seq);
     register_native(ns, "set", native_set_fn);
 
-    // --- String Operations (all mora.string/*) ---
     string::register(ns);
+
+    // --- Math Operations (all mora.math/*) ---
+    math::register(ns);
 
     // --- IO ---
     register_native(ns, "print", native_print);

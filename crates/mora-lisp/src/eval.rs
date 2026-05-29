@@ -33,6 +33,60 @@ pub enum EvalError {
     Custom(String),
     #[error("throw: {0}")]
     Throw(Value),
+    #[error("{message}")]
+    Stack {
+        message: String,
+        frames: Vec<String>,
+    },
+}
+
+impl EvalError {
+    pub fn message(&self) -> String {
+        match self {
+            EvalError::Stack { message, .. } => message.clone(),
+            other => format!("{}", other),
+        }
+    }
+
+    pub fn frames(&self) -> &[String] {
+        match self {
+            EvalError::Stack { frames, .. } => frames,
+            _ => &[],
+        }
+    }
+
+    pub fn display_with_stack(&self) -> String {
+        match self {
+            EvalError::Stack { message, frames } => {
+                if frames.is_empty() {
+                    return message.clone();
+                }
+                let mut out = format!("error: {}", message);
+                for frame in frames.iter().rev() {
+                    out.push_str(&format!("\n  at {}", frame));
+                }
+                out
+            }
+            other => format!("error: {}", other),
+        }
+    }
+
+    pub fn with_stack(mut self, stack: &[String]) -> Self {
+        if let EvalError::Stack { ref mut frames, .. } = self {
+            for frame in stack.iter().rev() {
+                if !frames.contains(frame) {
+                    frames.push(frame.clone());
+                }
+            }
+        } else {
+            let msg = format!("{}", self);
+            self = EvalError::Stack {
+                message: msg,
+                frames: stack.to_vec(),
+            };
+        }
+        self
+    }
 }
 
 #[derive(Clone)]
@@ -86,6 +140,7 @@ pub struct Evaluator {
     macroexpand_cache: HashMap<Symbol, Value>,
     form_cache: HashMap<u64, Vec<Value>>,
     pub compiled_fns: HashMap<String, crate::bytecode::CompiledFunction>,
+    call_stack: Vec<String>,
     in_tail_position: bool,
     pending_tail_call: Option<(FnValue, Vec<Value>)>,
 }
@@ -120,14 +175,30 @@ impl Evaluator {
             macroexpand_cache: HashMap::new(),
             form_cache: HashMap::new(),
             compiled_fns: HashMap::new(),
+            call_stack: Vec::new(),
             in_tail_position: false,
             pending_tail_call: None,
         };
         eval.register_builtins();
         eval
     }
+    pub fn push_call(&mut self, name: &str) {
+        self.call_stack.push(name.to_string());
+    }
 
-    pub fn eval(&mut self, form: &Value) -> Result<Value, EvalError> {
+    pub fn pop_call(&mut self) {
+        self.call_stack.pop();
+    }
+
+    pub fn call_stack(&self) -> &[String] {
+        &self.call_stack
+    }
+
+    pub fn clear_call_stack(&mut self) {
+        self.call_stack.clear();
+    }
+
+     pub fn eval(&mut self, form: &Value) -> Result<Value, EvalError> {
         let env = Env::new();
         self.eval_in(env, form)
     }
@@ -540,10 +611,16 @@ impl Evaluator {
             }
             Value::Native(f) => {
                 self.in_tail_position = false;
+                let native_name = match first {
+                    Value::Symbol(s) => s.name.to_string(),
+                    _ => "<native>".to_string(),
+                };
+                self.push_call(&native_name);
                 EVALUATOR_PTR.with(|cell| cell.set(self as *mut Evaluator));
                 let result = f(&args).map_err(|e| EvalError::Custom(e));
                 EVALUATOR_PTR.with(|cell| cell.set(std::ptr::null_mut()));
-                result
+                self.pop_call();
+                result.map_err(|e| e.with_stack(&self.call_stack))
             }
             Value::Macro(m) => {
                 let expanded = self.expand_macro_value(&m, &list[1..])?;
@@ -562,13 +639,25 @@ impl Evaluator {
     }
 
     pub fn call_fn(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
+        let fn_name = func.name.clone().unwrap_or_else(|| "<anonymous>".to_string());
+
         // Check for compiled bytecode dispatch
-        if let Some(ref name) = func.name {
-            if self.compiled_fns.contains_key(name) {
-                return self.run_compiled_fn(name, &args, &func.closure);
+        if func.name.is_some() {
+            if self.compiled_fns.contains_key(fn_name.as_str()) {
+                self.push_call(&fn_name);
+                let result = self.run_compiled_fn(&fn_name, &args, &func.closure);
+                self.pop_call();
+                return result.map_err(|e| e.with_stack(&self.call_stack));
             }
         }
 
+        self.push_call(&fn_name);
+        let result = self.call_fn_inner(func, args);
+        self.pop_call();
+        result.map_err(|e| e.with_stack(&self.call_stack))
+    }
+
+    fn call_fn_inner(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
         let mut current_func = func;
         let mut current_args = args;
 

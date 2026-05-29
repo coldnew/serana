@@ -851,4 +851,103 @@ mod tests {
         let result = lisp.eval("(square 5)").unwrap();
         assert_eq!(result, Value::Int(25));
     }
- }
+
+
+    #[test]
+    fn test_mora_math_constants() {
+        let mut lisp = MoraLisp::new();
+        let pi = lisp.eval("mora.math/PI").unwrap();
+        match pi {
+            Value::Float(n) => assert!((n - 3.14159265358979).abs() < 1e-10),
+            _ => panic!("expected float"),
+        }
+        let e = lisp.eval("mora.math/E").unwrap();
+        match e {
+            Value::Float(n) => assert!((n - 2.718281828459045).abs() < 1e-10),
+            _ => panic!("expected float"),
+        }
+    }
+
+    #[test]
+    fn test_mora_math_trig() {
+        let mut lisp = MoraLisp::new();
+        let result = lisp.eval("(mora.math/sin 0)").unwrap();
+        assert_eq!(result, Value::Float(0.0));
+        let result = lisp.eval("(mora.math/cos 0)").unwrap();
+        assert_eq!(result, Value::Float(1.0));
+        let result = lisp.eval("(mora.math/atan2 1 0)").unwrap();
+        match result {
+            Value::Float(n) => assert!((n - std::f64::consts::FRAC_PI_2).abs() < 1e-10),
+            _ => panic!("expected float"),
+        }
+    }
+
+    #[test]
+    fn test_mora_math_exponent() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.math/sqrt 9)").unwrap(), Value::Float(3.0));
+        assert_eq!(lisp.eval("(mora.math/pow 2 10)").unwrap(), Value::Float(1024.0));
+        let result = lisp.eval("(mora.math/log mora.math/E)").unwrap();
+        match result {
+            Value::Float(n) => assert!((n - 1.0).abs() < 1e-10),
+            _ => panic!("expected float"),
+        }
+        assert_eq!(lisp.eval("(mora.math/exp 0)").unwrap(), Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_mora_math_rounding() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.math/floor 3.7)").unwrap(), Value::Float(3.0));
+        assert_eq!(lisp.eval("(mora.math/ceil 3.2)").unwrap(), Value::Float(4.0));
+        assert_eq!(lisp.eval("(mora.math/round 3.5)").unwrap(), Value::Int(4));
+        assert_eq!(lisp.eval("(mora.math/round 3.4)").unwrap(), Value::Int(3));
+    }
+
+    #[test]
+    fn test_mora_math_abs() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.math/abs -5)").unwrap(), Value::Int(5));
+        assert_eq!(lisp.eval("(mora.math/abs 5)").unwrap(), Value::Int(5));
+        assert_eq!(lisp.eval("(mora.math/abs -3.14)").unwrap(), Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_mora_math_hypot() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.math/hypot 3 4)").unwrap(), Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_mora_math_signum() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.math/signum -5)").unwrap(), Value::Float(-1.0));
+        assert_eq!(lisp.eval("(mora.math/signum 5)").unwrap(), Value::Float(1.0));
+        assert_eq!(lisp.eval("(mora.math/signum 0)").unwrap(), Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_mora_math_copy_sign() {
+        let mut lisp = MoraLisp::new();
+        assert_eq!(lisp.eval("(mora.math/copy-sign 3 -1)").unwrap(), Value::Float(-3.0));
+        assert_eq!(lisp.eval("(mora.math/copy-sign -3 1)").unwrap(), Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_mora_math_random() {
+        let mut lisp = MoraLisp::new();
+        let r = lisp.eval("(mora.math/random)").unwrap();
+        match r {
+            Value::Float(n) => assert!(n >= 0.0 && n < 1.0),
+            _ => panic!("expected float"),
+        }
+    }
+
+    #[test]
+    fn test_mora_math_require_alias() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(require [mora.math :as m])").unwrap();
+        let result = lisp.eval("(m/sqrt 16)").unwrap();
+        assert_eq!(result, Value::Float(4.0));
+    }
+}
