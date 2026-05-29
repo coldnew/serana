@@ -4,6 +4,7 @@ pub mod gc;
 pub mod host;
 pub mod ns;
 pub mod reader;
+pub mod repl;
 pub mod thread;
 pub mod types;
 pub mod vm;
@@ -23,6 +24,15 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 }
+
+impl Error {
+    pub fn display_with_stack(&self) -> String {
+        match self {
+            Error::Eval(e) => e.display_with_stack(),
+            other => format!("{}", other),
+        }
+    }
+ }
 
 pub struct MoraLisp {
     evaluator: eval::Evaluator,

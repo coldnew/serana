@@ -950,4 +950,35 @@ mod tests {
         let result = lisp.eval("(m/sqrt 16)").unwrap();
         assert_eq!(result, Value::Float(4.0));
     }
-}
+
+    // --- Stack trace tests ---
+
+    #[test]
+    fn test_stack_trace_on_error() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn inner [x] (+ x \"not-a-number\"))").unwrap();
+        lisp.eval("(defn outer [y] (inner y))").unwrap();
+        let err = lisp.eval("(outer 42)").unwrap_err();
+        let display = err.display_with_stack();
+        assert!(display.contains("error:"), "expected error prefix in: {}", display);
+        assert!(display.contains("inner") || display.contains("+"), "expected stack frame in: {}", display);
+    }
+
+    #[test]
+    fn test_stack_trace_on_undefined() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn caller [] (nonexistent))").unwrap();
+        let err = lisp.eval("(caller)").unwrap_err();
+        let display = err.display_with_stack();
+        assert!(display.contains("nonexistent"), "expected undefined symbol in: {}", display);
+        assert!(display.contains("at "), "expected 'at' frame marker in: {}", display);
+    }
+
+    #[test]
+    fn test_stack_trace_clean_after_success() {
+        let mut lisp = MoraLisp::new();
+        lisp.eval("(defn ok [] (+ 1 2))").unwrap();
+        let result = lisp.eval("(ok)").unwrap();
+        assert_eq!(result, Value::Int(3));
+    }
+ }

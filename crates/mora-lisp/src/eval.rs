@@ -647,14 +647,16 @@ impl Evaluator {
                 self.push_call(&fn_name);
                 let result = self.run_compiled_fn(&fn_name, &args, &func.closure);
                 self.pop_call();
-                return result.map_err(|e| e.with_stack(&self.call_stack));
+                let stack = self.call_stack.clone();
+                return result.map_err(|e| e.with_stack(&stack));
             }
         }
 
         self.push_call(&fn_name);
         let result = self.call_fn_inner(func, args);
+        let stack = self.call_stack.clone();
         self.pop_call();
-        result.map_err(|e| e.with_stack(&self.call_stack))
+        result.map_err(|e| e.with_stack(&stack))
     }
 
     fn call_fn_inner(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
