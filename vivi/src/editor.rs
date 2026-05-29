@@ -4,6 +4,10 @@ use crate::buffer::Buffer;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
 
+mod commands;
+mod motion;
+mod visual;
+
 /// The main editor state.
 pub struct Editor {
     buffer: Buffer,
@@ -133,12 +137,14 @@ impl Editor {
             self.cursor = Cursor::home();
             return;
         }
-        self.cursor.clamp(line_count, self.buffer.line_len(self.cursor.row));
+        self.cursor
+            .clamp(line_count, self.buffer.line_len(self.cursor.row));
     }
 
     fn update_scroll(&mut self) {
         let text_height = (self.term_height as usize).saturating_sub(2);
-        let gutter = crate::render::line_number_width(self.buffer.line_count(), self.term_width as usize);
+        let gutter =
+            crate::render::line_number_width(self.buffer.line_count(), self.term_width as usize);
         let text_width = (self.term_width as usize).saturating_sub(gutter);
 
         // Vertical scroll
@@ -262,7 +268,8 @@ impl Editor {
             KeyCode::Char('L') => {
                 // Bottom of screen
                 let text_height = (self.term_height as usize).saturating_sub(2);
-                let bottom = (self.scroll.row + text_height - 1).min(self.buffer.line_count().saturating_sub(1));
+                let bottom = (self.scroll.row + text_height - 1)
+                    .min(self.buffer.line_count().saturating_sub(1));
                 self.cursor.row = bottom;
                 self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
@@ -275,15 +282,18 @@ impl Editor {
             }
 
             // Page up/down
-            KeyCode::PageDown | KeyCode::Char('\x06') => { // Ctrl-F
+            KeyCode::PageDown | KeyCode::Char('\x06') => {
+                // Ctrl-F
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let n = self.take_count();
                 for _ in 0..n {
-                    self.cursor.row = (self.cursor.row + text_height).min(self.buffer.line_count().saturating_sub(1));
+                    self.cursor.row = (self.cursor.row + text_height)
+                        .min(self.buffer.line_count().saturating_sub(1));
                 }
                 self.cursor.clamp_col(self.buffer.line_len(self.cursor.row));
             }
-            KeyCode::PageUp | KeyCode::Char('\x02') => { // Ctrl-B
+            KeyCode::PageUp | KeyCode::Char('\x02') => {
+                // Ctrl-B
                 let text_height = (self.term_height as usize).saturating_sub(2);
                 let n = self.take_count();
                 for _ in 0..n {
@@ -364,14 +374,16 @@ impl Editor {
                 // Delete to end of line
                 let len = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < len {
-                    self.buffer.replace_range(self.cursor.row, self.cursor.col, len, "");
+                    self.buffer
+                        .replace_range(self.cursor.row, self.cursor.col, len, "");
                 }
             }
             KeyCode::Char('C') => {
                 // Change to end of line
                 let len = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < len {
-                    self.buffer.replace_range(self.cursor.row, self.cursor.col, len, "");
+                    self.buffer
+                        .replace_range(self.cursor.row, self.cursor.col, len, "");
                 }
                 self.mode = Mode::Insert;
             }
@@ -414,7 +426,8 @@ impl Editor {
                     YankRegister::Lines(lines) => {
                         for _ in 0..n {
                             for (i, line) in lines.iter().enumerate() {
-                                self.buffer.insert_line(self.cursor.row + 1 + i, line.clone());
+                                self.buffer
+                                    .insert_line(self.cursor.row + 1 + i, line.clone());
                             }
                         }
                         self.cursor.row += 1;
@@ -441,7 +454,8 @@ impl Editor {
                     }
                     YankRegister::Chars(text) => {
                         for _ in 0..n {
-                            self.buffer.insert_str(self.cursor.row, self.cursor.col, &text);
+                            self.buffer
+                                .insert_str(self.cursor.row, self.cursor.col, &text);
                         }
                     }
                 }
@@ -468,16 +482,20 @@ impl Editor {
             KeyCode::Char('v') => {
                 self.mode = Mode::Visual;
                 self.selection = Some(Selection::range(
-                    self.cursor.row as u32, self.cursor.col as u32,
-                    self.cursor.row as u32, self.cursor.col as u32,
+                    self.cursor.row as u32,
+                    self.cursor.col as u32,
+                    self.cursor.row as u32,
+                    self.cursor.col as u32,
                     SelectionMode::Char,
                 ));
             }
             KeyCode::Char('V') => {
                 self.mode = Mode::VisualLine;
                 self.selection = Some(Selection::range(
-                    self.cursor.row as u32, 0,
-                    self.cursor.row as u32, 0,
+                    self.cursor.row as u32,
+                    0,
+                    self.cursor.row as u32,
+                    0,
                     SelectionMode::Line,
                 ));
             }
@@ -539,7 +557,8 @@ impl Editor {
                 }
             }
             KeyCode::Char(ch) => {
-                self.buffer.insert_char(self.cursor.row, self.cursor.col, ch);
+                self.buffer
+                    .insert_char(self.cursor.row, self.cursor.col, ch);
                 self.cursor.col += 1;
             }
             KeyCode::Enter => {
@@ -569,7 +588,8 @@ impl Editor {
             KeyCode::Tab => {
                 // Insert 4 spaces (configurable in a real editor)
                 for _ in 0..4 {
-                    self.buffer.insert_char(self.cursor.row, self.cursor.col, ' ');
+                    self.buffer
+                        .insert_char(self.cursor.row, self.cursor.col, ' ');
                     self.cursor.col += 1;
                 }
             }
@@ -619,277 +639,6 @@ impl Editor {
         }
     }
 
-    // ─── Visual Mode ───────────────────────────────────────────────
-
-    /// Update the selection head to match the current cursor position.
-    fn update_selection_head(&mut self) {
-        if let Some(ref mut sel) = self.selection {
-            sel.head_line = self.cursor.row as u32;
-            sel.head_col = self.cursor.col as u32;
-        }
-    }
-
-    fn handle_visual(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('v') => {
-                self.mode = Mode::Normal;
-                self.selection = None;
-            }
-            KeyCode::Char(':') => {
-                self.mode = Mode::Command;
-                self.command_input = String::from("'<,'>");
-                self.command_cursor = self.command_input.len();
-            }
-            // Toggle anchor/head
-            KeyCode::Char('o') => {
-                if let Some(ref mut sel) = self.selection {
-                    std::mem::swap(&mut sel.anchor_line, &mut sel.head_line);
-                    std::mem::swap(&mut sel.anchor_col, &mut sel.head_col);
-                    // Move cursor to new head
-                    self.cursor.row = sel.head_line as usize;
-                    self.cursor.col = sel.head_col as usize;
-                }
-            }
-            // Delete selection
-            KeyCode::Char('d') | KeyCode::Char('x') => {
-                self.delete_selection();
-                self.mode = Mode::Normal;
-                self.selection = None;
-            }
-            // Yank selection
-            KeyCode::Char('y') => {
-                self.yank_selection();
-                self.mode = Mode::Normal;
-                self.selection = None;
-            }
-            // Change selection (delete + enter insert)
-            KeyCode::Char('c') => {
-                self.delete_selection();
-                self.mode = Mode::Insert;
-                self.selection = None;
-            }
-            // Substitute selection
-            KeyCode::Char('s') => {
-                self.delete_selection();
-                self.mode = Mode::Insert;
-                self.selection = None;
-            }
-            _ => {
-                // Delegate movement to normal mode handler
-                self.handle_normal(key);
-                // After movement, update selection head and clamp
-                self.update_selection_head();
-                self.clamp_cursor();
-            }
-        }
-    }
-
-    fn handle_visual_line(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('V') => {
-                self.mode = Mode::Normal;
-                self.selection = None;
-            }
-            KeyCode::Char(':') => {
-                self.mode = Mode::Command;
-                self.command_input = String::from("'<,'>");
-                self.command_cursor = self.command_input.len();
-            }
-            KeyCode::Char('o') => {
-                if let Some(ref mut sel) = self.selection {
-                    std::mem::swap(&mut sel.anchor_line, &mut sel.head_line);
-                    self.cursor.row = sel.head_line as usize;
-                    self.cursor.col = 0;
-                }
-            }
-            KeyCode::Char('d') | KeyCode::Char('x') => {
-                self.delete_selection();
-                self.mode = Mode::Normal;
-                self.selection = None;
-            }
-            KeyCode::Char('y') => {
-                self.yank_selection();
-                self.mode = Mode::Normal;
-                self.selection = None;
-            }
-            KeyCode::Char('c') | KeyCode::Char('s') => {
-                self.delete_selection();
-                self.mode = Mode::Insert;
-                self.selection = None;
-            }
-            KeyCode::Char('J') => {
-                // In visual line, J joins selected lines
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.buffer.join_lines(self.cursor.row);
-                }
-                self.update_selection_head();
-            }
-            _ => {
-                self.handle_normal(key);
-                // Update selection head to full line range
-                if let Some(ref mut sel) = self.selection {
-                    sel.head_line = self.cursor.row as u32;
-                    sel.head_col = self.buffer.line_len(self.cursor.row) as u32;
-                }
-            }
-        }
-    }
-
-    /// Delete the text covered by the current visual selection.
-    fn delete_selection(&mut self) {
-        let Some(ref sel) = self.selection else { return };
-        let (start_line, start_col, end_line, end_col) = sel.normalized_range();
-
-        match sel.mode {
-            SelectionMode::Line => {
-                // Delete whole lines
-                let count = (end_line - start_line + 1) as usize;
-                let mut lines = Vec::new();
-                for _ in 0..count {
-                    if let Some(line) = self.buffer.delete_line(start_line as usize) {
-                        lines.push(line);
-                    }
-                }
-                self.yank_register = YankRegister::Lines(lines);
-                self.cursor.row = start_line as usize;
-                self.cursor.col = 0;
-            }
-            SelectionMode::Char => {
-                // vim's visual mode is inclusive on both ends
-                let end = (end_col as usize + 1).min(self.buffer.line_len(end_line as usize));
-                if start_line == end_line {
-                    // Single line selection
-                    let deleted = self.buffer.line(start_line as usize)
-                        [start_col as usize..end]
-                        .to_string();
-                    self.buffer.replace_range(
-                        start_line as usize,
-                        start_col as usize,
-                        end,
-                        "",
-                    );
-                    self.yank_register = YankRegister::Chars(deleted);
-                } else {
-                    // Multi-line selection
-                    let last_end = (end_col as usize + 1).min(self.buffer.line_len(end_line as usize));
-                    let first_part = self.buffer.line(start_line as usize)
-                        [start_col as usize..]
-                        .to_string();
-                    let last_part = self.buffer.line(end_line as usize)
-                        [..last_end]
-                        .to_string();
-                    // Truncate first line to selection start
-                    self.buffer.replace_range(
-                        start_line as usize,
-                        start_col as usize,
-                        self.buffer.line_len(start_line as usize),
-                        "",
-                    );
-                    // Join: delete intermediate lines and last line's prefix
-                    let middle_count = (end_line - start_line) as usize;
-                    for _ in 0..middle_count {
-                        self.buffer.delete_line(start_line as usize + 1);
-                    }
-                    // Remove the prefix of what was the last line (now at start+1)
-                    if start_line as usize + 1 < self.buffer.line_count() {
-                        self.buffer.replace_range(
-                            start_line as usize + 1,
-                            0,
-                            last_end,
-                            "",
-                        );
-                        // Join the two remaining parts
-                        self.buffer.join_lines(start_line as usize);
-                    }
-                    let yanked = format!("{}\n{}", first_part, last_part);
-                    self.yank_register = YankRegister::Chars(yanked);
-                }
-                self.cursor.row = start_line as usize;
-                self.cursor.col = start_col as usize;
-            }
-            SelectionMode::Block => {
-                // Block selection — delete columns on each line
-                let min_col = start_col.min(end_col) as usize;
-                let max_col = (start_col.max(end_col) as usize + 1).min(
-                    (start_line..=end_line).map(|l| self.buffer.line_len(l as usize)).max().unwrap_or(0)
-                );
-                for line_idx in start_line..=end_line {
-                    let li = line_idx as usize;
-                    let len = self.buffer.line_len(li);
-                    if min_col < len {
-                        self.buffer.replace_range(li, min_col, max_col.min(len), "");
-                    }
-                }
-                self.cursor.row = start_line as usize;
-                self.cursor.col = min_col;
-            }
-        }
-    }
-
-    /// Yank the text covered by the current visual selection.
-    fn yank_selection(&mut self) {
-        let Some(ref sel) = self.selection else { return };
-        let (start_line, start_col, end_line, end_col) = sel.normalized_range();
-
-        match sel.mode {
-            SelectionMode::Line => {
-                let count = (end_line - start_line + 1) as usize;
-                let mut lines = Vec::new();
-                for i in 0..count {
-                    let idx = start_line as usize + i;
-                    if idx < self.buffer.line_count() {
-                        lines.push(self.buffer.line(idx).to_string());
-                    }
-                }
-                self.yank_register = YankRegister::Lines(lines);
-                self.message = Some(format!("{} line(s) yanked", count));
-            }
-            SelectionMode::Char => {
-                let end = (end_col as usize + 1).min(self.buffer.line_len(end_line as usize));
-                if start_line == end_line {
-                    let text = self.buffer.line(start_line as usize)
-                        [start_col as usize..end]
-                        .to_string();
-                    self.yank_register = YankRegister::Chars(text);
-                } else {
-                    let mut parts = Vec::new();
-                    // First line from start_col
-                    parts.push(
-                        self.buffer.line(start_line as usize)[start_col as usize..].to_string()
-                    );
-                    // Middle lines fully
-                    for i in (start_line + 1)..end_line {
-                        parts.push(self.buffer.line(i as usize).to_string());
-                    }
-                    // Last line up to end (inclusive)
-                    parts.push(
-                        self.buffer.line(end_line as usize)[..end].to_string()
-                    );
-                    self.yank_register = YankRegister::Chars(parts.join("\n"));
-                }
-                self.message = Some("Selection yanked".into());
-            }
-            SelectionMode::Block => {
-                let min_col = start_col.min(end_col) as usize;
-                let max_col = (start_col.max(end_col) as usize + 1).min(
-                    self.buffer.line_count()
-                );
-                let mut parts = Vec::new();
-                for line_idx in start_line..=end_line {
-                    let line = self.buffer.line(line_idx as usize);
-                    let end = max_col.min(line.len());
-                    if min_col < line.len() {
-                        parts.push(line[min_col..end].to_string());
-                    } else {
-                        parts.push(String::new());
-                    }
-                }
-                self.yank_register = YankRegister::Chars(parts.join("\n"));
-                self.message = Some("Block selection yanked".into());
-            }
-        }
-    }
     // ─── Replace Mode ──────────────────────────────────────────────
 
     fn handle_replace(&mut self, key: KeyEvent) {
@@ -900,12 +649,18 @@ impl Editor {
             KeyCode::Char(ch) => {
                 let len = self.buffer.line_len(self.cursor.row);
                 if self.cursor.col < len {
-                    self.buffer.replace_range(self.cursor.row, self.cursor.col, self.cursor.col + 1, &ch.to_string());
+                    self.buffer.replace_range(
+                        self.cursor.row,
+                        self.cursor.col,
+                        self.cursor.col + 1,
+                        &ch.to_string(),
+                    );
                     if self.cursor.col < self.buffer.line_len(self.cursor.row) - 1 {
                         self.cursor.col += 1;
                     }
                 } else {
-                    self.buffer.insert_char(self.cursor.row, self.cursor.col, ch);
+                    self.buffer
+                        .insert_char(self.cursor.row, self.cursor.col, ch);
                     self.cursor.col += 1;
                 }
             }
@@ -918,172 +673,6 @@ impl Editor {
             _ => {}
         }
     }
-
-    // ─── Command Execution ─────────────────────────────────────────
-
-    fn execute_command(&mut self, cmd: &str) {
-        let cmd = cmd.trim();
-
-        if cmd == "w" || cmd == "write" {
-            match self.buffer.save() {
-                Ok(()) => {
-                    self.message = Some(format!(
-                        "\"{}\" written",
-                        self.buffer.display_name()
-                    ));
-                }
-                Err(e) => {
-                    self.message = Some(format!("Error writing: {}", e));
-                }
-            }
-        } else if cmd == "q" || cmd == "quit" {
-            if self.buffer.is_modified() {
-                self.message = Some("No write since last change (add ! to override)".into());
-            } else {
-                self.should_quit = true;
-            }
-        } else if cmd == "q!" || cmd == "quit!" {
-            self.should_quit = true;
-        } else if cmd == "wq" || cmd == "x" {
-            match self.buffer.save() {
-                Ok(()) => {
-                    self.should_quit = true;
-                }
-                Err(e) => {
-                    self.message = Some(format!("Error writing: {}", e));
-                }
-            }
-        } else if let Some(rest) = cmd.strip_prefix("w ") {
-            // Write to specific file
-            let path = std::path::Path::new(rest.trim());
-            match self.buffer.save_as(path) {
-                Ok(()) => {
-                    self.message = Some(format!("\"{}\" written", rest.trim()));
-                }
-                Err(e) => {
-                    self.message = Some(format!("Error writing: {}", e));
-                }
-            }
-        } else if let Some(rest) = cmd.strip_prefix("e ") {
-            // Open file
-            let path = std::path::Path::new(rest.trim());
-            match Buffer::from_file(path) {
-                Ok(new_buf) => {
-                    *self = Editor::new(new_buf);
-                    self.message = Some(format!("Opened \"{}\"", rest.trim()));
-                }
-                Err(e) => {
-                    self.message = Some(format!("Error opening file: {}", e));
-                }
-            }
-        } else if cmd == "set number" || cmd == "set nu" {
-            self.message = Some("number (always on)".into());
-        } else if let Some(rest) = cmd.strip_prefix(':') {
-            // :<number> — go to line
-            if let Ok(line) = rest.trim().parse::<usize>() {
-                let line_count = self.buffer.line_count();
-                if line > 0 && line <= line_count {
-                    self.cursor.row = line - 1;
-                    self.cursor.col = 0;
-                }
-            } else {
-                self.message = Some(format!("Not an editor command: {}", cmd));
-            }
-        } else {
-            self.message = Some(format!("Not an editor command: {}", cmd));
-        }
-    }
-
-    // ─── Word Motion Helpers ───────────────────────────────────────
-
-    fn move_word_forward(&mut self) {
-        let line = self.buffer.line(self.cursor.row);
-        let chars: Vec<char> = line.chars().collect();
-
-        // Move forward to next word start
-        let mut col = self.cursor.col;
-        let mut in_word = col < chars.len() && is_word_char(chars[col]);
-
-        // Skip current word
-        while col < chars.len() {
-            if in_word && !is_word_char(chars[col]) {
-                in_word = false;
-            } else if !in_word && is_word_char(chars[col]) {
-                break;
-            }
-            col += 1;
-        }
-
-        if col < chars.len() {
-            self.cursor.col = col;
-        } else if self.cursor.row + 1 < self.buffer.line_count() {
-            // Move to next line
-            self.cursor.row += 1;
-            self.cursor.col = 0;
-        }
-    }
-
-    fn move_word_backward(&mut self) {
-        if self.cursor.col == 0 {
-            if self.cursor.row > 0 {
-                self.cursor.row -= 1;
-                let len = self.buffer.line_len(self.cursor.row);
-                self.cursor.col = if len > 0 { len - 1 } else { 0 };
-            }
-            return;
-        }
-
-        let line = self.buffer.line(self.cursor.row);
-        let chars: Vec<char> = line.chars().collect();
-        let mut col = self.cursor.col.saturating_sub(1);
-
-        // Skip non-word chars backward
-        while col > 0 && !is_word_char(chars[col]) {
-            col -= 1;
-        }
-
-        // Skip word chars backward
-        while col > 0 && is_word_char(chars[col - 1]) {
-            col -= 1;
-        }
-
-        self.cursor.col = col;
-    }
-
-    fn move_word_end(&mut self) {
-        let line = self.buffer.line(self.cursor.row);
-        let chars: Vec<char> = line.chars().collect();
-
-        let mut col = self.cursor.col + 1;
-        let mut in_word = false;
-
-        while col < chars.len() {
-            if !in_word && is_word_char(chars[col]) {
-                in_word = true;
-            } else if in_word && !is_word_char(chars[col]) {
-                col -= 1;
-                break;
-            }
-            col += 1;
-        }
-
-        if col >= chars.len() && !chars.is_empty() {
-            col = chars.len() - 1;
-        }
-
-        if col < chars.len() {
-            self.cursor.col = col;
-        } else if self.cursor.row + 1 < self.buffer.line_count() {
-            self.cursor.row += 1;
-            self.cursor.col = 0;
-            // Recurse for next line
-            self.move_word_end();
-        }
-    }
-}
-
-fn is_word_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
 }
 
 #[cfg(test)]
@@ -1292,7 +881,7 @@ mod tests {
 
         ed.handle_key(key('l')); // move to col 1
         ed.handle_key(key('l')); // move to col 2
-        // Type 2 then 'x' to delete 2 chars
+                                 // Type 2 then 'x' to delete 2 chars
         ed.handle_key(key('2'));
         ed.handle_key(key('x'));
         assert_eq!(ed.buffer().line(0), "abe");

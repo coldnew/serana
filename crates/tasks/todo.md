@@ -1,5 +1,27 @@
 # Hermes Agent Refactor
 
+# Vivi Maintainability Refactor
+
+Assumptions:
+- Keep this as a behavior-preserving refactor; do not add editor features.
+- Focus on the largest maintainability issue first: `vivi/src/editor.rs` mixes editor state, mode dispatch, command execution, movement helpers, selection helpers, and tests.
+- Keep tests close to the editor module unless moving them becomes necessary.
+
+Success criteria for this slice:
+- [x] Split Vivi editor mode/command responsibilities into focused modules.
+- [x] Keep public editor behavior unchanged.
+- [x] Format touched Rust files.
+- [x] Run focused Vivi tests.
+- [x] Record implementation results.
+
+Review:
+- Split editor command execution into `vivi/src/editor/commands.rs`.
+- Split word-motion helpers into `vivi/src/editor/motion.rs`.
+- Split visual/visual-line selection handling into `vivi/src/editor/visual.rs`.
+- `vivi/src/editor.rs` now owns editor state, general dispatch, and the remaining mode handlers; it dropped from 1,552 lines to 1,142 lines.
+- Verification passed with `rustfmt` on touched Vivi files and `cargo test -p vivi` (47 tests).
+- Existing warnings remain in dependencies and Vivi for pre-existing unused/deprecated items.
+
 # Mora Interactive Defn
 
 Assumptions:

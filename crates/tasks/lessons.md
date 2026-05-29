@@ -1,5 +1,6 @@
 # Lessons
 
+- When refactoring a large Rust module, child modules can keep the parent type's private state encapsulated while allowing cohesive `impl` blocks to move out of the main file with only `pub(super)` methods where cross-module dispatch needs them.
 - Emacs-style `(interactive)` can be supported in Mora without adopting Emacs Lisp wholesale by treating it as `defn` metadata and lowering it into the same explicit command registry used by `defcommand`.
 - Mora user commands should be normal namespace vars plus explicit command-registry entries. This keeps M-x discoverability separate from function definition and avoids copying Emacs Lisp's body-local `(interactive)` convention into a Clojure-style language.
 - When formatting a workspace with unrelated dirty code, prefer `rustfmt` on the exact touched Rust files over `cargo fmt -p ...`; package-level formatting can create broad formatter churn outside the task slice.
