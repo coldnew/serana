@@ -4647,6 +4647,7 @@ dependencies = [
  "clap",
  "crossterm",
  "display-protocol",
+ "display-protocol-jsx",
  "display-tui",
  "ratatui",
 ]

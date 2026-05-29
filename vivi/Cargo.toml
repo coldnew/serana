@@ -1,0 +1,22 @@
+[package]
+name = "vivi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "vivi"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+display-tui = { path = "../crates/display-tui" }
+display-protocol = { path = "../crates/display-protocol" }
+display-protocol-jsx = { path = "../crates/display-protocol-jsx" }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
