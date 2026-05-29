@@ -17,33 +17,26 @@ pub struct MarkdownTheme {
     pub hr: Style,
 }
 
-/// Convert a ratatui Color to display-protocol Color.
-fn dp_color(c: ratatui::style::Color) -> Color {
-    match c {
-        ratatui::style::Color::Rgb(r, g, b) => Color::new(r, g, b),
-        _ => Color::BLACK,
-    }
-}
 
 impl Default for MarkdownTheme {
     fn default() -> Self {
         Self {
             heading: Style::new()
-                .fg(dp_color(theme::CORAL))
+                .fg(theme::CORAL)
                 .bold(),
             link: Style::new()
-                .fg(dp_color(theme::AQUAMARINE))
+                .fg(theme::AQUAMARINE)
                 .underline(),
-            code: Style::new().fg(dp_color(theme::CODE_PURPLE)),
-            code_block: Style::new().fg(dp_color(theme::SEAFOAM_GREEN)),
+            code: Style::new().fg(theme::CODE_PURPLE),
+            code_block: Style::new().fg(theme::SEAFOAM_GREEN),
             quote: Style::new()
-                .fg(dp_color(theme::MUTED_TEAL))
+                .fg(theme::MUTED_TEAL)
                 .italic(),
-            list_bullet: Style::new().fg(dp_color(theme::CORAL)),
+            list_bullet: Style::new().fg(theme::CORAL),
             bold: Style::new().bold(),
             italic: Style::new().italic(),
             strikethrough: Style::new().strikethrough(),
-            hr: Style::new().fg(dp_color(theme::DARK_BORDER)),
+            hr: Style::new().fg(theme::DARK_BORDER),
         }
     }
 }

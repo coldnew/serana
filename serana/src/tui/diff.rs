@@ -4,6 +4,25 @@ use ratatui::text::{Line, Span};
 use super::theme;
 use super::theme::Theme;
 
+fn dp_color(c: display_protocol::Color) -> ratatui::style::Color {
+    ratatui::style::Color::Rgb(c.r, c.g, c.b)
+}
+
+fn dp_style(s: display_protocol::Style) -> Style {
+    let mut out = Style::default();
+    if let Some(c) = s.fg {
+        out = out.fg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
+    }
+    if let Some(c) = s.bg {
+        out = out.bg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
+    }
+    if s.bold { out = out.add_modifier(Modifier::BOLD); }
+    if s.italic { out = out.add_modifier(Modifier::ITALIC); }
+    if s.underline { out = out.add_modifier(Modifier::UNDERLINED); }
+    if s.strikethrough { out = out.add_modifier(Modifier::CROSSED_OUT); }
+    out
+}
+
 /// Tokenize a string into (content, is_word) pairs.
 /// Words are alphanumeric sequences; everything else is a separator token.
 fn tokenize(s: &str) -> Vec<(String, bool)> {
@@ -82,7 +101,7 @@ fn token_diff(old: &str, new: &str) -> (Vec<Span<'static>>, Vec<Span<'static>>) 
             old_spans.push(Span::styled(
                 old_tokens[oi].0.clone(),
                 Style::new()
-                    .fg(theme::DIFF_RED)
+                    .fg(dp_color(theme::DIFF_RED))
                     .add_modifier(Modifier::BOLD),
             ));
             oi += 1;
@@ -91,18 +110,18 @@ fn token_diff(old: &str, new: &str) -> (Vec<Span<'static>>, Vec<Span<'static>>) 
             new_spans.push(Span::styled(
                 new_tokens[ni].0.clone(),
                 Style::new()
-                    .fg(theme::DIFF_GREEN)
+                    .fg(dp_color(theme::DIFF_GREEN))
                     .add_modifier(Modifier::BOLD),
             ));
             ni += 1;
         }
         old_spans.push(Span::styled(
             old_tokens[mi].0.clone(),
-            Style::new().fg(theme::BRIGHT_CORAL),
+            Style::new().fg(dp_color(theme::BRIGHT_CORAL)),
         ));
         new_spans.push(Span::styled(
             new_tokens[mj].0.clone(),
-            Style::new().fg(theme::SEAFOAM_GREEN),
+            Style::new().fg(dp_color(theme::SEAFOAM_GREEN)),
         ));
         oi = mi + 1;
         ni = mj + 1;
@@ -112,7 +131,7 @@ fn token_diff(old: &str, new: &str) -> (Vec<Span<'static>>, Vec<Span<'static>>) 
         old_spans.push(Span::styled(
             old_tokens[oi].0.clone(),
             Style::new()
-                .fg(theme::DIFF_RED)
+                .fg(dp_color(theme::DIFF_RED))
                 .add_modifier(Modifier::BOLD),
         ));
         oi += 1;
@@ -121,7 +140,7 @@ fn token_diff(old: &str, new: &str) -> (Vec<Span<'static>>, Vec<Span<'static>>) 
         new_spans.push(Span::styled(
             new_tokens[ni].0.clone(),
             Style::new()
-                .fg(theme::DIFF_GREEN)
+                .fg(dp_color(theme::DIFF_GREEN))
                 .add_modifier(Modifier::BOLD),
         ));
         ni += 1;
@@ -141,7 +160,7 @@ pub fn render_diff(diff_text: &str, _width: usize) -> Vec<Line<'static>> {
         let line = diff_lines[i];
 
         if line.starts_with("@@") {
-            lines.push(Line::from(Span::styled(line.to_string(), theme.info)));
+            lines.push(Line::from(Span::styled(line.to_string(), dp_style(theme.info))));
             i += 1;
             continue;
         }
@@ -162,12 +181,12 @@ pub fn render_diff(diff_text: &str, _width: usize) -> Vec<Line<'static>> {
         if line.starts_with('-') {
             lines.push(Line::from(Span::styled(
                 line.to_string(),
-                Style::new().fg(theme::BRIGHT_CORAL),
+                Style::new().fg(dp_color(theme::BRIGHT_CORAL)),
             )));
         } else if line.starts_with('+') {
             lines.push(Line::from(Span::styled(
                 line.to_string(),
-                Style::new().fg(theme::SEAFOAM_GREEN),
+                Style::new().fg(dp_color(theme::SEAFOAM_GREEN)),
             )));
         } else {
             lines.push(Line::from(Span::raw(line.to_string())));

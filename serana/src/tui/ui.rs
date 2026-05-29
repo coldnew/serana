@@ -13,6 +13,34 @@ use super::markdown::render_markdown;
 use super::symbols::Symbols;
 use super::theme::{self, Theme};
 
+fn dp_color(c: display_protocol::Color) -> ratatui::style::Color {
+    ratatui::style::Color::Rgb(c.r, c.g, c.b)
+}
+
+fn dp_style(s: display_protocol::Style) -> ratatui::style::Style {
+    let mut out = ratatui::style::Style::default();
+    if let Some(c) = s.fg {
+        out = out.fg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
+    }
+    if let Some(c) = s.bg {
+        out = out.bg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
+    }
+    if s.bold {
+        out = out.add_modifier(ratatui::style::Modifier::BOLD);
+    }
+    if s.italic {
+        out = out.add_modifier(ratatui::style::Modifier::ITALIC);
+    }
+    if s.underline {
+        out = out.add_modifier(ratatui::style::Modifier::UNDERLINED);
+    }
+    if s.strikethrough {
+        out = out.add_modifier(ratatui::style::Modifier::CROSSED_OUT);
+    }
+    out
+}
+
+
 const PI_LOGO: &[&str] = &[
     "▀████████████▀",
     " ╘███    ███  ",
@@ -67,8 +95,8 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     let title = format!(" Serana v{} ", app.version);
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(theme.border)
-        .title(Span::styled(title, theme.muted));
+        .border_style(dp_style(theme.border))
+        .title(Span::styled(title, dp_style(theme.muted)));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -90,7 +118,7 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             center_text("Welcome back!", left_area.width as usize),
-            theme.accent,
+            dp_style(theme.accent),
         )),
         Line::from(""),
     ];
@@ -106,11 +134,11 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     left_lines.push(Line::from(""));
     left_lines.push(Line::from(Span::styled(
         center_text(&app.model, left_area.width as usize),
-        theme.muted,
+        dp_style(theme.muted),
     )));
     left_lines.push(Line::from(Span::styled(
         center_text(&app.provider, left_area.width as usize),
-        theme.dim,
+        dp_style(theme.dim),
     )));
 
     let left_para = Paragraph::new(left_lines);
@@ -123,7 +151,7 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
     let divider = Paragraph::new(vec![
         Line::from(Span::styled(
             s.box_round.vertical,
-            theme.border
+            dp_style(theme.border)
         ));
         right_area.height as usize
     ]);
@@ -138,52 +166,52 @@ fn render_welcome(frame: &mut Frame, area: Rect, app: &App) {
 
     right_lines.push(Line::from(Span::styled(
         format!(" {}", "Tips"),
-        theme.accent,
+        dp_style(theme.accent),
     )));
     right_lines.push(Line::from(vec![
-        Span::styled(" ?", theme.dim),
-        Span::styled(" for keyboard shortcuts", theme.muted),
+        Span::styled(" ?", dp_style(theme.dim)),
+        Span::styled(" for keyboard shortcuts", dp_style(theme.muted)),
     ]));
     right_lines.push(Line::from(vec![
-        Span::styled(" #", theme.dim),
-        Span::styled(" for prompt actions", theme.muted),
+        Span::styled(" #", dp_style(theme.dim)),
+        Span::styled(" for prompt actions", dp_style(theme.muted)),
     ]));
     right_lines.push(Line::from(vec![
-        Span::styled(" /", theme.dim),
-        Span::styled(" for commands", theme.muted),
+        Span::styled(" /", dp_style(theme.dim)),
+        Span::styled(" for commands", dp_style(theme.muted)),
     ]));
     right_lines.push(Line::from(vec![
-        Span::styled(" !", theme.dim),
-        Span::styled(" to run bash", theme.muted),
+        Span::styled(" !", dp_style(theme.dim)),
+        Span::styled(" to run bash", dp_style(theme.muted)),
     ]));
     right_lines.push(Line::from(vec![
-        Span::styled(" $", theme.dim),
-        Span::styled(" to run python", theme.muted),
+        Span::styled(" $", dp_style(theme.dim)),
+        Span::styled(" to run python", dp_style(theme.muted)),
     ]));
-    right_lines.push(Line::from(Span::styled(&sep, theme.dim)));
-    right_lines.push(Line::from(Span::styled(" LSP Servers", theme.accent)));
+    right_lines.push(Line::from(Span::styled(&sep, dp_style(theme.dim))));
+    right_lines.push(Line::from(Span::styled(" LSP Servers", dp_style(theme.accent))));
     right_lines.push(Line::from(Span::styled(
         format!("  {} No LSP servers", s.pending),
-        theme.dim,
+        dp_style(theme.dim),
     )));
-    right_lines.push(Line::from(Span::styled(&sep, theme.dim)));
-    right_lines.push(Line::from(Span::styled(" Recent sessions", theme.accent)));
+    right_lines.push(Line::from(Span::styled(&sep, dp_style(theme.dim))));
+    right_lines.push(Line::from(Span::styled(" Recent sessions", dp_style(theme.accent))));
     if app.recent_sessions.is_empty() {
         right_lines.push(Line::from(Span::styled(
             format!("  {} No recent sessions", s.bullet),
-            theme.dim,
+            dp_style(theme.dim),
         )));
     } else {
         for session in app.recent_sessions.iter().take(3) {
             let name = session.title.as_deref().unwrap_or(&session.id);
             let date = session.updated_at.format("%m-%d %H:%M");
             right_lines.push(Line::from(vec![
-                Span::styled(format!("  {} ", s.bullet), theme.dim),
+                Span::styled(format!("  {} ", s.bullet), dp_style(theme.dim)),
                 Span::styled(
                     truncate_text(name, right_area.width.saturating_sub(18) as usize),
-                    theme.muted,
+                    dp_style(theme.muted),
                 ),
-                Span::styled(format!(" ({})", date), theme.dim),
+                Span::styled(format!(" ({})", date), dp_style(theme.dim)),
             ]));
         }
     }
@@ -240,7 +268,7 @@ fn render_message_para(
         MessageRole::User => {
             lines.push(Line::from(""));
             let md_theme = super::markdown::MarkdownTheme::default();
-            let user_style = Style::new().fg(theme::MUTED_TEAL).bg(theme::USER_MSG_BG);
+            let user_style = Style::new().fg(dp_color(theme::MUTED_TEAL)).bg(dp_color(theme::USER_MSG_BG));
             let md_lines = render_markdown(&msg.content, &md_theme, width.saturating_sub(4));
             for md_line in md_lines {
                 let mut spans = vec![Span::styled("  ".to_string(), user_style)];
@@ -269,19 +297,29 @@ fn render_message_para(
             for tool in &msg.tool_calls {
                 let tool_lines =
                     super::tool_execution::render_tool_call(tool, symbols, width.saturating_sub(2));
-                lines.extend(tool_lines);
+                for sl in tool_lines {
+                    lines.push(styled_line_to_line(sl));
+                }
             }
         }
         MessageRole::System => {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 format!("  {} {}", symbols.warning, msg.content),
-                theme.warning,
+                dp_style(theme.warning),
             )));
         }
     }
     lines
 }
+
+fn styled_line_to_line(sl: DpStyledLine) -> Line<'static> {
+    let spans: Vec<Span<'static>> = sl.spans.into_iter().map(|s| {
+        Span::styled(s.text, dp_style(s.style))
+    }).collect();
+    Line::from(spans)
+}
+
 fn dp_from_ratatui_style(s: Style) -> DpStyle {
     let mut dp = DpStyle::default();
     if let Some(fg) = s.fg {
@@ -333,11 +371,11 @@ fn dp_to_ratatui_style(dp: DpStyle) -> Style {
 fn render_thinking_lines(text: &str, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let md_theme = super::markdown::MarkdownTheme::default();
     let md_lines = render_markdown(text, &md_theme, width.saturating_sub(4));
-    let thinking_dp = dp_from_ratatui_style(theme.thinking);
+    let thinking_dp = theme.thinking;
     md_lines
         .into_iter()
         .map(|md_line| {
-            let mut spans = vec![Span::styled("  ".to_string(), theme.thinking)];
+            let mut spans = vec![Span::styled("  ".to_string(), dp_style(theme.thinking))];
             for span in md_line.spans {
                 let merged = dp_to_ratatui_style(DpStyle::default().merge(&span.style).merge(&thinking_dp));
                 spans.push(Span::styled(span.text, merged));
@@ -407,7 +445,7 @@ fn render_messages(frame: &mut Frame, area: Rect, app: &mut App) {
         .block(
             Block::default()
                 .borders(Borders::TOP)
-                .border_style(theme.border),
+                .border_style(dp_style(theme.border)),
         );
 
     frame.render_widget(para, area);
@@ -420,7 +458,7 @@ fn render_todo_lines(items: &[TodoItem], theme: &Theme) -> Vec<Line<'static>> {
         .count();
     let label = if incomplete == 1 { "todo" } else { "todos" };
     let mut lines = vec![Line::from(vec![
-        Span::styled("  Tasks", theme.accent),
+        Span::styled("  Tasks", dp_style(theme.accent)),
         Span::styled(
             format!(
                 "  {} incomplete {} / {} total",
@@ -428,7 +466,7 @@ fn render_todo_lines(items: &[TodoItem], theme: &Theme) -> Vec<Line<'static>> {
                 label,
                 items.len()
             ),
-            theme.dim,
+            dp_style(theme.dim),
         ),
     ])];
 
@@ -447,14 +485,14 @@ fn render_todo_lines(items: &[TodoItem], theme: &Theme) -> Vec<Line<'static>> {
 
 fn todo_marker_style(status: TodoStatus, theme: &Theme) -> (&'static str, Style) {
     match status {
-        TodoStatus::Pending => (" ", theme.muted),
+        TodoStatus::Pending => (" ", dp_style(theme.muted)),
         TodoStatus::InProgress => (
             "/",
             Style::new()
-                .fg(theme::AQUAMARINE)
+                .fg(dp_color(theme::AQUAMARINE))
                 .add_modifier(ratatui::style::Modifier::BOLD),
         ),
-        TodoStatus::Done => ("x", theme.dim),
+        TodoStatus::Done => ("x", dp_style(theme.dim)),
         TodoStatus::Abandoned => (
             "-",
             Style::default().add_modifier(
@@ -484,16 +522,16 @@ fn render_btw_lines(
                 symbols.box_round.top_left,
                 symbols.box_round.horizontal.repeat(left_fill)
             ),
-            theme.border,
+            dp_style(theme.border),
         ),
-        Span::styled(title, theme.warning),
+        Span::styled(title, dp_style(theme.warning)),
         Span::styled(
             format!(
                 "{}{}",
                 symbols.box_round.horizontal.repeat(right_fill),
                 symbols.box_round.top_right
             ),
-            theme.border,
+            dp_style(theme.border),
         ),
     ])];
 
@@ -503,11 +541,11 @@ fn render_btw_lines(
         let note_text = truncate_text(note, text_width);
         let pad = " ".repeat(text_width.saturating_sub(note_text.chars().count()));
         lines.push(Line::from(vec![
-            Span::styled(format!("  {} ", symbols.box_round.vertical), theme.border),
-            Span::styled(bullet, theme.dim),
-            Span::styled(note_text, theme.muted),
+            Span::styled(format!("  {} ", symbols.box_round.vertical), dp_style(theme.border)),
+            Span::styled(bullet, dp_style(theme.dim)),
+            Span::styled(note_text, dp_style(theme.muted)),
             Span::raw(pad),
-            Span::styled(format!(" {}", symbols.box_round.vertical), theme.border),
+            Span::styled(format!(" {}", symbols.box_round.vertical), dp_style(theme.border)),
         ]));
     }
 
@@ -521,7 +559,7 @@ fn render_btw_lines(
                 .repeat(panel_width.saturating_sub(2)),
             symbols.box_round.bottom_right
         ),
-        theme.border,
+        dp_style(theme.border),
     )));
     lines
 }
@@ -549,13 +587,13 @@ fn render_processing_lines(
                     .repeat(panel_width.saturating_sub(2)),
                 symbols.box_sharp.top_right
             ),
-            theme.border,
+            dp_style(theme.border),
         )),
         padded_panel_line(
             vec![
-                Span::styled(spinner.to_string(), theme.accent),
+                Span::styled(spinner.to_string(), dp_style(theme.accent)),
                 Span::raw(" "),
-                Span::styled(message, theme.muted),
+                Span::styled(message, dp_style(theme.muted)),
             ],
             inner_width,
             theme,
@@ -565,7 +603,7 @@ fn render_processing_lines(
 
     for item in pending {
         lines.push(padded_panel_line(
-            vec![Span::styled(truncate_text(item, inner_width), theme.dim)],
+            vec![Span::styled(truncate_text(item, inner_width), dp_style(theme.dim))],
             inner_width,
             theme,
             symbols,
@@ -582,7 +620,7 @@ fn render_processing_lines(
                 .repeat(panel_width.saturating_sub(2)),
             symbols.box_sharp.bottom_right
         ),
-        theme.border,
+        dp_style(theme.border),
     )));
     lines
 }
@@ -597,13 +635,13 @@ fn padded_panel_line(
     let pad = " ".repeat(inner_width.saturating_sub(content_width));
     let mut spans = vec![Span::styled(
         format!("  {} ", symbols.box_sharp.vertical),
-        theme.border,
+        dp_style(theme.border),
     )];
     spans.append(&mut content);
     spans.push(Span::raw(pad));
     spans.push(Span::styled(
         format!(" {}", symbols.box_sharp.vertical),
-        theme.border,
+        dp_style(theme.border),
     ));
     Line::from(spans)
 }
@@ -625,9 +663,9 @@ fn render_status_notice_lines(
         .map(|msg| {
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled(label.to_string(), theme.info),
+                Span::styled(label.to_string(), dp_style(theme.info)),
                 Span::raw(" "),
-                Span::styled(truncate_text(msg, text_width), theme.muted),
+                Span::styled(truncate_text(msg, text_width), dp_style(theme.muted)),
             ])
         })
         .collect()
@@ -638,9 +676,9 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     let editor = &app.editor;
 
     let border_style = match app.mode {
-        AppMode::Normal => Style::new().fg(theme::MUTED_TEAL),
-        AppMode::Input => Style::new().fg(theme::AQUAMARINE),
-        AppMode::Processing => Style::new().fg(theme::CORAL),
+        AppMode::Normal => Style::new().fg(dp_color(theme::MUTED_TEAL)),
+        AppMode::Input => Style::new().fg(dp_color(theme::AQUAMARINE)),
+        AppMode::Processing => Style::new().fg(dp_color(theme::CORAL)),
     };
 
     let content_width = area.width.saturating_sub(6) as usize;
@@ -681,7 +719,7 @@ fn render_editor_display_lines(
             _ => "Type your message... (Shift+Enter for newline)",
         };
         return vec![clamp_line(
-            Line::from(Span::styled(placeholder, theme.dim)),
+            Line::from(Span::styled(placeholder, dp_style(theme.dim))),
             width,
         )];
     }
@@ -708,16 +746,14 @@ fn render_editor_display_line(
     let Some(col) = cursor_col else {
         return Line::from(Span::raw(sanitize_editor_display_text(line_text)));
     };
-
     let col = col.min(line_text.len());
     let (before, rest) = line_text.split_at(col);
     let mut spans = Vec::new();
     spans.push(Span::raw(sanitize_editor_display_text(before)));
     spans.push(Span::styled(
         "▏",
-        theme.accent.add_modifier(ratatui::style::Modifier::BOLD),
+        dp_style(theme.accent).add_modifier(ratatui::style::Modifier::BOLD),
     ));
-
     if let Some(ch) = rest.chars().next() {
         let ch_len = ch.len_utf8();
         let cursor_text = sanitize_editor_display_text(&rest[..ch_len]);
@@ -906,10 +942,10 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::new().fg(theme::AQUAMARINE))
+        .border_style(Style::new().fg(dp_color(theme::AQUAMARINE)))
         .title(Span::styled(
             " Commands ",
-            Style::new().fg(theme::AQUAMARINE),
+            Style::new().fg(dp_color(theme::AQUAMARINE)),
         ));
     frame.render_widget(block, popup);
 
@@ -924,15 +960,15 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
             let selected = i == ac.selected;
             let name_style = if selected {
                 Style::new()
-                    .fg(theme::AQUAMARINE)
+                    .fg(dp_color(theme::AQUAMARINE))
                     .add_modifier(ratatui::style::Modifier::BOLD)
             } else {
                 Style::default()
             };
-            let desc_style = Style::new().fg(theme::MUTED_TEAL);
+            let desc_style = Style::new().fg(dp_color(theme::MUTED_TEAL));
             let cursor = if selected { "› " } else { "  " };
             let line = Line::from(vec![
-                Span::styled(cursor, Style::new().fg(theme::AQUAMARINE)),
+                Span::styled(cursor, Style::new().fg(dp_color(theme::AQUAMARINE))),
                 Span::styled(truncate_text(&item.value, 18), name_style),
                 Span::raw(" "),
                 Span::styled(
@@ -954,7 +990,7 @@ fn render_autocomplete(frame: &mut Frame, area: Rect, app: &App) {
     if show_count {
         let count_line = Line::from(Span::styled(
             format!("  {}/{}", ac.selected + 1, total_items),
-            Style::new().fg(theme::MUTED_TEAL),
+            Style::new().fg(dp_color(theme::MUTED_TEAL)),
         ));
         let count_area = Rect {
             x: inner.x,
@@ -987,7 +1023,7 @@ fn autocomplete_visible_range(
 fn build_status_line(width: usize, app: &App) -> Line<'static> {
     let theme = Theme::default();
     let s = app.symbols;
-    let sep = Span::styled(format!(" {} ", s.sep_dot), theme.dim);
+    let sep = Span::styled(format!(" {} ", s.sep_dot), dp_style(theme.dim));
     let fill = s.hr_char;
 
     let preset = super::status_line::resolve_preset(&app.status_preset);
@@ -1010,7 +1046,7 @@ fn build_status_line(width: usize, app: &App) -> Line<'static> {
     let mut spans = left;
     if !spans.is_empty() && !right.is_empty() {
         let fill_width = width.saturating_sub(left_width + right_width).max(1);
-        spans.push(Span::styled(fill.repeat(fill_width), theme.border));
+        spans.push(Span::styled(fill.repeat(fill_width), dp_style(theme.border)));
     }
     spans.extend(right);
 
@@ -1061,12 +1097,12 @@ fn render_status_segment(
 ) -> Option<Span<'static>> {
     use super::status_line::StatusSegment::*;
     match seg {
-        Pi => Some(Span::styled("π", theme.accent)),
+        Pi => Some(Span::styled("π", dp_style(theme.accent))),
         Mode => {
             let (text, style) = match app.mode {
-                AppMode::Normal => ("normal", theme.success),
-                AppMode::Input => ("input", theme.accent),
-                AppMode::Processing => ("busy", theme.warning),
+                AppMode::Normal => ("normal", dp_style(theme.success)),
+                AppMode::Input => ("input", dp_style(theme.accent)),
+                AppMode::Processing => ("busy", dp_style(theme.warning)),
             };
             Some(Span::styled(text, style))
         }
@@ -1076,13 +1112,13 @@ fn render_status_segment(
                 .as_deref()
                 .map(|id| id.chars().take(8).collect::<String>())
                 .unwrap_or_else(|| "new".to_string());
-            Some(Span::styled(session, theme.dim))
+            Some(Span::styled(session, dp_style(theme.dim)))
         }
         Model => Some(Span::styled(
             format!("{}/{}", app.provider, app.model),
-            theme.info,
+            dp_style(theme.info),
         )),
-        Hostname => Some(Span::styled(app.hostname.clone(), theme.dim)),
+        Hostname => Some(Span::styled(app.hostname.clone(), dp_style(theme.dim))),
         Git => app.git_branch.as_ref().map(|branch| {
             let mut text = branch.clone();
             if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
@@ -1099,9 +1135,9 @@ fn render_status_segment(
                 text.push_str(&format!(" {}", parts.join(" ")));
             }
             let style = if app.git_staged > 0 || app.git_unstaged > 0 || app.git_untracked > 0 {
-                theme.warning
+                dp_style(theme.warning)
             } else {
-                theme.dim
+                dp_style(theme.dim)
             };
             Span::styled(text, style)
         }),
@@ -1111,14 +1147,14 @@ fn render_status_segment(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("workspace");
-            Some(Span::styled(format!("@{}", name), theme.dim))
+            Some(Span::styled(format!("@{}", name), dp_style(theme.dim)))
         }
         Tokens => {
             let total_in = app.tokens_input + app.tokens_cache_read;
             if total_in > 0 || app.tokens_output > 0 {
                 Some(Span::styled(
                     format!("{}k/{}k", total_in / 1000, app.tokens_output / 1000),
-                    theme.dim,
+                    dp_style(theme.dim),
                 ))
             } else {
                 None
@@ -1127,7 +1163,7 @@ fn render_status_segment(
         TokenRate => {
             let rate = app.token_rate();
             if rate > 0.0 {
-                Some(Span::styled(format!("@{:.0}t/s", rate), theme.dim))
+                Some(Span::styled(format!("@{:.0}t/s", rate), dp_style(theme.dim)))
             } else {
                 None
             }
@@ -1138,11 +1174,11 @@ fn render_status_segment(
             if app.context_window > 0 {
                 let pct = total_tokens as f64 / app.context_window as f64 * 100.0;
                 let style = if pct >= 90.0 {
-                    theme.error
+                    dp_style(theme.error)
                 } else if pct >= 70.0 {
-                    theme.warning
+                    dp_style(theme.warning)
                 } else {
-                    theme.dim
+                    dp_style(theme.dim)
                 };
                 return Some(Span::styled(
                     format!("{:.1}%/{}k", pct, app.context_window / 1000),
@@ -1156,13 +1192,13 @@ fn render_status_segment(
             if cost > 0.0 {
                 Some(Span::styled(
                     format!("${:.2}", cost),
-                    Style::new().fg(theme::DIFF_YELLOW),
+                    Style::new().fg(dp_color(theme::DIFF_YELLOW)),
                 ))
             } else {
                 None
             }
         }
-        SessionTime => Some(Span::styled(app.session_elapsed(), theme.dim)),
+        SessionTime => Some(Span::styled(app.session_elapsed(), dp_style(theme.dim))),
         ThinkingLevel => {
             if app.thinking_level != super::app::ThinkingLevel::Off {
                 let label = match app.thinking_level {
@@ -1171,7 +1207,7 @@ fn render_status_segment(
                     super::app::ThinkingLevel::High => "think:high",
                     _ => return None,
                 };
-                Some(Span::styled(label, Style::new().fg(theme::AQUAMARINE)))
+                Some(Span::styled(label, Style::new().fg(dp_color(theme::AQUAMARINE))))
             } else {
                 None
             }
@@ -1179,11 +1215,11 @@ fn render_status_segment(
         Iterations => {
             if app.iterations_max > 0 {
                 let style = if app.iterations_used >= app.iterations_max {
-                    theme.error
+                    dp_style(theme.error)
                 } else if app.iterations_used as f64 / app.iterations_max as f64 > 0.8 {
-                    theme.warning
+                    dp_style(theme.warning)
                 } else {
-                    theme.dim
+                    dp_style(theme.dim)
                 };
                 Some(Span::styled(
                     format!("iter:{}/{}", app.iterations_used, app.iterations_max),
@@ -1194,6 +1230,45 @@ fn render_status_segment(
             }
         }
     }
+}
+
+fn render_dialog_ratatui(frame: &mut Frame, dialog: &super::dialog::Dialog) {
+    let area = frame.area();
+    let popup_w = area.width.min(60).min(area.width * 2 / 3);
+    let popup_h = area.height.min(20).min(area.height * 2 / 3);
+    let popup_area = Rect {
+        x: (area.width.saturating_sub(popup_w)) / 2,
+        y: (area.height.saturating_sub(popup_h)) / 2,
+        width: popup_w,
+        height: popup_h,
+    };
+
+    frame.render_widget(Clear, popup_area);
+
+    let filtered = dialog.filtered_items();
+    let items: Vec<ListItem> = filtered
+        .iter()
+        .map(|(orig_idx, item)| {
+            let selected = dialog.selected == Some(*orig_idx);
+            let prefix = if selected { "› " } else { "  " };
+            let style = if selected {
+                dp_style(display_protocol::Style::new().fg(display_protocol::Color::new(0, 180, 255)).bold())
+            } else {
+                Style::default()
+            };
+            let text = format!("{}{} — {}", prefix, item.label, item.description);
+            ListItem::new(Line::from(Span::styled(text, style)))
+        })
+        .collect();
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(dp_style(display_protocol::Style::new().fg(display_protocol::Color::new(0, 180, 255))))
+        .title(format!(" {} ", dialog.title));
+
+    let list = List::new(items).block(block);
+    frame.render_widget(list, popup_area);
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -1209,10 +1284,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     if !showing_welcome {
         let title = format!(" Serana v{} ", app.version);
-        let header = Paragraph::new(Line::from(Span::styled(&title, theme.muted))).block(
+        let header = Paragraph::new(Line::from(Span::styled(&title, dp_style(theme.muted)))).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(theme.border)
+                .border_style(dp_style(theme.border))
                 .title(title.clone()),
         );
         frame.render_widget(header, header_area);
@@ -1227,9 +1302,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     render_input(frame, input_area, app);
     render_autocomplete(frame, input_area, app);
 
-    // Render dialog on top if active
+    // Render dialog on top if active (ratatui fallback — render_dialog uses ScreenBuffer)
     if let Some(ref dialog) = app.active_dialog {
-        super::dialog::render_dialog(frame, dialog);
+        render_dialog_ratatui(frame, dialog);
     }
 }
 

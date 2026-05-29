@@ -146,9 +146,24 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
 
     let result = (|| -> anyhow::Result<()> {
         loop {
+            let (width, height) = terminal.size().map(|s| (s.width, s.height))?;
+            let ui = mora_bin::mora::ui_node::build_ui(&editor, width, height);
+            let buf = display_protocol::paint::paint(&ui, width, height);
             terminal.draw(|frame| {
-                let widget = mora_bin::mora::ui::EditorWidget::new(&editor);
-                frame.render_widget(widget, frame.area());
+                for y in 0..height {
+                    for x in 0..width {
+                        let cell = buf.get(x, y);
+                        let fg = ratatui::style::Color::Rgb(cell.fg.r, cell.fg.g, cell.fg.b);
+                        let bg = ratatui::style::Color::Rgb(cell.bg.r, cell.bg.g, cell.bg.b);
+                        let mut style = ratatui::style::Style::default().fg(fg).bg(bg);
+                        if cell.bold { style = style.add_modifier(ratatui::style::Modifier::BOLD); }
+                        if cell.italic { style = style.add_modifier(ratatui::style::Modifier::ITALIC); }
+                        if cell.underline { style = style.add_modifier(ratatui::style::Modifier::UNDERLINED); }
+                        let buf_cell = frame.buffer_mut().cell_mut((x, y)).unwrap();
+                        buf_cell.set_char(cell.ch);
+                        buf_cell.set_style(style);
+                    }
+                }
             })?;
 
             if event::poll(Duration::from_millis(50))? {

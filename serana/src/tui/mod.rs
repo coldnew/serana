@@ -11,6 +11,7 @@ pub mod symbols;
 pub mod syntax;
 pub mod theme;
 pub mod tool_execution;
+pub mod render_helpers;
 pub mod tui;
 pub mod ui;
 

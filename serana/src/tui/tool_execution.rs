@@ -1,17 +1,33 @@
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use display_protocol::{Style, StyledLine, StyledSpan};
 
 use super::app::{ToolCall, ToolCallStatus};
 use super::diff;
 use crate::tui::symbols::Symbols;
 use super::theme::{self, Theme};
 
+fn span_to_styled_span(span: ratatui::text::Span<'static>) -> StyledSpan {
+    use ratatui::style::{Color as RtColor, Modifier};
+    let s = span.style;
+    let mut dp_style = Style::new();
+    if let Some(RtColor::Rgb(r, g, b)) = s.fg {
+        dp_style = dp_style.fg(display_protocol::Color::new(r, g, b));
+    }
+    if let Some(RtColor::Rgb(r, g, b)) = s.bg {
+        dp_style = dp_style.bg(display_protocol::Color::new(r, g, b));
+    }
+    if s.add_modifier.contains(Modifier::BOLD) { dp_style = dp_style.bold(); }
+    if s.add_modifier.contains(Modifier::ITALIC) { dp_style = dp_style.italic(); }
+    if s.add_modifier.contains(Modifier::UNDERLINED) { dp_style = dp_style.underline(); }
+    if s.add_modifier.contains(Modifier::CROSSED_OUT) { dp_style = dp_style.strikethrough(); }
+    StyledSpan::new(span.content.into_owned(), dp_style)
+}
+
 /// Number of preview lines for command output.
 const PREVIEW_LINES: usize = 10;
 /// Max output lines when expanded.
 
 /// Render a tool call with tool-specific formatting.
-pub fn render_tool_call(tool: &ToolCall, symbols: &Symbols, width: usize) -> Vec<Line<'static>> {
+pub fn render_tool_call(tool: &ToolCall, symbols: &Symbols, width: usize) -> Vec<StyledLine> {
     let theme = Theme::default();
     let (icon, style) = tool_status_style(tool.status, symbols, &theme);
     let header = tool_header(tool, icon, style, width, symbols);
@@ -35,18 +51,18 @@ pub fn render_tool_call(tool: &ToolCall, symbols: &Symbols, width: usize) -> Vec
         if let Some(image_path) = super::image::detect_image_in_result(result, &tool.name) {
             let protocol = super::image::ImageProtocol::detect();
             if protocol.is_supported() {
-                lines.push(Line::from(Span::styled(
+                lines.push(StyledLine::new(vec![StyledSpan::new(
                     format!("  {} Image: {}", symbols.expand, image_path),
                     Style::new().fg(theme::AQUAMARINE),
-                )));
+                )]));
             } else {
-                lines.push(Line::from(Span::styled(
+                lines.push(StyledLine::new(vec![StyledSpan::new(
                     format!(
                         "  {} Image detected: {} (terminal does not support inline images)",
                         symbols.info, image_path
                     ),
                     theme.dim,
-                )));
+                )]));
             }
         }
     }
@@ -63,7 +79,7 @@ fn tool_header(
     style: Style,
     width: usize,
     symbols: &Symbols,
-) -> Line<'static> {
+) -> StyledLine {
     let label = match tool.status {
         ToolCallStatus::Pending => "pending",
         ToolCallStatus::Running => "running",
@@ -74,7 +90,7 @@ fn tool_header(
     let content_width = width.saturating_sub(4).max(title.chars().count() + 2);
     let title_width = title.chars().count();
     let fill = content_width.saturating_sub(title_width + 1);
-    Line::from(Span::styled(
+    StyledLine::new(vec![StyledSpan::new(
         format!(
             "  {}{}{}{}{}",
             symbols.box_round.top_left,
@@ -84,12 +100,12 @@ fn tool_header(
             symbols.box_round.top_right,
         ),
         style,
-    ))
+    )])
 }
 
-fn tool_footer(width: usize, symbols: &Symbols, theme: &Theme) -> Line<'static> {
+fn tool_footer(width: usize, symbols: &Symbols, theme: &Theme) -> StyledLine {
     let content_width = width.saturating_sub(4).max(2);
-    Line::from(Span::styled(
+    StyledLine::new(vec![StyledSpan::new(
         format!(
             "  {}{}{}",
             symbols.box_round.bottom_left,
@@ -97,7 +113,7 @@ fn tool_footer(width: usize, symbols: &Symbols, theme: &Theme) -> Line<'static> 
             symbols.box_round.bottom_right,
         ),
         theme.border,
-    ))
+    )])
 }
 
 fn tool_status_style<'a>(
@@ -116,49 +132,49 @@ fn tool_status_style<'a>(
 /// Render file content with line numbers.
 fn render_read_file(
     tool: &ToolCall,
-    header: Line<'static>,
+    header: StyledLine,
     width: usize,
     _symbols: &Symbols,
-) -> Vec<Line<'static>> {
+) -> Vec<StyledLine> {
     let theme = Theme::default();
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
 
     let path = extract_arg(tool, "path").unwrap_or_default();
     let content = tool.result.as_deref().unwrap_or("");
     if !path.is_empty() {
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!("  File: {}", path),
-            Style::default().fg(theme::DIM_TEAL),
-        )));
+            Style::new().fg(theme::DIM_TEAL),
+        )]));
     }
 
     if let Some((ref diff_path, ref diff_text)) = tool.diff_preview {
         if !diff_path.is_empty() {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  Diff: {}", diff_path),
-                Style::default().fg(theme::DIM_TEAL),
-            )));
+                Style::new().fg(theme::DIM_TEAL),
+            )]));
         }
         let diff_lines = diff::render_diff(diff_text, width.saturating_sub(4));
         for dl in diff_lines {
-            let mut prefixed = vec![Span::raw("  ")];
-            prefixed.extend(dl.spans);
-            lines.push(Line::from(prefixed));
+            let mut prefixed = vec![StyledSpan::plain("  ")];
+            prefixed.extend(dl.spans.into_iter().map(span_to_styled_span));
+            lines.push(StyledLine::new(prefixed));
         }
     } else if !content.is_empty() {
         for text_line in content.lines().take(PREVIEW_LINES) {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {}", text_line),
                 theme.dim,
-            )));
+            )]));
         }
         if content.lines().count() > PREVIEW_LINES {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  ... ({} lines total)", content.lines().count()),
                 theme.dim,
-            )));
+            )]));
         }
     }
     lines
@@ -167,43 +183,43 @@ fn render_read_file(
 /// Render edit/patch with inline diff.
 fn render_edit_diff(
     tool: &ToolCall,
-    header: Line<'static>,
+    header: StyledLine,
     width: usize,
     _symbols: &Symbols,
-) -> Vec<Line<'static>> {
+) -> Vec<StyledLine> {
     let theme = Theme::default();
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
 
     let path = extract_arg(tool, "path").unwrap_or_default();
     if !path.is_empty() {
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!("  File: {}", path),
-            Style::default().fg(theme::DIM_TEAL),
-        )));
+            Style::new().fg(theme::DIM_TEAL),
+        )]));
     }
 
     if let Some((ref diff_path, ref diff_text)) = tool.diff_preview {
         if !diff_path.is_empty() {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  Diff: {}", diff_path),
-                Style::default().fg(theme::DIM_TEAL),
-            )));
+                Style::new().fg(theme::DIM_TEAL),
+            )]));
         }
         let diff_lines = diff::render_diff(diff_text, width.saturating_sub(4));
         for dl in diff_lines {
-            let mut prefixed = vec![Span::raw("  ")];
-            prefixed.extend(dl.spans);
-            lines.push(Line::from(prefixed));
+            let mut prefixed = vec![StyledSpan::plain("  ")];
+            prefixed.extend(dl.spans.into_iter().map(span_to_styled_span));
+            lines.push(StyledLine::new(prefixed));
         }
     } else {
         let content = tool.result.as_deref().unwrap_or("");
         for text_line in content.lines().take(PREVIEW_LINES) {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {}", text_line),
                 theme.dim,
-            )));
+            )]));
         }
     }
     lines
@@ -212,13 +228,13 @@ fn render_edit_diff(
 /// Render write_file confirmation.
 fn render_write_file(
     tool: &ToolCall,
-    header: Line<'static>,
+    header: StyledLine,
     width: usize,
     symbols: &Symbols,
-) -> Vec<Line<'static>> {
+) -> Vec<StyledLine> {
     let theme = Theme::default();
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
 
     let path = extract_arg(tool, "path").unwrap_or_default();
@@ -233,7 +249,7 @@ fn render_write_file(
         };
         let title_len = title.len() as i32;
         let border_len = (file_width as i32).saturating_sub(title_len).max(2) as usize;
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!(
                 "  {}{}{}{}",
                 symbols.box_sharp.tee_right,
@@ -241,28 +257,28 @@ fn render_write_file(
                 title,
                 h.repeat(border_len - border_len / 2),
             ),
-            Style::from(theme::MUTED_TEAL),
-        )));
+            Style::new().fg(theme::MUTED_TEAL),
+        )]));
         for text_line in content.lines().take(PREVIEW_LINES) {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {} {}", symbols.box_sharp.vertical, text_line),
-                Style::default().fg(theme::MUTED_TEAL),
-            )));
+                Style::new().fg(theme::MUTED_TEAL),
+            )]));
         }
         if content.lines().count() > PREVIEW_LINES {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!(
                     "  {} ... ({} lines)",
                     symbols.box_sharp.vertical,
                     content.lines().count()
                 ),
                 theme.dim,
-            )));
+            )]));
         }
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!("  {}{}", symbols.box_sharp.tee_left, h.repeat(file_width)),
-            Style::from(theme::MUTED_TEAL),
-        )));
+            Style::new().fg(theme::MUTED_TEAL),
+        )]));
     }
     lines
 }
@@ -270,21 +286,21 @@ fn render_write_file(
 /// Render command output (bash, cargo, git, etc.).
 fn render_command(
     tool: &ToolCall,
-    header: Line<'static>,
+    header: StyledLine,
     _width: usize,
     symbols: &Symbols,
-) -> Vec<Line<'static>> {
+) -> Vec<StyledLine> {
     let theme = Theme::default();
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
 
     let cmd = extract_arg(tool, "command").or_else(|| extract_arg(tool, "args"));
     if let Some(ref cmd_text) = cmd {
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!("  {} {}", symbols.arrow, cmd_text),
-            Style::default().fg(theme::DIM_TEAL),
-        )));
+            Style::new().fg(theme::DIM_TEAL),
+        )]));
     }
 
     let content = tool.result.as_deref().unwrap_or("");
@@ -301,30 +317,30 @@ fn render_command(
         };
         let lines_count = content.lines().count();
         for text_line in content.lines().take(PREVIEW_LINES) {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {}", text_line),
                 theme.dim,
-            )));
+            )]));
         }
         if lines_count > PREVIEW_LINES {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  ... ({} lines total, enter to expand)", lines_count),
                 theme.dim,
-            )));
+            )]));
         }
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!("  {} exit: 0", status_icon),
             status_style,
-        )));
+        )]));
     }
     lines
 }
 
 /// Render LSP results.
-fn render_lsp(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<Line<'static>> {
+fn render_lsp(tool: &ToolCall, header: StyledLine, symbols: &Symbols) -> Vec<StyledLine> {
     let theme = Theme::default();
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
     push_arg_summary(&mut lines, tool, &theme);
 
@@ -337,10 +353,10 @@ fn render_lsp(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<
             serde_json::Value::Array(items) => {
                 for item in items {
                     let item_str = format_item(item);
-                    lines.push(Line::from(Span::styled(
+                    lines.push(StyledLine::new(vec![StyledSpan::new(
                         format!("  {} {}", symbols.bullet, item_str),
                         theme.dim,
-                    )));
+                    )]));
                 }
             }
             serde_json::Value::Object(map) => {
@@ -349,33 +365,33 @@ fn render_lsp(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<
                         serde_json::Value::String(s) => s.clone(),
                         other => other.to_string(),
                     };
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("  {} ", symbols.bullet), theme.dim),
-                        Span::styled(format!("{}: ", k), Style::default().fg(theme::DIM_TEAL)),
-                        Span::styled(v_str, theme.dim),
+                    lines.push(StyledLine::new(vec![
+                        StyledSpan::new(format!("  {} ", symbols.bullet), theme.dim),
+                        StyledSpan::new(format!("{}: ", k), Style::new().fg(theme::DIM_TEAL)),
+                        StyledSpan::new(v_str, theme.dim),
                     ]));
                 }
             }
             _ => {
-                lines.push(Line::from(Span::styled(format!("  {}", val), theme.dim)));
+                lines.push(StyledLine::new(vec![StyledSpan::new(format!("  {}", val), theme.dim)]));
             }
         }
     } else {
         for text_line in content.lines().take(PREVIEW_LINES) {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {}", text_line),
                 theme.dim,
-            )));
+            )]));
         }
     }
     lines
 }
 
 /// Render AST results.
-fn render_ast(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<Line<'static>> {
+fn render_ast(tool: &ToolCall, header: StyledLine, symbols: &Symbols) -> Vec<StyledLine> {
     let theme = Theme::default();
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
     push_arg_summary(&mut lines, tool, &theme);
 
@@ -389,38 +405,38 @@ fn render_ast(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<
                 for (k, v) in map {
                     let label = k.replace('_', " ");
                     let label = label[..1].to_uppercase() + &label[1..];
-                    lines.push(Line::from(Span::styled(
+                    lines.push(StyledLine::new(vec![StyledSpan::new(
                         format!("  {}", label),
-                        Style::default()
+                        Style::new()
                             .fg(theme::DIM_TEAL)
-                            .add_modifier(Modifier::BOLD),
-                    )));
+                            .bold(),
+                    )]));
                     if let serde_json::Value::Array(items) = v {
                         for item in items {
                             let item_str = format_item(item);
-                            lines.push(Line::from(Span::styled(
+                            lines.push(StyledLine::new(vec![StyledSpan::new(
                                 format!("  {} {}", symbols.bullet, item_str),
                                 theme.dim,
-                            )));
+                            )]));
                         }
                     } else {
-                        lines.push(Line::from(Span::styled(
+                        lines.push(StyledLine::new(vec![StyledSpan::new(
                             format!("  {} {}", symbols.bullet, v),
                             theme.dim,
-                        )));
+                        )]));
                     }
                 }
             }
             _ => {
-                lines.push(Line::from(Span::styled(format!("  {}", val), theme.dim)));
+                lines.push(StyledLine::new(vec![StyledSpan::new(format!("  {}", val), theme.dim)]));
             }
         }
     } else {
         for text_line in content.lines().take(PREVIEW_LINES) {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {}", text_line),
                 theme.dim,
-            )));
+            )]));
         }
     }
     lines
@@ -429,12 +445,12 @@ fn render_ast(tool: &ToolCall, header: Line<'static>, symbols: &Symbols) -> Vec<
 /// Generic fallback renderer.
 fn render_generic(
     tool: &ToolCall,
-    header: Line<'static>,
+    header: StyledLine,
     theme: &Theme,
     symbols: &Symbols,
-) -> Vec<Line<'static>> {
+) -> Vec<StyledLine> {
     let mut lines = Vec::new();
-    lines.push(Line::from(""));
+    lines.push(StyledLine::plain(""));
     lines.push(header);
 
     push_arg_summary(&mut lines, tool, theme);
@@ -449,43 +465,43 @@ fn render_generic(
             _ => symbols.success,
         };
         if result_lines == 0 {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {} done", status_icon),
                 result_style,
-            )));
+            )]));
         } else if result_lines == 1 && result.len() < 80 {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {} {}", status_icon, result.trim()),
                 result_style,
-            )));
+            )]));
         } else {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("  {} {} lines", status_icon, result_lines),
                 result_style,
-            )));
+            )]));
             for text_line in result.lines().take(PREVIEW_LINES) {
-                lines.push(Line::from(Span::styled(
+                lines.push(StyledLine::new(vec![StyledSpan::new(
                     format!("    {}", text_line),
                     result_style,
-                )));
+                )]));
             }
         }
         if result_lines > PREVIEW_LINES {
-            lines.push(Line::from(Span::styled(
+            lines.push(StyledLine::new(vec![StyledSpan::new(
                 format!("    ... ({} more)", result_lines - PREVIEW_LINES),
                 theme.dim,
-            )));
+            )]));
         }
     }
     lines
 }
 
-fn push_arg_summary(lines: &mut Vec<Line<'static>>, tool: &ToolCall, theme: &Theme) {
+fn push_arg_summary(lines: &mut Vec<StyledLine>, tool: &ToolCall, theme: &Theme) {
     if let Some(summary) = format_tool_args(tool) {
-        lines.push(Line::from(Span::styled(
+        lines.push(StyledLine::new(vec![StyledSpan::new(
             format!("  {}", truncate(&summary, 120)),
             theme.dim,
-        )));
+        )]));
     }
 }
 
@@ -613,29 +629,28 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
-fn clamp_tool_line(line: Line<'static>, width: usize) -> Line<'static> {
+fn clamp_tool_line(line: StyledLine, width: usize) -> StyledLine {
     if width == 0 {
-        return Line::from("");
+        return StyledLine::plain("");
     }
 
     let mut remaining = width;
     let mut spans = Vec::new();
     for span in line.spans {
-        let content = span.content.into_owned();
-        let len = content.chars().count();
+        let len = span.text.chars().count();
         if len <= remaining {
             remaining -= len;
-            spans.push(Span::styled(content, span.style));
+            spans.push(StyledSpan::new(span.text, span.style));
             continue;
         }
 
         if remaining == 0 {
             break;
         }
-        spans.push(Span::styled(truncate(&content, remaining), span.style));
+        spans.push(StyledSpan::new(truncate(&span.text, remaining), span.style));
         break;
     }
-    Line::from(spans)
+    StyledLine::new(spans)
 }
 
 #[cfg(test)]
@@ -799,9 +814,9 @@ mod tests {
 
     #[test]
     fn test_tool_line_clamp_preserves_prefix_style() {
-        let line = Line::from(vec![
-            Span::styled("  ", Style::new().fg(theme::AQUAMARINE)),
-            Span::styled("very long content", Style::new().fg(theme::DIM_TEAL)),
+        let line = StyledLine::new(vec![
+            StyledSpan::new("  ", Style::new().fg(theme::AQUAMARINE)),
+            StyledSpan::new("very long content", Style::new().fg(theme::DIM_TEAL)),
         ]);
         let clamped = clamp_tool_line(line, 8);
         assert_eq!(clamped.to_string().chars().count(), 8);

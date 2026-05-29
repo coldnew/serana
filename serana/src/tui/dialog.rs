@@ -1,11 +1,33 @@
 //! Interactive popup dialogs for model, theme, and session selection.
 
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, ListState, Paragraph};
-
+use display_protocol::{Color, Style, StyledLine, StyledSpan, ScreenBuffer};
+use super::render_helpers::*;
 use super::theme::{self, Theme};
+
+/// Convert a ratatui Style (from Theme) to a display-protocol Style.
+fn to_dp_style(s: &ratatui::style::Style) -> Style {
+    use ratatui::style::{Color as RtColor, Modifier};
+    let mut out = Style::new();
+    if let Some(c) = s.fg {
+        out.fg = Some(match c {
+            RtColor::Rgb(r, g, b) => Color::new(r, g, b),
+            RtColor::Reset => Color::WHITE,
+            _ => Color::WHITE,
+        });
+    }
+    if let Some(c) = s.bg {
+        out.bg = Some(match c {
+            RtColor::Rgb(r, g, b) => Color::new(r, g, b),
+            RtColor::Reset => Color::BLACK,
+            _ => Color::BLACK,
+        });
+    }
+    out.bold = s.add_modifier.contains(Modifier::BOLD);
+    out.italic = s.add_modifier.contains(Modifier::ITALIC);
+    out.underline = s.add_modifier.contains(Modifier::UNDERLINED);
+    out.dim = s.add_modifier.contains(Modifier::DIM);
+    out
+}
 
 /// Which dialog is currently open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +43,7 @@ pub struct Dialog {
     pub kind: DialogKind,
     pub title: String,
     pub items: Vec<DialogItem>,
-    pub state: ListState,
+    pub selected: Option<usize>,
     pub filter: String,
 }
 
@@ -35,8 +57,6 @@ pub struct DialogItem {
 
 impl Dialog {
     pub fn new_model_selector(models: Vec<(String, String)>) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
         Self {
             kind: DialogKind::ModelSelector,
             title: " Select Model ".to_string(),
@@ -48,14 +68,12 @@ impl Dialog {
                     value: name,
                 })
                 .collect(),
-            state,
+            selected: Some(0),
             filter: String::new(),
         }
     }
 
     pub fn new_theme_selector(themes: Vec<(String, String)>) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
         Self {
             kind: DialogKind::ThemeSelector,
             title: " Select Theme ".to_string(),
@@ -67,14 +85,12 @@ impl Dialog {
                     value: name,
                 })
                 .collect(),
-            state,
+            selected: Some(0),
             filter: String::new(),
         }
     }
 
     pub fn new_session_selector(sessions: Vec<(String, String)>) -> Self {
-        let mut state = ListState::default();
-        state.select(Some(0));
         Self {
             kind: DialogKind::SessionSelector,
             title: " Select Session ".to_string(),
@@ -86,7 +102,7 @@ impl Dialog {
                     value: id,
                 })
                 .collect(),
-            state,
+            selected: Some(0),
             filter: String::new(),
         }
     }
@@ -112,10 +128,10 @@ impl Dialog {
     pub fn select_previous(&mut self) {
         let filtered = self.filtered_items();
         if filtered.is_empty() {
-            self.state.select(None);
+            self.selected = None;
             return;
         }
-        let current = self.state.selected().unwrap_or(0);
+        let current = self.selected.unwrap_or(0);
         let filtered_indices: Vec<usize> = filtered.iter().map(|(i, _)| *i).collect();
         let pos = filtered_indices.iter().position(|&i| i == current);
         let new_pos = match pos {
@@ -123,17 +139,17 @@ impl Dialog {
             Some(p) => p - 1,
             None => 0,
         };
-        self.state.select(Some(filtered_indices[new_pos]));
+        self.selected = Some(filtered_indices[new_pos]);
     }
 
     /// Move selection down.
     pub fn select_next(&mut self) {
         let filtered = self.filtered_items();
         if filtered.is_empty() {
-            self.state.select(None);
+            self.selected = None;
             return;
         }
-        let current = self.state.selected().unwrap_or(0);
+        let current = self.selected.unwrap_or(0);
         let filtered_indices: Vec<usize> = filtered.iter().map(|(i, _)| *i).collect();
         let pos = filtered_indices.iter().position(|&i| i == current);
         let new_pos = match pos {
@@ -141,7 +157,7 @@ impl Dialog {
             Some(p) => p + 1,
             None => 0,
         };
-        self.state.select(Some(filtered_indices[new_pos]));
+        self.selected = Some(filtered_indices[new_pos]);
     }
 
     /// Type into the filter.
@@ -149,9 +165,9 @@ impl Dialog {
         self.filter.push(ch);
         // Re-validate selection is still in filtered set
         let filtered_indices: Vec<usize> = self.filtered_items().iter().map(|(i, _)| *i).collect();
-        if let Some(current) = self.state.selected() {
+        if let Some(current) = self.selected {
             if !filtered_indices.contains(&current) {
-                self.state.select(filtered_indices.first().copied());
+                self.selected = filtered_indices.first().copied();
             }
         }
     }
@@ -161,143 +177,117 @@ impl Dialog {
         self.filter.pop();
         // Re-validate selection
         let filtered_indices: Vec<usize> = self.filtered_items().iter().map(|(i, _)| *i).collect();
-        if let Some(current) = self.state.selected() {
+        if let Some(current) = self.selected {
             if !filtered_indices.contains(&current) {
-                self.state.select(filtered_indices.first().copied());
+                self.selected = filtered_indices.first().copied();
             }
         }
     }
 
     /// Get the selected item's value.
     pub fn selected_value(&self) -> Option<&str> {
-        self.state
-            .selected()
+        self.selected
             .and_then(|i| self.items.get(i))
             .map(|item| item.value.as_str())
     }
 }
 
 /// Render a centered popup dialog over the existing frame.
-pub fn render_dialog(frame: &mut ratatui::Frame, dialog: &Dialog) {
+pub fn render_dialog(buf: &mut ScreenBuffer, dialog: &Dialog) {
     let theme = Theme::default();
-    let area = frame.area();
+    let aquamarine = Color::new(0, 180, 255);
+    let bg = Color::BLACK;
+    let width = buf.width;
+    let height = buf.height;
 
     // Calculate popup size (centered, max 60x20 or 2/3 of screen)
-    let popup_width = area.width.min(60).min(area.width * 2 / 3);
-    let popup_height = area.height.min(20).min(area.height * 2 / 3);
-    let popup_area = centered_rect(popup_width, popup_height, area);
+    let popup_w = width.min(60).min(width * 2 / 3);
+    let popup_h = height.min(20).min(height * 2 / 3);
+    let popup_x = (width.saturating_sub(popup_w)) / 2;
+    let popup_y = (height.saturating_sub(popup_h)) / 2;
 
     // Clear background
-    frame.render_widget(Clear, popup_area);
+    clear_region(buf, popup_x, popup_y, popup_w, popup_h, bg);
 
-    // Split: title + filter + list + help
-    let inner = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // filter
-            Constraint::Min(3),    // list
-            Constraint::Length(1), // help
-        ])
-        .split(popup_area.inner(ratatui::layout::Margin {
-            horizontal: 1,
-            vertical: 1,
-        }));
+    // Border with title
+    paint_block(buf, popup_x, popup_y, popup_w, popup_h, aquamarine, bg, Some(&dialog.title));
 
-    // Border
-    let block = Block::default()
-        .title(Span::styled(
-            &dialog.title,
-            Style::new()
-                .fg(theme::AQUAMARINE)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(theme::AQUAMARINE));
-    frame.render_widget(block, popup_area);
+    // Inner area (inside border)
+    let inner_x = popup_x + 1;
+    let inner_y = popup_y + 1;
+    let inner_w = popup_w.saturating_sub(2);
+    let inner_h = popup_h.saturating_sub(2);
+
+    // Vertical layout: filter (1) + list (Min(3)) + help (1)
+    let vlayout = compute_vertical_layout(inner_h, &[
+        VConstraint::Length(1),
+        VConstraint::Min(3),
+        VConstraint::Length(1),
+    ]);
 
     // Filter line
-    let filter_text = if dialog.filter.is_empty() {
-        Line::from(Span::styled("Type to filter...", theme.dim))
+    let filter_y = inner_y + vlayout[0].0;
+    let dim_style = theme.dim;
+    let filter_line = if dialog.filter.is_empty() {
+        StyledLine::new(vec![StyledSpan::new("Type to filter...", dim_style)])
     } else {
-        Line::from(vec![
-            Span::styled(&dialog.filter, Style::new().fg(theme::AQUAMARINE)),
-            Span::styled(
-                "▏",
-                Style::new()
-                    .fg(theme::AQUAMARINE)
-                    .add_modifier(Modifier::BOLD),
-            ),
+        StyledLine::new(vec![
+            StyledSpan::new(&dialog.filter, Style::new().fg(aquamarine)),
+            StyledSpan::new("▏", Style::new().fg(aquamarine).bold()),
         ])
     };
-    frame.render_widget(Paragraph::new(filter_text), inner[0]);
+    paint_styled_line(buf, inner_x, filter_y, &filter_line);
+
+    // List area
+    let list_y = inner_y + vlayout[1].0;
+    let list_h = vlayout[1].1;
+    let list_width = inner_w as usize;
 
     let filtered = dialog.filtered_items();
-    let selected_original = dialog.state.selected();
+    let selected_original = dialog.selected;
     let selected_filtered = selected_original
         .and_then(|selected| filtered.iter().position(|(idx, _)| *idx == selected))
         .unwrap_or(0);
-    let list_height = inner[1].height as usize;
-    let show_count = list_height > 1 && filtered.len() > list_height;
+    let show_count = list_h as usize > 1 && filtered.len() > list_h as usize;
     let visible_height = if show_count {
-        list_height.saturating_sub(1)
+        (list_h as usize).saturating_sub(1)
     } else {
-        list_height
+        list_h as usize
     };
     let (start, end) = visible_range(selected_filtered, filtered.len(), visible_height);
 
     let mut list_lines = Vec::new();
     if filtered.is_empty() {
-        list_lines.push(Line::from(Span::styled("  No matching items", theme.dim)));
+        list_lines.push(StyledLine::new(vec![StyledSpan::new(
+            "  No matching items",
+            dim_style,
+        )]));
     } else {
-        let primary_width = primary_column_width(&filtered, inner[1].width as usize);
+        let primary_width = primary_column_width(&filtered, list_width);
         for (pos, (_, item)) in filtered.iter().enumerate().take(end).skip(start) {
             list_lines.push(render_dialog_item(
                 item,
                 pos == selected_filtered,
-                inner[1].width as usize,
+                list_width,
                 primary_width,
             ));
         }
     }
 
-    let list_area = Rect {
-        x: inner[1].x,
-        y: inner[1].y,
-        width: inner[1].width,
-        height: visible_height.min(list_height) as u16,
-    };
-    frame.render_widget(Paragraph::new(list_lines), list_area);
+    paint_paragraph(buf, inner_x, list_y, inner_w, visible_height as u16, &list_lines, 0);
 
     if show_count && !filtered.is_empty() {
-        let count_area = Rect {
-            x: inner[1].x,
-            y: inner[1].y + visible_height as u16,
-            width: inner[1].width,
-            height: 1,
-        };
-        let count = Line::from(Span::styled(
+        let count_line = StyledLine::new(vec![StyledSpan::new(
             format!("  ({}/{})", selected_filtered + 1, filtered.len()),
-            theme.dim,
-        ));
-        frame.render_widget(Paragraph::new(count), count_area);
+            dim_style,
+        )]);
+        paint_styled_line(buf, inner_x, list_y + visible_height as u16, &count_line);
     }
 
     // Help line
-    let help = dialog_help_line(inner[2].width as usize, &theme);
-    frame.render_widget(Paragraph::new(help), inner[2]);
-}
-
-/// Create a centered rectangle.
-fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.height.saturating_sub(height)) / 2;
-    Rect {
-        x,
-        y,
-        width: width.min(area.width),
-        height: height.min(area.height),
-    }
+    let help_y = inner_y + vlayout[2].0;
+    let help = dialog_help_line(inner_w as usize, &theme);
+    paint_styled_line(buf, inner_x, help_y, &help);
 }
 
 fn visible_range(selected: usize, total: usize, max_visible: usize) -> (usize, usize) {
@@ -325,23 +315,21 @@ fn render_dialog_item(
     selected: bool,
     width: usize,
     primary_width: usize,
-) -> Line<'static> {
+) -> StyledLine {
     let prefix = if selected { "› " } else { "  " };
-    let prefix_style = Style::new().fg(theme::AQUAMARINE);
+    let prefix_style = Style::new().fg(Color::new(0, 180, 255));
     let label_style = if selected {
-        Style::new()
-            .fg(theme::AQUAMARINE)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(Color::new(0, 180, 255)).bold()
     } else {
         Style::default()
     };
-    let description_style = Style::new().fg(theme::MUTED_TEAL);
+    let description_style = Style::new().fg(Color::new(156, 163, 176));
     let label_width = primary_width.saturating_sub(2).min(width.saturating_sub(4));
     let label = truncate_text(&sanitize_single_line(&item.label), label_width);
 
     let mut spans = vec![
-        Span::styled(prefix.to_string(), prefix_style),
-        Span::styled(label.clone(), label_style),
+        StyledSpan::new(prefix.to_string(), prefix_style),
+        StyledSpan::new(label.clone(), label_style),
     ];
 
     let description = sanitize_single_line(&item.description);
@@ -350,15 +338,15 @@ fn render_dialog_item(
         let used = 2 + label.chars().count() + spacing.chars().count();
         let desc_width = width.saturating_sub(used + 2);
         if desc_width > 10 {
-            spans.push(Span::raw(spacing));
-            spans.push(Span::styled(
+            spans.push(StyledSpan::plain(spacing));
+            spans.push(StyledSpan::new(
                 truncate_text(&description, desc_width),
                 description_style,
             ));
         }
     }
 
-    Line::from(spans)
+    StyledLine::new(spans)
 }
 
 fn sanitize_single_line(text: &str) -> String {
@@ -380,14 +368,14 @@ fn truncate_text(text: &str, width: usize) -> String {
     out
 }
 
-fn dialog_help_line(width: usize, theme: &Theme) -> Line<'static> {
-    Line::from(Span::styled(
+fn dialog_help_line(width: usize, theme: &Theme) -> StyledLine {
+    StyledLine::new(vec![StyledSpan::new(
         truncate_text(
             "↑↓: navigate  Enter: select  Esc: cancel  Type: filter",
             width,
         ),
         theme.dim,
-    ))
+    )])
 }
 
 #[cfg(test)]
@@ -401,7 +389,7 @@ mod tests {
             ("claude-3.5".into(), "Anthropic".into()),
         ]);
         assert_eq!(dialog.items.len(), 2);
-        assert_eq!(dialog.state.selected(), Some(0));
+        assert_eq!(dialog.selected, Some(0));
     }
 
     #[test]
@@ -423,13 +411,13 @@ mod tests {
             ("llama-3".into(), "Meta".into()),
         ]);
         dialog.select_next();
-        assert_eq!(dialog.state.selected(), Some(1));
+        assert_eq!(dialog.selected, Some(1));
         dialog.select_next();
-        assert_eq!(dialog.state.selected(), Some(2));
+        assert_eq!(dialog.selected, Some(2));
         dialog.select_next(); // wraps
-        assert_eq!(dialog.state.selected(), Some(0));
+        assert_eq!(dialog.selected, Some(0));
         dialog.select_previous();
-        assert_eq!(dialog.state.selected(), Some(2));
+        assert_eq!(dialog.selected, Some(2));
     }
 
     #[test]
@@ -454,16 +442,6 @@ mod tests {
     }
 
     #[test]
-    fn test_centered_rect() {
-        let area = Rect::new(0, 0, 100, 50);
-        let centered = centered_rect(60, 20, area);
-        assert_eq!(centered.width, 60);
-        assert_eq!(centered.height, 20);
-        assert_eq!(centered.x, 20);
-        assert_eq!(centered.y, 15);
-    }
-
-    #[test]
     fn test_visible_range_centers_selected_item() {
         assert_eq!(visible_range(6, 10, 5), (4, 9));
         assert_eq!(visible_range(0, 10, 5), (0, 5));
@@ -478,11 +456,7 @@ mod tests {
             value: "model".into(),
         };
         let line = render_dialog_item(&item, true, 20, 12);
-        let text: String = line
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect();
+        let text: String = line.spans.iter().map(|span| span.text.as_str()).collect();
         assert!(text.starts_with("› very long…"));
         assert!(!text.contains('\n'));
         assert!(!text.contains('\t'));
@@ -492,7 +466,8 @@ mod tests {
     fn test_dialog_help_line_truncates_to_width() {
         let theme = Theme::default();
         let line = dialog_help_line(18, &theme);
-        assert!(line.to_string().chars().count() <= 18);
-        assert!(line.to_string().ends_with('…'));
+        let text: String = line.spans.iter().map(|span| span.text.as_str()).collect();
+        assert!(text.chars().count() <= 18);
+        assert!(text.ends_with('…'));
     }
 }
