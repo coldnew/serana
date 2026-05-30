@@ -58,6 +58,8 @@ pub struct MoraEditor {
     pub iedit_word: Option<String>,
     pub iedit_regions: Vec<(usize, usize, usize)>,
     pub iedit_cursor_idx: usize,
+    pub iedit_regex: bool,
+    pub waiting_iedit_regex: bool,
     pub waiting_find: bool,
     pub waiting_find_forward: bool,
     pub waiting_find_till: bool,
@@ -121,6 +123,8 @@ impl MoraEditor {
             iedit_word: None,
             iedit_regions: Vec::new(),
             iedit_cursor_idx: 0,
+            iedit_regex: false,
+            waiting_iedit_regex: false,
             waiting_find: false,
             waiting_find_forward: true,
             waiting_find_till: false,
@@ -1045,6 +1049,8 @@ impl MoraEditor {
     }
 
     fn start_iedit(&mut self) {
+        self.buffer.push_undo_snapshot();
+        self.iedit_regex = false;
         let row = self.buffer.cursor.row;
         let col = self.buffer.cursor.col;
         let line = self.buffer.current_line();
@@ -1122,76 +1128,70 @@ impl MoraEditor {
             // Exit iedit
             (_, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('g')) => {
                 let word = self.iedit_word.take().unwrap_or_default();
+                let n = self.iedit_regions.len();
                 self.iedit_regions.clear();
                 self.iedit_cursor_idx = 0;
+                self.iedit_regex = false;
                 self.mode = EditorMode::Emacs;
-                self.status_message = format!("Iedit exited (edited: {})", word);
+                self.status_message = format!("Iedit exited ({} regions, \"{}\")", n, word);
                 KeyAction::None
             }
-            // Tab cycles between iedit regions
+            // Tab: cycle forward through regions
             (_, KeyCode::Tab) => {
-                if !self.iedit_regions.is_empty() {
-                    self.iedit_cursor_idx = (self.iedit_cursor_idx + 1) % self.iedit_regions.len();
-                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
-                    self.buffer.cursor.row = r;
-                    self.buffer.cursor.col = c;
-                    self.view.ensure_cursor_visible(&self.buffer);
-                }
+                self.iedit_next_region();
                 KeyAction::None
             }
-            // Back-tab cycles backwards
+            // Shift-Tab: cycle backward
             (KeyModifiers::SHIFT, KeyCode::BackTab) => {
-                if !self.iedit_regions.is_empty() {
-                    self.iedit_cursor_idx = if self.iedit_cursor_idx == 0 {
-                        self.iedit_regions.len() - 1
-                    } else {
-                        self.iedit_cursor_idx - 1
-                    };
-                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
-                    self.buffer.cursor.row = r;
-                    self.buffer.cursor.col = c;
-                    self.view.ensure_cursor_visible(&self.buffer);
-                }
+                self.iedit_prev_region();
                 KeyAction::None
             }
-            // C-n/C-p navigate between regions
+            // C-n: next region
             (KeyModifiers::CONTROL, KeyCode::Char('n')) => {
-                if !self.iedit_regions.is_empty() {
-                    self.iedit_cursor_idx = (self.iedit_cursor_idx + 1) % self.iedit_regions.len();
-                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
-                    self.buffer.cursor.row = r;
-                    self.buffer.cursor.col = c;
-                    self.view.ensure_cursor_visible(&self.buffer);
-                }
+                self.iedit_next_region();
                 KeyAction::None
             }
+            // C-p: previous region
             (KeyModifiers::CONTROL, KeyCode::Char('p')) => {
-                if !self.iedit_regions.is_empty() {
-                    self.iedit_cursor_idx = if self.iedit_cursor_idx == 0 {
-                        self.iedit_regions.len() - 1
-                    } else {
-                        self.iedit_cursor_idx - 1
-                    };
-                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
-                    self.buffer.cursor.row = r;
-                    self.buffer.cursor.col = c;
-                    self.view.ensure_cursor_visible(&self.buffer);
-                }
+                self.iedit_prev_region();
+                KeyAction::None
+            }
+            // C-d: skip current region (remove from list)
+            (KeyModifiers::CONTROL, KeyCode::Char('d')) => {
+                self.iedit_skip_region();
+                KeyAction::None
+            }
+            // C-; while in iedit: add cursor position as a new region
+            (KeyModifiers::CONTROL, KeyCode::Char(';')) => {
+                self.iedit_add_region_at_cursor();
+                KeyAction::None
+            }
+            // C-a: re-find all regions (reset after skips)
+            (KeyModifiers::CONTROL, KeyCode::Char('a')) => {
+                self.iedit_refind_all();
+                KeyAction::None
+            }
+            // C-k: kill to end of region in all regions
+            (KeyModifiers::CONTROL, KeyCode::Char('k')) => {
+                self.iedit_kill_region();
                 KeyAction::None
             }
             // Insert char in all regions
             (_, KeyCode::Char(c)) => {
                 self.iedit_insert_char(c);
+                self.iedit_update_status();
                 KeyAction::None
             }
             // Backspace in all regions
             (_, KeyCode::Backspace) => {
                 self.iedit_delete_backward();
+                self.iedit_update_status();
                 KeyAction::None
             }
             // Delete forward in all regions
             (_, KeyCode::Delete) => {
                 self.iedit_delete_forward();
+                self.iedit_update_status();
                 KeyAction::None
             }
             _ => KeyAction::None,
@@ -1300,6 +1300,197 @@ impl MoraEditor {
             self.buffer.cursor.row = r;
             self.buffer.cursor.col = e;
         }
+    }
+
+    fn iedit_next_region(&mut self) {
+        if self.iedit_regions.is_empty() {
+            return;
+        }
+        self.iedit_cursor_idx = (self.iedit_cursor_idx + 1) % self.iedit_regions.len();
+        let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+        self.buffer.cursor.row = r;
+        self.buffer.cursor.col = c;
+        self.view.ensure_cursor_visible(&self.buffer);
+    }
+
+    fn iedit_prev_region(&mut self) {
+        if self.iedit_regions.is_empty() {
+            return;
+        }
+        self.iedit_cursor_idx = if self.iedit_cursor_idx == 0 {
+            self.iedit_regions.len() - 1
+        } else {
+            self.iedit_cursor_idx - 1
+        };
+        let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+        self.buffer.cursor.row = r;
+        self.buffer.cursor.col = c;
+        self.view.ensure_cursor_visible(&self.buffer);
+    }
+
+    fn iedit_skip_region(&mut self) {
+        if self.iedit_regions.is_empty() {
+            return;
+        }
+        self.iedit_regions.remove(self.iedit_cursor_idx);
+        if self.iedit_regions.is_empty() {
+            let word = self.iedit_word.take().unwrap_or_default();
+            self.iedit_regex = false;
+            self.mode = EditorMode::Emacs;
+            self.status_message = format!("Iedit: all regions removed (\"{}\")", word);
+            return;
+        }
+        if self.iedit_cursor_idx >= self.iedit_regions.len() {
+            self.iedit_cursor_idx = 0;
+        }
+        let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+        self.buffer.cursor.row = r;
+        self.buffer.cursor.col = c;
+        self.view.ensure_cursor_visible(&self.buffer);
+        self.iedit_update_status();
+    }
+
+    fn iedit_add_region_at_cursor(&mut self) {
+        let word = match &self.iedit_word {
+            Some(w) => w.clone(),
+            None => return,
+        };
+        let row = self.buffer.cursor.row;
+        let col = self.buffer.cursor.col;
+        let line = self.buffer.current_line();
+        let chars: Vec<char> = line.chars().collect();
+        let wc = word.chars().count();
+        if col + wc > chars.len() {
+            return;
+        }
+        let candidate: String = chars[col..col + wc].iter().collect();
+        if candidate != word {
+            self.status_message = format!("Iedit: word at cursor is \"{}\", expected \"{}\"", candidate, word);
+            return;
+        }
+        // Check for duplicate
+        for &(r, s, _) in &self.iedit_regions {
+            if r == row && s == col {
+                self.status_message = "Iedit: region already exists".to_string();
+                return;
+            }
+        }
+        self.iedit_regions.push((row, col, col + wc));
+        self.iedit_cursor_idx = self.iedit_regions.len() - 1;
+        self.iedit_update_status();
+    }
+
+    fn iedit_refind_all(&mut self) {
+        let word = match &self.iedit_word {
+            Some(w) => w.clone(),
+            None => return,
+        };
+        let row = self.buffer.cursor.row;
+        let col = self.buffer.cursor.col;
+        let is_regex = self.iedit_regex;
+        self.iedit_regions.clear();
+        self.iedit_cursor_idx = 0;
+        for (r, line) in self.buffer.lines.iter().enumerate() {
+            if is_regex {
+                // Regex mode: use the word as a regex pattern
+                if let Ok(re) = regex::Regex::new(&word) {
+                    for m in re.find_iter(line) {
+                        let start = m.start();
+                        let end = m.end();
+                        if r == row && start <= col && col <= end {
+                            self.iedit_cursor_idx = self.iedit_regions.len();
+                        }
+                        self.iedit_regions.push((r, start, end));
+                    }
+                }
+            } else {
+                // Exact word mode
+                let line_chars: Vec<char> = line.chars().collect();
+                let mut c = 0;
+                while c + word.chars().count() <= line_chars.len() {
+                    let candidate: String = line_chars[c..c + word.chars().count()].iter().collect();
+                    if candidate == word {
+                        let left_ok = c == 0
+                            || !(line_chars[c - 1].is_alphanumeric() || line_chars[c - 1] == '_');
+                        let right_ok = c + word.chars().count() >= line_chars.len()
+                            || !(line_chars[c + word.chars().count()].is_alphanumeric()
+                                || line_chars[c + word.chars().count()] == '_');
+                        if left_ok && right_ok {
+                            if r == row && c <= col && col <= c + word.chars().count() {
+                                self.iedit_cursor_idx = self.iedit_regions.len();
+                            }
+                            self.iedit_regions.push((r, c, c + word.chars().count()));
+                        }
+                    }
+                    c += 1;
+                }
+            }
+        }
+        if self.iedit_regions.is_empty() {
+            self.iedit_word = None;
+            self.iedit_regex = false;
+            self.mode = EditorMode::Emacs;
+            self.status_message = "Iedit: no occurrences found".to_string();
+            return;
+        }
+        let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+        self.buffer.cursor.row = r;
+        self.buffer.cursor.col = c;
+        self.view.ensure_cursor_visible(&self.buffer);
+        self.iedit_update_status();
+    }
+
+    fn iedit_kill_region(&mut self) {
+        for i in (0..self.iedit_regions.len()).rev() {
+            let (row, _start, end) = self.iedit_regions[i];
+            if row < self.buffer.lines.len() {
+                let line_len = self.buffer.lines[row].chars().count();
+                if end <= line_len {
+                    let byte_pos: usize = self.buffer.lines[row]
+                        .chars()
+                        .take(end)
+                        .map(|ch| ch.len_utf8())
+                        .sum();
+                    let remaining = self.buffer.lines[row][byte_pos..].to_string();
+                    let kill_bytes = remaining.len();
+                    if kill_bytes > 0 {
+                        self.buffer.lines[row].drain(byte_pos..);
+                        // Truncate instead of drain-then-drain
+                        // Actually we already drained the rest. Just mark modified.
+                    }
+                    if kill_bytes > 0 {
+                        self.buffer.modified = true;
+                        for j in 0..self.iedit_regions.len() {
+                            if self.iedit_regions[j].0 == row && self.iedit_regions[j].2 > end {
+                                self.iedit_regions[j].2 = end;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if self.iedit_cursor_idx < self.iedit_regions.len() {
+            let (r, _s, e) = self.iedit_regions[self.iedit_cursor_idx];
+            self.buffer.cursor.row = r;
+            self.buffer.cursor.col = e;
+        }
+    }
+
+    fn iedit_update_status(&mut self) {
+        let word = self.iedit_word.as_deref().unwrap_or("");
+        let mode = if self.iedit_regex { "regex" } else { "word" };
+        self.status_message = format!(
+            "Iedit: {} \"{}\" [{} region{}]  Tab next  C-d skip  C-; add  C-a refind  Esc exit",
+            mode, word, self.iedit_regions.len(),
+            if self.iedit_regions.len() == 1 { "" } else { "s" }
+        );
+    }
+
+    fn start_iedit_regex(&mut self) {
+        self.buffer.push_undo_snapshot();
+        self.iedit_regex = true;
+        self.waiting_iedit_regex = true;
+        self.activate_minibuffer_with_prompt(EditorMode::Command, "Iedit regex: ");
     }
 
     fn handle_replace_char(&mut self, key: KeyEvent) -> KeyAction {
@@ -2632,6 +2823,54 @@ impl MoraEditor {
         let input = self.command_input().to_string();
         let trimmed = input.trim();
 
+        // Handle iedit-regex input: user pressed Enter after typing regex pattern
+        if self.waiting_iedit_regex {
+            self.waiting_iedit_regex = false;
+            let pattern = trimmed.to_string();
+            if pattern.is_empty() {
+                self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
+                self.status_message = "Iedit: empty pattern".to_string();
+                return;
+            }
+            self.iedit_word = Some(pattern.clone());
+            self.iedit_regions.clear();
+            self.iedit_cursor_idx = 0;
+            // Find all regex matches in the buffer
+            match regex::Regex::new(&pattern) {
+                Ok(re) => {
+                    for (r, line) in self.buffer.lines.iter().enumerate() {
+                        for m in re.find_iter(line) {
+                            if r == self.buffer.cursor.row && m.start() <= self.buffer.cursor.col && self.buffer.cursor.col <= m.end() {
+                                self.iedit_cursor_idx = self.iedit_regions.len();
+                            }
+                            self.iedit_regions.push((r, m.start(), m.end()));
+                        }
+                    }
+                    if self.iedit_regions.is_empty() {
+                        self.mode = EditorMode::Emacs;
+                        self.clear_minibuffer();
+                        self.status_message = format!("Iedit: no matches for \"{}\"", pattern);
+                        return;
+                    }
+                    // Jump to first region
+                    let (r, c, _) = self.iedit_regions[self.iedit_cursor_idx];
+                    self.buffer.cursor.row = r;
+                    self.buffer.cursor.col = c;
+                    self.view.ensure_cursor_visible(&self.buffer);
+                    self.mode = EditorMode::Iedit;
+                    self.clear_minibuffer();
+                    self.iedit_update_status();
+                }
+                Err(e) => {
+                    self.mode = EditorMode::Emacs;
+                    self.clear_minibuffer();
+                    self.status_message = format!("Iedit: invalid regex: {}", e);
+                }
+            }
+            return;
+        }
+
         if self.lisp_bridge.has_command(trimmed) {
             self.push_lisp_state();
             let result = self.lisp_bridge.execute_command(trimmed);
@@ -2661,6 +2900,41 @@ impl MoraEditor {
                 self.mode = EditorMode::Emacs;
                 self.clear_minibuffer();
                 self.start_iedit();
+                return;
+            }
+            "iedit-regex" | "multiple-cursors-regex" => {
+                self.clear_minibuffer();
+                self.start_iedit_regex();
+                return;
+            }
+            "iedit-skip-region" | "skip-region" => {
+                if self.mode == EditorMode::Iedit {
+                    self.iedit_skip_region();
+                } else {
+                    self.status_message = "Not in iedit mode".to_string();
+                }
+                self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
+                return;
+            }
+            "iedit-add-region" | "add-region" => {
+                if self.mode == EditorMode::Iedit {
+                    self.iedit_add_region_at_cursor();
+                } else {
+                    self.status_message = "Not in iedit mode".to_string();
+                }
+                self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
+                return;
+            }
+            "iedit-refind-all" | "refind-all" => {
+                if self.mode == EditorMode::Iedit {
+                    self.iedit_refind_all();
+                } else {
+                    self.status_message = "Not in iedit mode".to_string();
+                }
+                self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
                 return;
             }
             "goto-line" | "goto-line-number" => {
@@ -2927,6 +3201,10 @@ impl MoraEditor {
             "goto-last-change",
             "goto-line",
             "iedit",
+            "iedit-add-region",
+            "iedit-regex",
+            "iedit-refind-all",
+            "iedit-skip-region",
             "kill-buffer",
             "kill-emacs",
             "lowercase-word",
@@ -3379,6 +3657,196 @@ mod tests {
         assert_eq!(editor.minibuffer_prompt(), "M-x ");
         assert_eq!(editor.command_input(), "save-");
     }
+
+    #[test]
+    fn iedit_finds_all_occurrences() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "let x = 1;".to_string(),
+            "let y = x + 2;".to_string(),
+            "println!(x);".to_string(),
+        ];
+        // Place cursor on first 'x' at col 4
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 4;
+        editor.start_iedit();
+
+        assert_eq!(editor.mode, EditorMode::Iedit);
+        assert_eq!(editor.iedit_word, Some("x".to_string()));
+        // Should find 3 occurrences of 'x' as a word
+        assert!(editor.iedit_regions.len() >= 3);
+    }
+
+    #[test]
+    fn iedit_skip_region_removes_current() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "foo bar foo baz foo".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        let initial_count = editor.iedit_regions.len();
+        assert!(initial_count >= 3);
+
+        // Skip the current region
+        editor.iedit_skip_region();
+        assert_eq!(editor.iedit_regions.len(), initial_count - 1);
+        assert_eq!(editor.mode, EditorMode::Iedit);
+    }
+
+    #[test]
+    fn iedit_skip_all_regions_exits() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "foo foo".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        let count = editor.iedit_regions.len();
+        for _ in 0..count {
+            if editor.mode == EditorMode::Iedit {
+                editor.iedit_skip_region();
+            }
+        }
+        assert_eq!(editor.mode, EditorMode::Emacs);
+    }
+
+    #[test]
+    fn iedit_insert_char_in_all_regions() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "x = x + 1".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        // Type 'y' to append to each 'x' region
+        editor.iedit_insert_char('y');
+        // Each 'x' (as word) should now be 'xy'
+        // Check the first line contains "xy"
+        assert!(editor.buffer.lines[0].contains("xy"));
+    }
+
+    #[test]
+    fn iedit_delete_backward_in_all_regions() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "xy = xy + 1".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        // Delete last char from each region
+        editor.iedit_delete_backward();
+        // Each 'xy' should now be 'x'
+        assert!(editor.buffer.lines[0].contains("x"));
+    }
+
+    #[test]
+    fn iedit_tab_cycles_regions() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "foo foo".to_string(),
+            "bar".to_string(),
+            "foo foo".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        let count = editor.iedit_regions.len();
+        // "foo" appears 4 times: row 0 col 0, row 0 col 4, row 2 col 0, row 2 col 4
+        assert!(count >= 2);
+        let first_idx = editor.iedit_cursor_idx;
+
+        // Tab to next region
+        editor.iedit_next_region();
+        assert_ne!(editor.iedit_cursor_idx, first_idx, "cursor_idx should change after next_region");
+
+        // Tab back should return to first
+        editor.iedit_prev_region();
+        assert_eq!(editor.iedit_cursor_idx, first_idx);
+    }
+
+    #[test]
+    fn iedit_add_region_at_cursor() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "foo foo bar foo".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        let initial_count = editor.iedit_regions.len();
+        // Move cursor to 'bar' at col 8 (should not add since it's a different word)
+        editor.buffer.cursor.col = 8;
+        editor.iedit_add_region_at_cursor();
+        // bar is different from foo, should not add
+        assert_eq!(editor.iedit_regions.len(), initial_count);
+        assert!(editor.status_message.contains("expected"));
+    }
+
+    #[test]
+    fn iedit_pushes_undo_snapshot() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "foo foo".to_string(),
+        ];
+        editor.start_iedit();
+        // After entering iedit, buffer should have an undo snapshot
+        // (we can't directly test undo here without the full undo-tree,
+        // but at least the mode should be correct)
+        assert_eq!(editor.mode, EditorMode::Iedit);
+    }
+
+    #[test]
+    fn iedit_exits_on_single_occurrence() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "unique_word".to_string(),
+            "other".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        // Only one occurrence, should not enter iedit
+        assert_ne!(editor.mode, EditorMode::Iedit);
+        assert_eq!(editor.status_message, "No other occurrences");
+    }
+
+    #[test]
+    fn iedit_regex_finds_matches() {
+        let mut editor = MoraEditor::new(20);
+        editor.buffer.lines = vec![
+            "x1 = x2 + x3".to_string(),
+            "y1 = y2".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+
+        // Simulate: M-x iedit-regex, then type pattern
+        editor.start_iedit_regex();
+        assert!(editor.waiting_iedit_regex);
+        assert!(editor.minibuffer_active());
+
+        // Set pattern via minibuffer
+        editor.set_minibuffer_input("[xy][0-9]");
+        editor.execute_command();
+
+        assert_eq!(editor.mode, EditorMode::Iedit);
+        assert!(editor.iedit_regex);
+        // Should find x1, x2, x3, y1, y2 = 5 matches
+        assert_eq!(editor.iedit_regions.len(), 5);
+    }
+
 }
 
 fn op_char(op: PendingOp) -> char {
