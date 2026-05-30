@@ -77,22 +77,23 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
         EditorMode::Iedit => " Iedit",
     };
 
-    // Emacs-style position indicator: --L<line>--C<col>----
-    let pos_indicator = format!("--L{}--C{}----", line, col);
-
-    // Position percentage: All / Top / Bot / XX%
+    // Emacs-style position indicator.
+    // Emacs shows: All / Top / Bot / XX%
+    // (no line/column in default mode-line-format)
     let pos_pct = if total_lines <= 1 || pct >= 100 {
         "All".to_string()
     } else if pct == 0 {
         "Top".to_string()
+    } else if pct >= 99 {
+        "Bot".to_string()
     } else {
-        format!("{}%", pct)
+        format!("{:>3}%", pct)
     };
 
-    // Build emacs-style modeline:  --:**-  buf_name  (MajorMode Submode)  --L1--C1----  All
+    // Build emacs-style modeline:  --:**-  buf_name  (MajorMode)  XX%
     let left = format!("{}-  {}  ", modified_flag, buf_name);
     let mode_info = format!("({}{})", major_mode, submode);
-    let right = format!(" {}  {}", pos_indicator, pos_pct);
+    let right = format!(" {}", pos_pct);
 
     let left_len = left.len();
     let mode_len = mode_info.len();
@@ -195,7 +196,6 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let gutter_current = Color::new(0, 180, 255);
     let text_fg = Color::new(232, 236, 244);
     let current_line_fg = Color::new(0, 180, 255);
-    let tilde_color = Color::new(55, 60, 72);
     let cursor_fg = Color::new(15, 18, 22);
     let cursor_bg = Color::new(0, 180, 255);
     let sel_bg = Color::new(30, 80, 120);
@@ -353,8 +353,10 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
         display_row += 1;
     }
 
+    // Emacs: empty lines beyond buffer content are blank (no ~ marker).
+    // The ~ prefix is a Vim convention, not Emacs.
     for _ in display_row..height {
-        rows.push(jsx! { <Row><Text color={tilde_color}>"~"</Text></Row> });
+        rows.push(UiNode::row(vec![UiNode::text(" ")]));
     }
 
     UiNode::column(rows).width(width)
