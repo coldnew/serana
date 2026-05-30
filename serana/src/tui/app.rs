@@ -923,6 +923,35 @@ impl App {
                     });
                 }
             }
+            SlashResult::Resume => {
+                self.load_recent_sessions();
+                self.active_dialog = Some(super::dialog::Dialog {
+                    kind: super::dialog::DialogKind::SessionResume,
+                    title: " Resume Session ".to_string(),
+                    items: if self.recent_sessions.is_empty() {
+                        vec![super::dialog::DialogItem {
+                            label: "No saved sessions found".into(),
+                            description: String::new(),
+                            value: String::new(),
+                        }]
+                    } else {
+                        self.recent_sessions
+                            .iter()
+                            .map(|s| {
+                                let label = s.title.as_deref().unwrap_or(&s.id);
+                                let date = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
+                                super::dialog::DialogItem {
+                                    label: format!("{} — {} msgs, {}", label, s.message_count, date),
+                                    description: s.id.clone(),
+                                    value: s.id.clone(),
+                                }
+                            })
+                            .collect()
+                    },
+                    selected: Some(0),
+                    filter: String::new(),
+                });
+            }
             SlashResult::Unknown(name) => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
@@ -974,6 +1003,11 @@ impl App {
                                 tool_calls: Vec::new(),
                                 thinking: None,
                             });
+                        }
+                        super::dialog::DialogKind::SessionResume => {
+                            if !value.is_empty() {
+                                self.load_session_by_id(&value);
+                            }
                         }
                     }
                 }

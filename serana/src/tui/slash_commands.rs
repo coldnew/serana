@@ -65,6 +65,8 @@ pub enum SlashResult {
     SetThinkingLevel(String),
     /// Copy last assistant response to clipboard.
     Copy,
+    /// Resume a session (show session picker).
+    Resume,
     /// Unknown command.
     Unknown(String),
 }
@@ -267,6 +269,11 @@ impl SlashCommandRegistry {
             name: "copy",
             description: "Copy last assistant response to clipboard",
             handler: Box::new(|_| SlashResult::Copy),
+        });
+        self.register(SlashCommand {
+            name: "resume",
+            description: "Resume a different session (opens session picker)",
+            handler: Box::new(|_| SlashResult::Resume),
         });
         self.register(SlashCommand {
             name: "skill",

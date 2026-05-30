@@ -6,6 +6,7 @@ pub enum DialogKind {
     ModelSelector,
     ThemeSelector,
     SessionSelector,
+    SessionResume,
 }
 
 /// Active dialog state.
