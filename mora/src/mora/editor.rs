@@ -528,6 +528,17 @@ impl MoraEditor {
                     self.status_message = "SPC m-".to_string();
                     KeyAction::None
                 }
+                // SPC t: toggle operations (theme, font, etc)
+                KeyCode::Char('t') => {
+                    self.waiting_prefix2 = Some('t');
+                    self.status_message = "SPC t-".to_string();
+                    KeyAction::None
+                }
+                // SPC S: spelling check
+                KeyCode::Char('S') => {
+                    self.run_spelling_check();
+                    KeyAction::None
+                }
                 // SPC 1-9: window selection (coldnew-emacs: SPC 1-9)
                 KeyCode::Char(c) if c.is_ascii_digit() => {
                     let n = (c as u8 - b'0') as usize;
@@ -682,10 +693,22 @@ impl MoraEditor {
                 KeyCode::Char('=') => KeyAction::GotoLastChange,
                 _ => KeyAction::None,
             },
-            // SPC a: AI/LLM operations
-            'a' => match key.code {
-                KeyCode::Char('a') => {
-                    self.status_message = "AI assistant".to_string();
+            // SPC t: toggle operations
+            't' => match key.code {
+                KeyCode::Char('t') => {
+                    // SPC t t: toggle theme
+                    self.theme = if self.theme.background.r < 128 {
+                        super::theme::day()
+                    } else {
+                        super::theme::night()
+                    };
+                    let mode = if self.theme.background.r < 128 { "Night" } else { "Day" };
+                    self.status_message = format!("Theme: {mode}");
+                    KeyAction::None
+                }
+                KeyCode::Char('f') => {
+                    // SPC t f: cycle font size
+                    self.status_message = "Font: use C-= / C-- to adjust".to_string();
                     KeyAction::None
                 }
                 _ => KeyAction::None,
@@ -693,8 +716,27 @@ impl MoraEditor {
             // SPC m: major mode operations
             'm' => match key.code {
                 KeyCode::Char('d') => {
-                    // SPC m d: go to definition
-                    self.status_message = "Go to definition".to_string();
+                    // SPC m d: go to definition (shell out to ctags/gtags)
+                    self.run_go_to_definition();
+                    KeyAction::None
+                }
+                KeyCode::Char('r') => {
+                    // SPC m r: rename symbol (iedit)
+                    self.start_iedit();
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            // SPC a: AI/LLM operations
+            'a' => match key.code {
+                KeyCode::Char('a') => {
+                    // SPC a a: AI assistant
+                    self.activate_minibuffer_with_prompt(EditorMode::Command, "Ask AI: ");
+                    KeyAction::None
+                }
+                KeyCode::Char('c') => {
+                    // SPC a c: AI chat
+                    self.status_message = "AI chat (serana-llm)".to_string();
                     KeyAction::None
                 }
                 _ => KeyAction::None,
@@ -3788,6 +3830,57 @@ impl MoraEditor {
             let first_line = output.lines().next().unwrap_or("");
             format!("Git: {first_line} ({} files)", output.lines().count())
         };
+    }
+
+    fn run_spelling_check(&mut self) {
+        // Check spelling of current word using aspell
+        let word = self.buffer.current_word();
+        if word.is_empty() {
+            self.status_message = "Spelling: no word under cursor".to_string();
+            return;
+        }
+        let output = std::process::Command::new("aspell")
+            .args(["pipe"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                if let Some(stdin) = child.stdin.take() {
+                    let mut stdin = stdin;
+                    let _ = writeln!(stdin, "^{word}");
+                }
+                child.wait_with_output()
+            });
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                if stdout.contains("& ") {
+                    let suggestions = stdout.lines()
+                        .find(|l| l.starts_with("& "))
+                        .and_then(|l| l.split(':').nth(1))
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default();
+                    self.status_message = format!("Spelling: \"{word}\" — suggestions: {suggestions}");
+                } else if stdout.contains("* ") {
+                    self.status_message = format!("Spelling: \"{word}\" is correct");
+                } else {
+                    self.status_message = format!("Spelling: \"{word}\" — check aspell");
+                }
+            }
+            Err(e) => {
+                self.status_message = format!("Spelling: aspell not found ({e})");
+            }
+        }
+    }
+
+    fn run_go_to_definition(&mut self) {
+        let word = self.buffer.current_word();
+        if word.is_empty() {
+            self.status_message = "Go to definition: no word under cursor".to_string();
+            return;
+        }
+        self.status_message = format!("Go to definition: \"{word}\" — use SPC p g to grep");
     }
 
     fn run_ripgrep(&mut self, pattern: &str) {

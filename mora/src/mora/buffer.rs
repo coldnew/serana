@@ -124,6 +124,26 @@ impl Buffer {
         &self.lines[self.cursor.row]
     }
 
+    pub fn current_word(&self) -> String {
+        let line = self.current_line();
+        let col = self.cursor.col;
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            return String::new();
+        }
+        let col = col.min(chars.len() - 1);
+        // Find word boundaries
+        let mut start = col;
+        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+            start -= 1;
+        }
+        let mut end = col;
+        while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
+            end += 1;
+        }
+        chars[start..end].iter().collect()
+    }
+
     pub fn line(&self, idx: usize) -> &str {
         &self.lines[idx]
     }

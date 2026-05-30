@@ -59,11 +59,23 @@ impl Minibuffer {
             return CompletionResult::None;
         }
 
+        // Orderless-style: split input on spaces, each component must
+        // match somewhere in the candidate (substring matching).
+        // e.g. "ser load" matches "server-load", "load-server", etc.
+        // For single-component input, prefer prefix matching (fast path).
+        let components: Vec<&str> = input.split_whitespace().collect();
+
         let matches: Vec<&str> = self
             .completions
             .iter()
             .map(String::as_str)
-            .filter(|candidate| candidate.starts_with(input))
+            .filter(|candidate| {
+                if components.len() == 1 {
+                    candidate.starts_with(components[0])
+                } else {
+                    components.iter().all(|comp| candidate.contains(comp))
+                }
+            })
             .collect();
 
         match matches.as_slice() {
