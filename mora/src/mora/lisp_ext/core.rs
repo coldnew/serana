@@ -84,6 +84,8 @@ impl MoraLispBridge {
         super::mode::register(&mut mode_ns.lock());
         super::window::register(&mut window_ns.lock());
         super::hook::register(&mut hook_ns.lock());
+        let iedit_ns = eval.ns.find_or_create("mora.iedit");
+        super::iedit::register(&mut iedit_ns.lock());
         super::overlay::register(&mut overlay_ns.lock());
         super::shell::register(&mut shell_ns.lock());
         super::command::register(&mut command_ns.lock());

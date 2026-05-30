@@ -6,6 +6,7 @@ pub mod cursor;
 pub mod editor_state;
 pub mod helpers;
 pub mod hook;
+pub mod iedit;
 pub mod history;
 pub mod kill_ring;
 pub mod mark;
