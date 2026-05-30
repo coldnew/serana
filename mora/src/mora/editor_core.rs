@@ -1,11 +1,10 @@
+use crate::mora::display::backend::InputEvent;
+use crate::mora::display::event::{MoraKeyCode, MoraKeyEvent};
 use crate::mora::editor::MoraEditor;
 use crate::mora::ui_node;
-use crate::mora::display::backend::InputEvent;
-use crate::mora::display::event::{MoraKeyEvent, MoraKeyCode};
 use display_protocol::{
-    Cell, Color, CursorState, CursorStyle, FrameUpdate, Grid, Style,
-    DisplayCmd, InputEvent as ProtoInputEvent, KeyEvent, KeyCode,
-    compute_layout, paint,
+    compute_layout, paint, Cell, Color, CursorState, CursorStyle, DisplayCmd, FrameUpdate, Grid,
+    InputEvent as ProtoInputEvent, KeyCode, KeyEvent, Style,
 };
 use std::path::Path;
 
@@ -20,8 +19,10 @@ pub struct MoraCore {
 impl MoraCore {
     pub fn new(width: u16, height: u16) -> Self {
         let editor_height = height.saturating_sub(3) as usize;
+        let mut editor = MoraEditor::new(editor_height);
+        editor.init_scratch_buffer();
         Self {
-            editor: MoraEditor::new(editor_height),
+            editor,
             width,
             height,
         }
@@ -111,10 +112,8 @@ impl MoraCore {
             ProtoInputEvent::FocusGained | ProtoInputEvent::FocusLost => {}
             ProtoInputEvent::Paste(text) => {
                 for ch in text.chars() {
-                    self.editor.handle_key(MoraKeyEvent::new(
-                        MoraKeyCode::Char(ch),
-                        Default::default(),
-                    ));
+                    self.editor
+                        .handle_key(MoraKeyEvent::new(MoraKeyCode::Char(ch), Default::default()));
                 }
             }
         }

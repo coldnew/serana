@@ -1,9 +1,9 @@
-use display_protocol::{UiNode, Color};
-use display_protocol_jsx::jsx;
 use super::editor::MoraEditor;
 use super::keymap::EditorMode;
-use super::syntax;
 use super::lisp_ext;
+use super::syntax;
+use display_protocol::{Color, UiNode};
+use display_protocol_jsx::jsx;
 
 /// Build a UiNode tree from the current editor state with an Emacs-like UI.
 ///
@@ -34,7 +34,9 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 }
 
 /// Emacs-style modeline: inverse video bar showing buffer name, modified flag,
-/// position, and percentage.
+/// major mode, position, and percentage.
+///
+/// Format: --:**  *scratch*  (Lisp Interaction Ln5 Col1)    100%   All
 fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     let buf = editor.buffer();
     let filename = buf.filename();
@@ -49,27 +51,36 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
         (line * 100) / total_lines
     };
 
-    let mode_str = match editor.mode() {
-        EditorMode::Normal => "",
-        EditorMode::Insert => " Isearch",
+    // Buffer name: *scratch* for scratch buffer, or filename
+    let buf_name = if filename.is_empty() { "*scratch*" } else { filename };
+
+    // Major mode name
+    let major_mode = buf.major_mode.name();
+
+    // Editor submode indicator
+    let submode = match editor.mode() {
+        EditorMode::Normal => " Evil",
+        EditorMode::Insert => "",
         EditorMode::Emacs => "",
-        EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward => {
-            " Minibuf"
-        }
+        EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward => " Minibuf",
         EditorMode::ReplaceChar => " Replace",
         EditorMode::Visual => " Select",
         EditorMode::Iedit => " Iedit",
     };
 
-    let left = format!(" {}{} ", modified, filename);
-    let right = format!(" L{}:C{} ({}%){} ", line, col, pct, mode_str);
+    // Build emacs-style modeline:  --:**  buf_name  (major_mode Ln:Col)   Pct%
+    let left = format!(" {}  {} ", modified, buf_name);
+    let mode_info = format!("({}{} Ln{} C{})", major_mode, submode, line, col);
+    let right = format!(" {}% ", pct);
 
     let left_len = left.len();
+    let mode_len = mode_info.len();
     let right_len = right.len();
-    let fill = (width as usize).saturating_sub(left_len + right_len);
-    let dashes = "-".repeat(fill);
+    let total_used = left_len + mode_len + right_len;
+    let fill = (width as usize).saturating_sub(total_used);
+    let padding = " ".repeat(fill);
 
-    let modeline_str = format!("{}{}{}", left, dashes, right);
+    let modeline_str = format!("{}{}{}{}", left, mode_info, padding, right);
 
     let fg = Color::new(200, 200, 200);
     let bg = Color::new(40, 42, 54);
@@ -95,10 +106,28 @@ fn build_echo_area(editor: &MoraEditor, width: u16) -> UiNode {
 
 fn style_to_color(
     s: super::display::style::MoraStyle,
-) -> (Option<Color>, Option<Color>, bool, bool, bool, bool, bool, bool) {
+) -> (
+    Option<Color>,
+    Option<Color>,
+    bool,
+    bool,
+    bool,
+    bool,
+    bool,
+    bool,
+) {
     let fg = s.fg.map(|c| Color::new(c.r, c.g, c.b));
     let bg = s.bg.map(|c| Color::new(c.r, c.g, c.b));
-    (fg, bg, s.bold, s.italic, s.underline, s.strikethrough, s.dim, s.reverse)
+    (
+        fg,
+        bg,
+        s.bold,
+        s.italic,
+        s.underline,
+        s.strikethrough,
+        s.dim,
+        s.reverse,
+    )
 }
 
 fn syntax_style_for_col(
@@ -142,13 +171,12 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let (sel_start, sel_end) = if in_visual {
         if let Some(mark) = editor.mark_ring.peek() {
             let cursor = buf.cursor;
-            let (a, b) = if mark.row < cursor.row
-                || (mark.row == cursor.row && mark.col <= cursor.col)
-            {
-                (*mark, cursor)
-            } else {
-                (cursor, *mark)
-            };
+            let (a, b) =
+                if mark.row < cursor.row || (mark.row == cursor.row && mark.col <= cursor.col) {
+                    (*mark, cursor)
+                } else {
+                    (cursor, *mark)
+                };
             (Some(a), Some(b))
         } else {
             (None, None)
@@ -170,7 +198,11 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 
         let is_current = line_idx == buf.cursor.row;
 
-        let gutter_c = if is_current { gutter_current } else { gutter_dim };
+        let gutter_c = if is_current {
+            gutter_current
+        } else {
+            gutter_dim
+        };
         let line_num = if is_current {
             format!("{:>w$}", line_idx + 1, w = gutter_w as usize - 1)
         } else {
@@ -193,35 +225,33 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
         let mut span_bg: Option<Color> = None;
         let mut span_bold = false;
 
-        let flush_span =
-            |spans: &mut Vec<UiNode>,
-             text: &mut String,
-             fg: Option<Color>,
-             bg: Option<Color>,
-             bold: bool| {
-                if !text.is_empty() {
-                    let mut node = UiNode::text(std::mem::take(text));
-                    if let Some(c) = fg {
-                        node = node.color(c);
-                    }
-                    if let Some(c) = bg {
-                        node = node.bg(c);
-                    }
-                    if bold {
-                        node = node.bold();
-                    }
-                    spans.push(node);
+        let flush_span = |spans: &mut Vec<UiNode>,
+                          text: &mut String,
+                          fg: Option<Color>,
+                          bg: Option<Color>,
+                          bold: bool| {
+            if !text.is_empty() {
+                let mut node = UiNode::text(std::mem::take(text));
+                if let Some(c) = fg {
+                    node = node.color(c);
                 }
-            };
+                if let Some(c) = bg {
+                    node = node.bg(c);
+                }
+                if bold {
+                    node = node.bold();
+                }
+                spans.push(node);
+            }
+        };
 
         for ch in line_text.chars() {
             if display_col >= text_width {
                 break;
             }
 
-            let is_cursor = is_current
-                && byte_col == buf.cursor.col
-                && editor.mode() != EditorMode::Normal;
+            let is_cursor =
+                is_current && byte_col == buf.cursor.col && editor.mode() != EditorMode::Normal;
             let in_sel = sel_start.map_or(false, |start| {
                 sel_end.map_or(false, |end| {
                     line_idx > start.row && line_idx < end.row

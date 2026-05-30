@@ -38,6 +38,12 @@ pub struct MoraEditor {
     pub last_search_forward: Option<String>,
     pub last_search_backward: Option<String>,
     pub status_message: String,
+    /// Messages log (emacs *Messages* buffer)
+    pub messages: Vec<String>,
+    /// Maximum messages to keep
+    pub messages_max: usize,
+    /// Whether scratch buffer was initialized
+    pub scratch_initialized: bool,
     pub quit_requested: bool,
     pub pending_action: Option<KeyAction>,
     pub waiting_g: bool,
@@ -103,6 +109,9 @@ impl MoraEditor {
             last_search_forward: None,
             last_search_backward: None,
             status_message: String::new(),
+            messages: Vec::new(),
+            messages_max: 1000,
+            scratch_initialized: false,
             quit_requested: false,
             pending_action: None,
             waiting_g: false,
@@ -163,6 +172,38 @@ impl MoraEditor {
         editor.buffer = buffer;
         editor.status_message = format!("Opened: {}", path.display());
         Ok(editor)
+    }
+
+    /// Initialize the *scratch* buffer with emacs-style content
+    pub fn init_scratch_buffer(&mut self) {
+        if self.scratch_initialized {
+            return;
+        }
+        self.scratch_initialized = true;
+        self.buffer.lines = vec![
+            ";; This buffer is for text that is not saved.".to_string(),
+            ";; To create a file, visit it with C-x C-f".to_string(),
+            ";; and enter text in its buffer.".to_string(),
+            "".to_string(),
+            "".to_string(),
+        ];
+        self.buffer.cursor.row = 4;
+        self.buffer.cursor.col = 0;
+        self.buffer.modified = false;
+        self.message("Welcome to Mora. Type M-x for commands.");
+    }
+
+    /// Log a message to the *Messages* buffer (like emacs)
+    pub fn message(&mut self, msg: &str) {
+        self.messages.push(msg.to_string());
+        if self.messages.len() > self.messages_max {
+            self.messages.remove(0);
+        }
+    }
+
+    /// Log a warning to *Messages*
+    pub fn warn(&mut self, msg: &str) {
+        self.message(&format!("Warning: {}", msg));
     }
 
     pub fn mode(&self) -> EditorMode {
@@ -2961,11 +3002,22 @@ impl MoraEditor {
             "describe-mode" => {
                 let desc = match self.mode {
                     EditorMode::Emacs => "Emacs mode: C-x prefix, C-c prefix, M-x commands",
-                    EditorMode::Normal => "Normal mode: vi-style keybindings",
+                    EditorMode::Normal => "Evil mode: vi-style keybindings (evil-mode)",
                     _ => "Current mode",
                 };
                 self.status_message = desc.to_string();
                 self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
+                return;
+            }
+            "evil-mode" | "toggle-evil" => {
+                if self.mode == EditorMode::Normal {
+                    self.mode = EditorMode::Emacs;
+                    self.status_message = "Evil mode disabled. Emacs mode.".to_string();
+                } else {
+                    self.mode = EditorMode::Normal;
+                    self.status_message = "Evil mode enabled. Vi keybindings.".to_string();
+                }
                 self.clear_minibuffer();
                 return;
             }
@@ -3202,6 +3254,7 @@ impl MoraEditor {
             "copy-and-comment",
             "describe-mode",
             "disable-minor-mode",
+            "evil-mode",
             "dos2unix",
             "enable-minor-mode",
             "goto-last-change",
@@ -3875,6 +3928,66 @@ mod tests {
         assert!(editor.iedit_regex);
         // Should find x1, x2, x3, y1, y2 = 5 matches
         assert_eq!(editor.iedit_regions.len(), 5);
+    }
+
+
+    #[test]
+    fn scratch_buffer_initializes_correctly() {
+        let mut editor = MoraEditor::new(20);
+        editor.init_scratch_buffer();
+
+        assert!(editor.scratch_initialized);
+        assert_eq!(editor.buffer.lines.len(), 5);
+        assert_eq!(editor.buffer.lines[0], ";; This buffer is for text that is not saved.");
+        assert_eq!(editor.buffer.cursor.row, 4);
+        assert!(!editor.buffer.modified);
+    }
+
+    #[test]
+    fn scratch_buffer_init_is_idempotent() {
+        let mut editor = MoraEditor::new(20);
+        editor.init_scratch_buffer();
+        editor.buffer.lines[4] = "user typed".to_string();
+        editor.init_scratch_buffer(); // should not re-init
+
+        assert_eq!(editor.buffer.lines[4], "user typed");
+    }
+
+    #[test]
+    fn message_logging_works() {
+        let mut editor = MoraEditor::new(20);
+        editor.message("hello");
+        editor.message("world");
+
+        assert_eq!(editor.messages.len(), 2);
+        assert_eq!(editor.messages[0], "hello");
+        assert_eq!(editor.messages[1], "world");
+    }
+
+    #[test]
+    fn messages_truncate_at_max() {
+        let mut editor = MoraEditor::new(20);
+        editor.messages_max = 3;
+        editor.message("a");
+        editor.message("b");
+        editor.message("c");
+        editor.message("d");
+
+        assert_eq!(editor.messages.len(), 3);
+        assert_eq!(editor.messages[0], "b");
+        assert_eq!(editor.messages[2], "d");
+    }
+
+    #[test]
+    fn evil_mode_command_toggles_mode() {
+        let mut editor = MoraEditor::new(20);
+        assert_eq!(editor.mode, EditorMode::Emacs);
+
+        // Toggle to evil (Normal) mode
+        editor.command_input = "evil-mode".to_string();
+        editor.execute_command();
+        // After command, we should be back in a mode
+        assert!(editor.status_message.contains("Evil mode"));
     }
 
 }

@@ -17,7 +17,7 @@ pub enum EditorMode {
 impl EditorMode {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Normal => "NORMAL",
+            Self::Normal => "EVIL",
             Self::Insert => "INSERT",
             Self::Command => "COMMAND",
             Self::SearchForward => "SEARCH /",
@@ -240,8 +240,12 @@ pub fn normal_key(key: MoraKeyEvent) -> KeyAction {
 
 pub fn normal_key_post(key: MoraKeyEvent) -> Option<KeyAction> {
     match key.code {
-        MoraKeyCode::Char('a') | MoraKeyCode::Char('A') => Some(KeyAction::SetMode(EditorMode::Insert)),
-        MoraKeyCode::Char('i') | MoraKeyCode::Char('I') => Some(KeyAction::SetMode(EditorMode::Insert)),
+        MoraKeyCode::Char('a') | MoraKeyCode::Char('A') => {
+            Some(KeyAction::SetMode(EditorMode::Insert))
+        }
+        MoraKeyCode::Char('i') | MoraKeyCode::Char('I') => {
+            Some(KeyAction::SetMode(EditorMode::Insert))
+        }
         _ => None,
     }
 }
