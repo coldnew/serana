@@ -716,12 +716,22 @@ impl MoraEditor {
             // SPC m: major mode operations
             'm' => match key.code {
                 KeyCode::Char('d') => {
-                    // SPC m d: go to definition (shell out to ctags/gtags)
+                    // SPC m d: go to definition
                     self.run_go_to_definition();
                     KeyAction::None
                 }
                 KeyCode::Char('r') => {
-                    // SPC m r: rename symbol (iedit)
+                    // SPC m r: find references
+                    self.run_find_references();
+                    KeyAction::None
+                }
+                KeyCode::Char('h') => {
+                    // SPC m h: hover documentation
+                    self.run_hover_doc();
+                    KeyAction::None
+                }
+                KeyCode::Char('e') => {
+                    // SPC m e: rename symbol (iedit)
                     self.start_iedit();
                     KeyAction::None
                 }
@@ -730,12 +740,10 @@ impl MoraEditor {
             // SPC a: AI/LLM operations
             'a' => match key.code {
                 KeyCode::Char('a') => {
-                    // SPC a a: AI assistant
                     self.activate_minibuffer_with_prompt(EditorMode::Command, "Ask AI: ");
                     KeyAction::None
                 }
                 KeyCode::Char('c') => {
-                    // SPC a c: AI chat
                     self.status_message = "AI chat (serana-llm)".to_string();
                     KeyAction::None
                 }
@@ -3881,6 +3889,45 @@ impl MoraEditor {
             return;
         }
         self.status_message = format!("Go to definition: \"{word}\" — use SPC p g to grep");
+    }
+
+    fn run_find_references(&mut self) {
+        let word = self.buffer.current_word();
+        if word.is_empty() {
+            self.status_message = "Find references: no word under cursor".to_string();
+            return;
+        }
+        // Use ripgrep to find all occurrences
+        let output = std::process::Command::new("rg")
+            .args(["--line-number", "--no-heading", "--max-count", "50", "-w", &word])
+            .output();
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                if stdout.trim().is_empty() {
+                    self.status_message = format!("References: no references to \"{word}\"");
+                } else {
+                    let first = stdout.lines().next().unwrap_or("");
+                    self.status_message = format!("References: {first} ({} matches)", stdout.lines().count());
+                }
+            }
+            Err(e) => {
+                self.status_message = format!("References: {e}");
+            }
+        }
+    }
+
+    fn run_hover_doc(&mut self) {
+        let word = self.buffer.current_word();
+        if word.is_empty() {
+            self.status_message = "Hover: no word under cursor".to_string();
+            return;
+        }
+        // Show word info in status bar
+        let row = self.buffer.cursor.row + 1;
+        let col = self.buffer.cursor.col + 1;
+        let line = self.buffer.current_line();
+        self.status_message = format!("\"{word}\" at L{row}:C{col} — {}", line.trim());
     }
 
     fn run_ripgrep(&mut self, pattern: &str) {
