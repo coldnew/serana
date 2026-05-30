@@ -627,15 +627,19 @@ impl MoraEditor {
             },
             // SPC g: git operations
             'g' => match key.code {
-                KeyCode::Char('s') => KeyAction::GitStatus,
+                KeyCode::Char('s') => {
+                    // SPC g s: git status
+                    self.run_git_status();
+                    KeyAction::None
+                }
                 KeyCode::Char('l') => {
-                    // SPC g l: git log
-                    self.status_message = "Git log".to_string();
+                    // SPC g l: git log (last 20)
+                    self.run_git_log();
                     KeyAction::None
                 }
                 KeyCode::Char('d') => {
                     // SPC g d: git diff
-                    self.status_message = "Git diff".to_string();
+                    self.run_git_diff();
                     KeyAction::None
                 }
                 _ => KeyAction::None,
@@ -3708,6 +3712,51 @@ impl MoraEditor {
             self.activate_minibuffer(EditorMode::Command);
             self.set_minibuffer_input("w ");
         }
+    }
+
+    fn run_git_command(&self, args: &[&str]) -> String {
+        match std::process::Command::new("git").args(args).output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stderr.is_empty() && stdout.is_empty() {
+                    stderr.into_owned()
+                } else {
+                    stdout.into_owned()
+                }
+            }
+            Err(e) => format!("git: {e}"),
+        }
+    }
+
+    fn run_git_status(&mut self) {
+        let output = self.run_git_command(&["status", "--short"]);
+        self.status_message = if output.trim().is_empty() {
+            "Git: clean working tree".to_string()
+        } else {
+            // Show first line in status bar
+            let first_line = output.lines().next().unwrap_or("");
+            format!("Git: {first_line} ({} files)", output.lines().count())
+        };
+    }
+
+    fn run_git_log(&mut self) {
+        let output = self.run_git_command(&["log", "--oneline", "-20"]);
+        self.status_message = if output.trim().is_empty() {
+            "Git: no commits".to_string()
+        } else {
+            let first = output.lines().next().unwrap_or("");
+            format!("Git log: {first} ({} commits)", output.lines().count())
+        };
+    }
+
+    fn run_git_diff(&mut self) {
+        let output = self.run_git_command(&["diff", "--stat"]);
+        self.status_message = if output.trim().is_empty() {
+            "Git: no changes".to_string()
+        } else {
+            format!("Git diff: {}", output.lines().next().unwrap_or(""))
+        };
     }
 
     fn kill_line_to_ring(&mut self) {

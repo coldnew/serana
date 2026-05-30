@@ -134,6 +134,30 @@ impl MshellState {
             return;
         }
 
+        // Handle eshell-style aliases
+        match trimmed {
+            ".." => {
+                self.handle_cd("cd ..");
+                return;
+            }
+            "clear" | "cls" => {
+                self.output_lines.clear();
+                return;
+            }
+            "ll" => {
+                self.execute_local("ls -la");
+                return;
+            }
+            _ => {}
+        }
+
+        // Eshell alias: unpack <file>
+        if trimmed.starts_with("unpack ") {
+            let file = trimmed.trim_start_matches("unpack ").trim();
+            self.execute_local(&format!("tar xf '{}'", file.replace('\'', "'\\''")));
+            return;
+        }
+
         // Handle disconnect (TRAMP)
         if trimmed == "disconnect" && self.remote_path.is_some() {
             self.remote_path = None;
