@@ -91,6 +91,7 @@ pub struct MoraEditor {
     pub current_window_buffer_idx: usize,
     pub minor_modes: super::minor_mode::MinorModeRegistry,
     pub mshell: super::mshell::MshellState,
+    pub theme: super::theme::ThemeColors,
 }
 
 impl MoraEditor {
@@ -160,6 +161,7 @@ impl MoraEditor {
             current_window_buffer_idx: 0,
             minor_modes: super::minor_mode::MinorModeRegistry::new(),
             mshell: super::mshell::MshellState::new(),
+            theme: super::theme::night(),
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -3293,6 +3295,17 @@ impl MoraEditor {
                 self.clear_minibuffer();
                 return;
             }
+            "toggle-theme" => {
+                self.theme = if self.theme.background.r < 128 {
+                    super::theme::day()
+                } else {
+                    super::theme::night()
+                };
+                let mode = if self.theme.background.r < 128 { "Night" } else { "Day" };
+                self.status_message = format!("Theme: {mode} (coldnew-{mode})");
+                self.clear_minibuffer();
+                return;
+            }
             "view-messages" | "view-echo-area-messages" => {
                 let count = self.messages.len();
                 let start = if count > 20 { count - 20 } else { 0 };
@@ -3567,6 +3580,7 @@ impl MoraEditor {
             "mshell",
             "shell-command",
             "switch-mode",
+            "toggle-theme",
             "toggle-fold",
             "toggle-minor-mode",
             "transpose-char",

@@ -118,8 +118,8 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
 
     let modeline_str = format!("{}{}{}{}", left, mode_info, padding, right);
 
-    let fg = Color::new(200, 200, 200);
-    let bg = Color::new(40, 42, 54);
+    let fg = Color::new(editor.theme.modeline_fg.r, editor.theme.modeline_fg.g, editor.theme.modeline_fg.b);
+    let bg = Color::new(editor.theme.modeline_bg.r, editor.theme.modeline_bg.g, editor.theme.modeline_bg.b);
 
     jsx! {
         <Text color={fg} bg={bg} bold>{modeline_str}</Text>
@@ -129,9 +129,10 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
 /// Echo area: shows minibuffer prompt+input when active,
 /// or the status_message (like Emacs echo area).
 fn build_echo_area(editor: &MoraEditor, width: u16) -> UiNode {
-    let prompt_fg = Color::new(80, 160, 240);
-    let input_fg = Color::new(232, 236, 244);
-    let msg_fg = Color::new(180, 190, 200);
+    let t = &editor.theme;
+    let prompt_fg = Color::new(t.echo_prompt.r, t.echo_prompt.g, t.echo_prompt.b);
+    let input_fg = Color::new(t.echo_input.r, t.echo_input.g, t.echo_input.b);
+    let msg_fg = Color::new(t.echo_msg.r, t.echo_msg.g, t.echo_msg.b);
 
     if editor.minibuffer_active() {
         let prompt = editor.minibuffer_prompt();
@@ -206,14 +207,14 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let full_content: String = buf.lines.join("\n");
     let highlighter = syntax::create_highlighter(buf.major_mode.name(), &full_content);
 
-    let gutter_dim = Color::new(107, 114, 128);
-    let gutter_current = Color::new(0, 180, 255);
-    let text_fg = Color::new(232, 236, 244);
-    let current_line_fg = Color::new(0, 180, 255);
-    let cursor_fg = Color::new(15, 18, 22);
-    let cursor_bg = Color::new(0, 180, 255);
-    let sel_bg = Color::new(30, 80, 120);
-
+    let t = &editor.theme;
+    let gutter_dim = Color::new(t.gutter_dim.r, t.gutter_dim.g, t.gutter_dim.b);
+    let gutter_current = Color::new(t.gutter_current.r, t.gutter_current.g, t.gutter_current.b);
+    let text_fg = Color::new(t.foreground.r, t.foreground.g, t.foreground.b);
+    let current_line_fg = Color::new(t.cursor.r, t.cursor.g, t.cursor.b);
+    let cursor_fg = Color::new(t.background.r, t.background.g, t.background.b);
+    let cursor_bg = Color::new(t.cursor.r, t.cursor.g, t.cursor.b);
+    let sel_bg = Color::new(t.selection.r, t.selection.g, t.selection.b);
     let in_visual = editor.mode() == EditorMode::Visual && editor.mark_ring.is_active();
     let (sel_start, sel_end) = if in_visual {
         if let Some(mark) = editor.mark_ring.peek() {
@@ -358,7 +359,7 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 
         if is_current {
             while display_col < text_width {
-                spans.push(UiNode::text(" ").bg(Color::new(25, 28, 35)));
+                spans.push(UiNode::text(" ").bg(Color::new(t.current_line.r, t.current_line.g, t.current_line.b)));
                 display_col += 1;
             }
         }
@@ -380,10 +381,11 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 /// Build mshell output area — shows shell output history.
 fn build_mshell_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let output = &editor.mshell.output_lines;
-    let output_fg = Color::new(200, 200, 200);
-    let prompt_fg = Color::new(100, 200, 100);
-    let cursor_bg = Color::new(0, 180, 255);
-    let cursor_fg = Color::new(15, 18, 22);
+    let t = &editor.theme;
+    let output_fg = Color::new(t.foreground.r, t.foreground.g, t.foreground.b);
+    let prompt_fg = Color::new(t.echo_prompt.r, t.echo_prompt.g, t.echo_prompt.b);
+    let cursor_bg = Color::new(t.cursor.r, t.cursor.g, t.cursor.b);
+    let cursor_fg = Color::new(t.background.r, t.background.g, t.background.b);
 
     // Show the last `height` lines of output
     let start = if output.len() > height as usize {
@@ -420,11 +422,11 @@ fn build_mshell_echo(editor: &MoraEditor, width: u16) -> UiNode {
     let prompt = editor.mshell.prompt();
     let input = &editor.mshell.input;
     let cursor_pos = editor.mshell.cursor;
-
-    let prompt_fg = Color::new(100, 200, 100);
-    let input_fg = Color::new(232, 236, 244);
-    let cursor_bg = Color::new(0, 180, 255);
-    let cursor_fg = Color::new(15, 18, 22);
+    let t = &editor.theme;
+    let prompt_fg = Color::new(t.echo_prompt.r, t.echo_prompt.g, t.echo_prompt.b);
+    let input_fg = Color::new(t.echo_input.r, t.echo_input.g, t.echo_input.b);
+    let cursor_bg = Color::new(t.cursor.r, t.cursor.g, t.cursor.b);
+    let cursor_fg = Color::new(t.background.r, t.background.g, t.background.b);
 
     let before_cursor = &input[..cursor_pos.min(input.len())];
     let cursor_char = if cursor_pos < input.len() {
