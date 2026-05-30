@@ -3021,6 +3021,15 @@ impl MoraEditor {
                 self.clear_minibuffer();
                 return;
             }
+            "view-messages" | "view-echo-area-messages" => {
+                let count = self.messages.len();
+                let start = if count > 20 { count - 20 } else { 0 };
+                let recent: Vec<&str> = self.messages[start..].iter().map(|s| s.as_str()).collect();
+                self.status_message = format!("*Messages* ({} entries): {}", count, recent.join("; "));
+                self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
+                return;
+            }
             "what-cursor-position" => {
                 self.status_message = format!(
                     "Line {} Col {} ({} lines total)",
@@ -3255,6 +3264,8 @@ impl MoraEditor {
             "describe-mode",
             "disable-minor-mode",
             "evil-mode",
+            "view-messages",
+            "view-echo-area-messages",
             "dos2unix",
             "enable-minor-mode",
             "goto-last-change",
