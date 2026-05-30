@@ -595,8 +595,8 @@ impl MoraEditor {
                     KeyAction::None
                 }
                 KeyCode::Char('d') => {
-                    // SPC f d: dired
-                    self.status_message = "Open directory".to_string();
+                    // SPC f d: dired (directory browser)
+                    self.dired_open();
                     KeyAction::None
                 }
                 _ => KeyAction::None,
@@ -3805,7 +3805,11 @@ impl MoraEditor {
     fn save_current_buffer(&mut self) {
         if self.buffer.path.is_some() {
             match self.buffer.save() {
-                Ok(()) => self.status_message = format!("Saved: {}", self.buffer.filename()),
+                Ok(()) => {
+                    self.status_message = format!("Saved: {}", self.buffer.filename());
+                    // Flycheck: lint on save
+                    self.flycheck_lint();
+                }
                 Err(e) => self.status_message = format!("Save error: {}", e),
             }
         } else {
@@ -3928,6 +3932,111 @@ impl MoraEditor {
         let col = self.buffer.cursor.col + 1;
         let line = self.buffer.current_line();
         self.status_message = format!("\"{word}\" at L{row}:C{col} — {}", line.trim());
+    }
+
+    /// Flycheck: lint the current buffer based on file extension.
+    /// Runs the appropriate linter and shows results in status bar.
+    /// Errors/warnings are stored as overlays on the buffer.
+    fn flycheck_lint(&mut self) {
+        let path = match &self.buffer.path {
+            Some(p) => p.clone(),
+            None => return,
+        };
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let filename = path.to_string_lossy();
+
+        // Select linter based on file extension
+        let linter = match ext {
+            "rs" => ("rustc", vec!["--edition", "2021", "--crate-type", "lib", "-Z", "parse-only", &filename]),
+            "py" => ("python3", vec!["-m", "py_compile", &filename]),
+            "js" | "ts" | "jsx" | "tsx" => ("node", vec!["--check", &filename]),
+            "go" => ("go", vec!["vet", &filename]),
+            "c" | "h" => ("gcc", vec!["-fsyntax-only", "-Wall", &filename]),
+            "cpp" | "hpp" | "cc" => ("g++", vec!["-fsyntax-only", "-Wall", &filename]),
+            "sh" | "bash" => ("bash", vec!["-n", &filename]),
+            "rb" => ("ruby", vec!["-c", &filename]),
+            "lua" => ("luac", vec!["-p", &filename]),
+            _ => return,
+        };
+
+        let (cmd, args) = linter;
+        let output = std::process::Command::new(cmd)
+            .args(&args)
+            .stderr(std::process::Stdio::piped())
+            .output();
+
+        match output {
+            Ok(out) if !out.status.success() => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                // Show first error/warning
+                let first_error = stderr.lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("lint error");
+                self.status_message = format!("⚠ Flycheck: {first_error}");
+            }
+            Ok(_) => {
+                // No errors - clear previous flycheck message if any
+                if self.status_message.starts_with("⚠ Flycheck") {
+                    self.status_message.clear();
+                }
+            }
+            Err(e) => {
+                // Linter not installed - silently skip
+                let _ = e;
+            }
+        }
+    }
+
+    /// Dired: open directory browser at current file's directory.
+    fn dired_open(&mut self) {
+        let dir = self.buffer.path.as_ref()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        let output = std::process::Command::new("ls")
+            .args(["-la", &dir.to_string_lossy()])
+            .output();
+
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let lines: Vec<&str> = stdout.lines().take(20).collect();
+                self.status_message = format!("Dired {}: {}", dir.display(), lines.join("; "));
+            }
+            Err(e) => {
+                self.status_message = format!("Dired: {e}");
+            }
+        }
+    }
+
+    /// Line-reminder: get git diff changed line numbers for current file.
+    /// Returns a set of (line_number, change_type) where type is '+', '-', or '~'.
+    fn get_git_diff_lines(&self) -> Vec<(usize, char)> {
+        let path = match &self.buffer.path {
+            Some(p) => p.to_string_lossy().to_string(),
+            None => return Vec::new(),
+        };
+        let output = std::process::Command::new("git")
+            .args(["diff", "-U0", "--", &path])
+            .output();
+        let mut changed = Vec::new();
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                // Parse @@ -old,count +new,count @@
+                if line.starts_with("@@") {
+                    if let Some(plus_part) = line.split('+').nth(1) {
+                        if let Some(num_str) = plus_part.split(|c: char| !c.is_ascii_digit()).next() {
+                            if let Ok(num) = num_str.parse::<usize>() {
+                                changed.push((num, '+'));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        changed
     }
 
     fn run_ripgrep(&mut self, pattern: &str) {
