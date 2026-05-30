@@ -951,3 +951,90 @@ fn describe_function_returns_doc() {
         }
         take_editor_state();
     }
+
+    // --- Dabbrev ---
+
+    #[test]
+    fn dabbrev_expand_finds_match() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello_world hello_there hello_test\")").unwrap();
+        bridge.eval("(cursor-set! 0 5)").unwrap();
+        match bridge.eval("(dabbrev-expand)").unwrap() {
+            Value::String(s) => { assert!(!s.is_empty()); }
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    // --- Symbol Overlay ---
+
+    #[test]
+    fn symbol_overlay_highlight() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"foo bar foo baz foo\")").unwrap();
+        bridge.eval("(cursor-set! 0 3)").unwrap();
+        match bridge.eval("(symbol-overlay-highlight)").unwrap() {
+            Value::Vector(v) => assert!(v.len() >= 3, "should find 3 foos"),
+            _ => panic!("expected vector"),
+        }
+        bridge.eval("(symbol-overlay-remove)").unwrap();
+        take_editor_state();
+    }
+    // --- Dabbrev (integration) ---
+
+    #[test]
+    fn dabbrev_expand_cyclic() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"alpha\nalphabeta\nalphabetagamma\nalpha\")").unwrap();
+        bridge.eval("(cursor-set! 0 3)").unwrap();
+        // First expand should find a match
+        let r1 = bridge.eval("(dabbrev-expand)").unwrap();
+        match &r1 {
+            Value::String(s) => assert!(!s.is_empty()),
+            _ => panic!("expected string"),
+        }
+        // Second expand should cycle
+        let r2 = bridge.eval("(dabbrev-expand)").unwrap();
+        match &r2 {
+            Value::String(s) => assert!(!s.is_empty()),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    // --- Comment ---
+
+    #[test]
+    fn comment_and_uncomment() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello\nworld\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        bridge.eval("(set-mark)").unwrap();
+        bridge.eval("(cursor-set! 1 5)").unwrap();
+        bridge.eval("(comment-region)").unwrap();
+        match bridge.eval("(buffer-content)").unwrap() {
+            Value::String(s) => assert!(s.contains("; ")),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    // --- Org Combined ---
+
+    #[test]
+    fn org_heading_and_todo() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"* TODO Fix\n** DONE Test\n*** Normal\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(1));
+        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("TODO"));
+        bridge.eval("(cursor-set! 1 0)").unwrap();
+        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(2));
+        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("DONE"));
+        take_editor_state();
+    }

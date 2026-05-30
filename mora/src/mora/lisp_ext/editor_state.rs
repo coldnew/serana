@@ -51,6 +51,10 @@ pub struct EditorState {
     pub focus_mode: bool,
     /// Leader key prefix (default "SPC")
     pub leader_key_prefix: String,
+    /// dabbrev-expand state
+    pub dabbrev_prefix: String,
+    pub dabbrev_matches: Vec<String>,
+    pub dabbrev_index: usize,
 }
 
 impl EditorState {
@@ -89,6 +93,9 @@ impl EditorState {
             }),
             focus_mode: false,
             leader_key_prefix: "SPC".to_string(),
+            dabbrev_prefix: String::new(),
+            dabbrev_matches: Vec::new(),
+            dabbrev_index: 0,
         }
     }
 }

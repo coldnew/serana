@@ -26,6 +26,7 @@ pub mod var;
 pub mod visual;
 pub mod smartparens;
 pub mod leader;
+pub mod util;
 pub mod window;
 // Re-exports for backward compatibility
 pub use core::MoraLispBridge;
