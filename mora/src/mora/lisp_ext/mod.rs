@@ -36,4 +36,4 @@ pub use editor_state::{
 };
 
 #[cfg(test)]
-mod tests;
+mod tests;pub mod hydra;
