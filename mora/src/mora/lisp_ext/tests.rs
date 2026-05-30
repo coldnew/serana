@@ -677,3 +677,125 @@ fn describe_function_returns_doc() {
     assert_eq!(result, Value::Nil);
     take_editor_state();
 }
+    // --- Editing Features ---
+    #[test]
+    fn expand_region_works() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello world\")").unwrap();
+        bridge.eval("(cursor-set! 0 3)").unwrap(); // cursor in "hello"
+        // Expand to word
+        bridge.eval("(expand-region)").unwrap();
+        assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
+        // Expand to line
+        bridge.eval("(expand-region)").unwrap();
+        // Contract back
+        bridge.eval("(contract-region)").unwrap();
+        assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
+        take_editor_state();
+    }
+    #[test]
+    fn hungry_delete_removes_whitespace() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello   world\")").unwrap();
+        bridge.eval("(cursor-set! 0 5)").unwrap(); // cursor after "hello", in spaces
+        bridge.eval("(hungry-delete-forward)").unwrap();
+        assert_eq!(
+            bridge.eval("(buffer-content)").unwrap(),
+            Value::string("helloworld")
+        );
+        take_editor_state();
+    }
+    #[test]
+    fn cleanup_buffer_removes_trailing_whitespace() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello   \nworld\t\n\")").unwrap();
+        bridge.eval("(cleanup-buffer)").unwrap();
+        let content = bridge.eval("(buffer-content)").unwrap();
+        match content {
+            Value::String(s) => {
+                // Trailing whitespace should be removed
+                assert!(!s.contains("hello   "), "trailing spaces removed");
+            }
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn insert_empty_line_adds_line() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"line1\nline2\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        bridge.eval("(insert-empty-line)").unwrap();
+        let count = bridge.eval("(buffer-line-count)").unwrap();
+        assert_eq!(count, Value::Int(3));
+        take_editor_state();
+    }
+    // --- History Features ---
+    #[test]
+    fn recentf_operations() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        assert_eq!(
+            bridge.eval("(recentf-list)").unwrap(),
+            Value::vector(vec![])
+        );
+        bridge.eval("(recentf-add \"/home/user/file1.txt\")").unwrap();
+        bridge.eval("(recentf-add \"/home/user/file2.rs\")").unwrap();
+        let list = bridge.eval("(recentf-list)").unwrap();
+        match list {
+            Value::Vector(v) => assert_eq!(v.len(), 2),
+            _ => panic!("expected vector"),
+        }
+        bridge.eval("(recentf-clear)").unwrap();
+        assert_eq!(
+            bridge.eval("(recentf-list)").unwrap(),
+            Value::vector(vec![])
+        );
+        take_editor_state();
+    }
+    // --- Visual Features ---
+    #[test]
+    fn which_key_for_prefix() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        // Define some keybindings under a prefix
+        bridge.eval("(define-key \"C-x C-f\" \"find-file\")").unwrap();
+        bridge.eval("(define-key \"C-x C-s\" \"save-buffer\")").unwrap();
+        bridge.eval("(define-key \"C-x b\" \"switch-to-buffer\")").unwrap();
+        // Query bindings under C-x
+        let result = bridge.eval("(which-key-for-prefix \"C-x\")").unwrap();
+        match result {
+            Value::Vector(v) => {
+                assert!(v.len() >= 3, "should have at least 3 C-x bindings");
+            }
+            _ => panic!("expected vector"),
+        }
+        take_editor_state();
+    }
+    #[test]
+    fn query_replace_pattern() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        bridge.eval("(buffer-set-content \"hello world hello\")").unwrap();
+        bridge.eval("(query-replace-pattern \"hello\" \"hi\")").unwrap();
+        assert_eq!(
+            bridge.eval("(buffer-content)").unwrap(),
+            Value::string("hi world hi")
+        );
+        take_editor_state();
+    }
+    #[test]
+    fn focus_mode_toggle() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+        assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
+        bridge.eval("(focus-mode-toggle)").unwrap();
+        assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(true));
+        bridge.eval("(focus-mode-toggle)").unwrap();
+        assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
+        take_editor_state();
+    }

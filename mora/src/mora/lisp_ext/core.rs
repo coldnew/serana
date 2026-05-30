@@ -42,7 +42,10 @@ impl MoraLispBridge {
         let minibuffer_ns = eval.ns.find_or_create("mora.minibuffer");
         let region_ns = eval.ns.find_or_create("mora.region");
         let undo_ns = eval.ns.find_or_create("mora.undo");
+        let editing_ns = eval.ns.find_or_create("mora.editing");
         let tramp_ns = eval.ns.find_or_create("mora.tramp");
+        let history_ns = eval.ns.find_or_create("mora.history");
+        let visual_ns = eval.ns.find_or_create("mora.visual");
 
         // Editor operations + constants (these stay in core since they're simple)
         let mut ns = editor_ns.lock();
@@ -81,7 +84,10 @@ impl MoraLispBridge {
         super::minibuffer::register(&mut minibuffer_ns.lock());
         super::region::register(&mut region_ns.lock());
         super::undo::register(&mut undo_ns.lock());
+        super::editing::register(&mut editing_ns.lock());
         super::tramp::register(&mut tramp_ns.lock());
+        super::history::register(&mut history_ns.lock());
+        super::visual::register(&mut visual_ns.lock());
         // Note: search primitives are registered by buffer::register()
 
         // Also register keymap operations (define-key goes in hook namespace)
@@ -91,8 +97,10 @@ impl MoraLispBridge {
             "mora.buffer", "mora.cursor", "mora.mode", "mora.editor",
             "mora.window", "mora.hook", "mora.keymap", "mora.overlay",
             "mora.shell", "mora.ui", "mora.command", "mora.kill-ring",
+            "mora.editing",
             "mora.mark", "mora.register", "mora.var", "mora.minibuffer",
-            "mora.region", "mora.undo", "mora.tramp",
+            "mora.region", "mora.undo", "mora.tramp", "mora.history",
+            "mora.visual",
         ] {
             eval.ns
                 .refer_all(ns_name, "user")

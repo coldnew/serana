@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::collections::HashMap;
 
 use crate::lisp::types::Value;
@@ -42,8 +43,12 @@ pub struct EditorState {
     pub narrow_end: Option<usize>,
     /// Undo enabled flag
     pub undo_enabled: bool,
-    /// Undo tree for branching history
+    /// Expand-region level tracking
+    pub expand_region_level: usize,
+    /// Last edit positions for goto-last-change
+    pub last_changes: VecDeque<(usize, usize)>,
     pub undo_tree: UndoTree,
+    pub focus_mode: bool,
 }
 
 impl EditorState {
@@ -73,11 +78,14 @@ impl EditorState {
             narrow_start: None,
             narrow_end: None,
             undo_enabled: true,
+            expand_region_level: 0,
+            last_changes: VecDeque::new(),
             undo_tree: UndoTree::new(Snapshot {
                 lines: vec![String::new()],
                 cursor_row: 0,
                 cursor_col: 0,
             }),
+            focus_mode: false,
         }
     }
 }
