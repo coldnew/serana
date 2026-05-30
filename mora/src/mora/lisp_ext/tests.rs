@@ -799,3 +799,155 @@ fn describe_function_returns_doc() {
         assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
         take_editor_state();
     }
+    // --- Smartparens ---
+
+    #[test]
+    fn smartparens_wrap_region() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"hello world\")").unwrap();
+        bridge.eval("(cursor-set! 0 5)").unwrap();
+        bridge.eval("(set-mark)").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        bridge.eval("(smartparens-wrap \"(\" \")\")").unwrap();
+        let content = bridge.eval("(buffer-content)").unwrap();
+        match content {
+            Value::String(s) => assert_eq!(*s, "(hello) world"),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    #[test]
+    fn smartparens_insert_pair() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"hello\")").unwrap();
+        bridge.eval("(cursor-set! 0 5)").unwrap();
+        bridge.eval("(smartparens-insert-pair \"[\" \"]\")").unwrap();
+        let content = bridge.eval("(buffer-content)").unwrap();
+        match content {
+            Value::String(s) => assert_eq!(*s, "hello[]"),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    #[test]
+    fn smartparens_unwrap() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"(hello)\")").unwrap();
+        bridge.eval("(cursor-set! 0 3)").unwrap();
+        bridge.eval("(smartparens-unwrap)").unwrap();
+        let content = bridge.eval("(buffer-content)").unwrap();
+        match content {
+            Value::String(s) => assert_eq!(*s, "hello"),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    // --- Leader Key ---
+
+    #[test]
+    fn leader_set_key_and_bindings() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(leader-set-key \"f\" \"find-file\")").unwrap();
+        bridge.eval("(leader-set-key \"s\" \"save-buffer\")").unwrap();
+        let bindings = bridge.eval("(leader-bindings)").unwrap();
+        match bindings {
+            Value::Vector(v) => assert!(v.len() >= 2),
+            _ => panic!("expected vector"),
+        }
+        take_editor_state();
+    }
+
+    // --- Grep ---
+
+    #[test]
+    fn grep_finds_pattern() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        let result = bridge.eval(r#"(grep "Cargo.toml" "/data/Workspace/serana-new")"#).unwrap();
+        match result {
+            Value::String(s) => assert!(s.contains("Cargo.toml")),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }
+
+    // --- Org ---
+
+    #[test]
+    fn org_heading_level() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"* Heading 1\n** Heading 2\n*** Heading 3\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(1));
+        bridge.eval("(cursor-set! 1 0)").unwrap();
+        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(2));
+        bridge.eval("(cursor-set! 2 0)").unwrap();
+        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(3));
+        take_editor_state();
+    }
+
+    #[test]
+    fn org_todo_state() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"* TODO Fix bug\n* DONE Write tests\")").unwrap();
+        bridge.eval("(cursor-set! 0 0)").unwrap();
+        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("TODO"));
+        bridge.eval("(cursor-set! 1 0)").unwrap();
+        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("DONE"));
+        take_editor_state();
+    }
+
+    #[test]
+    fn org_agenda_lists_todos() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"* TODO A\n* DONE B\n* TODO C\")").unwrap();
+        let agenda = bridge.eval("(org-agenda-list)").unwrap();
+        match agenda {
+            Value::Vector(v) => assert_eq!(v.len(), 3),
+            _ => panic!("expected vector"),
+        }
+        take_editor_state();
+    }
+
+    // --- Session ---
+
+    #[test]
+    fn session_save_and_load() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge.eval("(buffer-set-content \"test content\")").unwrap();
+        bridge.eval("(cursor-set! 0 4)").unwrap();
+
+        let path = "/tmp/mora_test_session.mora";
+        bridge.eval(&format!("(session-save \"{}\")", path)).unwrap();
+
+        set_editor_state(EditorState::new());
+        let mut bridge2 = MoraLispBridge::new();
+        bridge2.eval(&format!("(session-load \"{}\")", path)).unwrap();
+
+        let content = bridge2.eval("(buffer-content)").unwrap();
+        match content {
+            Value::String(s) => assert_eq!(*s, "test content"),
+            _ => panic!("expected string"),
+        }
+        take_editor_state();
+    }

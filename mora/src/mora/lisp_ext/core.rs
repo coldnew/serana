@@ -46,6 +46,12 @@ impl MoraLispBridge {
         let tramp_ns = eval.ns.find_or_create("mora.tramp");
         let history_ns = eval.ns.find_or_create("mora.history");
         let visual_ns = eval.ns.find_or_create("mora.visual");
+        let grep_ns = eval.ns.find_or_create("mora.grep");
+        let org_ns = eval.ns.find_or_create("mora.org");
+        let smartparens_ns = eval.ns.find_or_create("mora.smartparens");
+        let leader_ns = eval.ns.find_or_create("mora.leader");
+        let project_ns = eval.ns.find_or_create("mora.project");
+        let session_ns = eval.ns.find_or_create("mora.session");
 
         // Editor operations + constants (these stay in core since they're simple)
         let mut ns = editor_ns.lock();
@@ -88,6 +94,12 @@ impl MoraLispBridge {
         super::tramp::register(&mut tramp_ns.lock());
         super::history::register(&mut history_ns.lock());
         super::visual::register(&mut visual_ns.lock());
+        super::grep::register(&mut grep_ns.lock());
+        super::org::register(&mut org_ns.lock());
+        super::project::register(&mut project_ns.lock());
+        super::session::register(&mut session_ns.lock());
+        super::smartparens::register(&mut smartparens_ns.lock());
+        super::leader::register(&mut leader_ns.lock());
         // Note: search primitives are registered by buffer::register()
 
         // Also register keymap operations (define-key goes in hook namespace)
@@ -100,6 +112,9 @@ impl MoraLispBridge {
             "mora.editing",
             "mora.mark", "mora.register", "mora.var", "mora.minibuffer",
             "mora.region", "mora.undo", "mora.tramp", "mora.history",
+            "mora.grep", "mora.org",
+            "mora.project", "mora.session",
+            "mora.smartparens", "mora.leader",
             "mora.visual",
         ] {
             eval.ns

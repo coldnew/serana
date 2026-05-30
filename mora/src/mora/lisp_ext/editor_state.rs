@@ -49,6 +49,8 @@ pub struct EditorState {
     pub last_changes: VecDeque<(usize, usize)>,
     pub undo_tree: UndoTree,
     pub focus_mode: bool,
+    /// Leader key prefix (default "SPC")
+    pub leader_key_prefix: String,
 }
 
 impl EditorState {
@@ -86,6 +88,7 @@ impl EditorState {
                 cursor_col: 0,
             }),
             focus_mode: false,
+            leader_key_prefix: "SPC".to_string(),
         }
     }
 }
