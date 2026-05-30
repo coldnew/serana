@@ -19,9 +19,9 @@ struct Cli {
     /// File to open in the editor (default mode)
     file: Option<String>,
 
-    /// Use GPU-accelerated GUI backend (wgpu)
+    /// Force terminal UI (TUI) instead of GUI
     #[arg(long)]
-    gui: bool,
+    tui: bool,
 
     /// Run as headless server (accept TCP connections)
     #[arg(long)]
@@ -118,7 +118,7 @@ fn main() -> anyhow::Result<()> {
             if cli.server {
                 run_server(cli.file, cli.port)
             } else {
-                run_editor(cli.file, cli.gui)
+                run_editor(cli.file, cli.tui)
             }
         }
 
@@ -134,8 +134,15 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn run_editor(file: Option<String>, gui: bool) -> anyhow::Result<()> {
-    if gui {
+fn run_editor(file: Option<String>, force_tui: bool) -> anyhow::Result<()> {
+    let use_gui = if force_tui {
+        false
+    } else {
+        // Auto-detect: GUI if a display server is available (like Emacs).
+        // Check for X11 (DISPLAY) or Wayland (WAYLAND_DISPLAY).
+        std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok()
+    };
+    if use_gui {
         run_editor_wgpu(file)
     } else {
         run_editor_tui(file)
