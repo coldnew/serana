@@ -167,6 +167,20 @@ pub enum KeyAction {
     OtherWindow,
     SwitchMajorMode(String),
     ToggleMinorMode(String),
+    LeaderPrefix,
+    SaveBuffer,
+    FindFile,
+    SwitchBuffer,
+    Grep,
+    GitStatus,
+    ProjectFindFile,
+    WindowUp,
+    WindowDown,
+    WindowLeft,
+    WindowRight,
+    WindowSplitHorizontal,
+    WindowSplitVertical,
+    EvalLispExpression,
 }
 
 impl KeyAction {
@@ -196,6 +210,9 @@ pub fn normal_key(key: MoraKeyEvent) -> KeyAction {
         (_, MoraKeyCode::Char('V')) => KeyAction::ToggleVisual,
         (MoraKeyModifiers::CTRL, MoraKeyCode::Char('e')) => KeyAction::SwitchToEmacs,
 
+        // SPC as leader key prefix (coldnew-emacs style)
+        // Returns None to let the prefix system handle it
+        (_, MoraKeyCode::Char(' ')) => KeyAction::None,
         (_, MoraKeyCode::Char('h')) | (_, MoraKeyCode::Left) => KeyAction::MoveLeft,
         (_, MoraKeyCode::Char('j')) | (_, MoraKeyCode::Down) => KeyAction::MoveDown,
         (_, MoraKeyCode::Char('k')) | (_, MoraKeyCode::Up) => KeyAction::MoveUp,

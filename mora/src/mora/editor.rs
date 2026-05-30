@@ -471,6 +471,77 @@ impl MoraEditor {
                 }
                 _ => KeyAction::None,
             },
+            ' ' => match key.code {
+                // SPC f: file operations
+                KeyCode::Char('f') => {
+                    self.waiting_prefix2 = Some('f');
+                    self.status_message = "SPC f-".to_string();
+                    KeyAction::None
+                }
+                // SPC b: buffer operations
+                KeyCode::Char('b') => {
+                    self.waiting_prefix2 = Some('b');
+                    self.status_message = "SPC b-".to_string();
+                    KeyAction::None
+                }
+                // SPC w: window operations
+                KeyCode::Char('w') => {
+                    self.waiting_prefix2 = Some('w');
+                    self.status_message = "SPC w-".to_string();
+                    KeyAction::None
+                }
+                // SPC g: git operations
+                KeyCode::Char('g') => {
+                    self.waiting_prefix2 = Some('g');
+                    self.status_message = "SPC g-".to_string();
+                    KeyAction::None
+                }
+                // SPC p: project operations
+                KeyCode::Char('p') => {
+                    self.waiting_prefix2 = Some('p');
+                    self.status_message = "SPC p-".to_string();
+                    KeyAction::None
+                }
+                // SPC s: search operations
+                KeyCode::Char('s') => {
+                    self.waiting_prefix2 = Some('s');
+                    self.status_message = "SPC s-".to_string();
+                    KeyAction::None
+                }
+                // SPC e: eval operations
+                KeyCode::Char('e') => {
+                    self.waiting_prefix2 = Some('e');
+                    self.status_message = "SPC e-".to_string();
+                    KeyAction::None
+                }
+                // SPC a: AI/LLM operations
+                KeyCode::Char('a') => {
+                    self.waiting_prefix2 = Some('a');
+                    self.status_message = "SPC a-".to_string();
+                    KeyAction::None
+                }
+                // SPC m: major mode operations
+                KeyCode::Char('m') => {
+                    self.waiting_prefix2 = Some('m');
+                    self.status_message = "SPC m-".to_string();
+                    KeyAction::None
+                }
+                // SPC 1-9: window selection (coldnew-emacs: SPC 1-9)
+                KeyCode::Char(c) if c.is_ascii_digit() => {
+                    let n = (c as u8 - b'0') as usize;
+                    // Switch to window N
+                    if n > 0 && n <= self.windows.len() {
+                        self.current_window_idx = (n - 1).min(self.windows.len() - 1);
+                    }
+                    self.status_message.clear();
+                    KeyAction::None
+                }
+                // SPC /: search in project (consult-line equivalent)
+                KeyCode::Char('/') => KeyAction::FindForward(String::new()),
+                // SPC SPC: M-x (execute-extended-command)
+                KeyCode::Esc => KeyAction::None,
+                _ => KeyAction::None,
+            },
             _ => KeyAction::None,
         }
     }
@@ -482,6 +553,97 @@ impl MoraEditor {
                 KeyCode::Char('n') => KeyAction::NarrowRegion,
                 // C-x n w: widen
                 KeyCode::Char('w') => KeyAction::Widen,
+                _ => KeyAction::None,
+            },
+            // SPC f: file operations
+            'f' => match key.code {
+                KeyCode::Char('f') => KeyAction::FindFile,
+                KeyCode::Char('s') => KeyAction::SaveBuffer,
+                KeyCode::Char('r') => {
+                    // SPC f r: recent files
+                    self.status_message = "Recent files".to_string();
+                    KeyAction::None
+                }
+                KeyCode::Char('d') => {
+                    // SPC f d: dired
+                    self.status_message = "Open directory".to_string();
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            // SPC b: buffer operations
+            'b' => match key.code {
+                KeyCode::Char('b') => KeyAction::SwitchBuffer,
+                KeyCode::Char('d') => KeyAction::DeleteLine, // kill buffer
+                KeyCode::Char('k') => KeyAction::DeleteLine, // kill buffer
+                KeyCode::Char('n') => KeyAction::MoveDown, // next buffer
+                KeyCode::Char('p') => KeyAction::MoveUp, // previous buffer
+                KeyCode::Char('r') => KeyAction::SetMode(EditorMode::Command), // revert
+                KeyCode::Char('s') => KeyAction::SaveBuffer, // save buffer
+                _ => KeyAction::None,
+            },
+            // SPC w: window operations
+            'w' => match key.code {
+                KeyCode::Char('h') => KeyAction::WindowLeft,
+                KeyCode::Char('j') => KeyAction::WindowDown,
+                KeyCode::Char('k') => KeyAction::WindowUp,
+                KeyCode::Char('l') => KeyAction::WindowRight,
+                KeyCode::Char('v') => KeyAction::WindowSplitVertical,
+                KeyCode::Char('s') => KeyAction::WindowSplitHorizontal,
+                KeyCode::Char('d') => KeyAction::DeleteWindow,
+                KeyCode::Char('o') => KeyAction::DeleteOtherWindows,
+                KeyCode::Char('+') => KeyAction::BalanceWindows,
+                _ => KeyAction::None,
+            },
+            // SPC g: git operations
+            'g' => match key.code {
+                KeyCode::Char('s') => KeyAction::GitStatus,
+                KeyCode::Char('l') => {
+                    // SPC g l: git log
+                    self.status_message = "Git log".to_string();
+                    KeyAction::None
+                }
+                KeyCode::Char('d') => {
+                    // SPC g d: git diff
+                    self.status_message = "Git diff".to_string();
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            // SPC p: project operations
+            'p' => match key.code {
+                KeyCode::Char('f') => KeyAction::ProjectFindFile,
+                KeyCode::Char('g') => KeyAction::Grep,
+                KeyCode::Char('p') => KeyAction::ProjectFindFile,
+                _ => KeyAction::None,
+            },
+            // SPC s: search operations
+            's' => match key.code {
+                KeyCode::Char('/') => KeyAction::FindForward(String::new()),
+                KeyCode::Char('e') => KeyAction::SetMode(EditorMode::SearchForward), // search in project
+                _ => KeyAction::None,
+            },
+            // SPC e: eval operations
+            'e' => match key.code {
+                KeyCode::Char('d') => KeyAction::EvalLispExpression,
+                KeyCode::Char('b') => KeyAction::EvalLispExpression, // eval buffer
+                _ => KeyAction::None,
+            },
+            // SPC a: AI/LLM operations
+            'a' => match key.code {
+                KeyCode::Char('a') => {
+                    self.status_message = "AI assistant".to_string();
+                    KeyAction::None
+                }
+                _ => KeyAction::None,
+            },
+            // SPC m: major mode operations
+            'm' => match key.code {
+                KeyCode::Char('d') => {
+                    // SPC m d: go to definition
+                    self.status_message = "Go to definition".to_string();
+                    KeyAction::None
+                }
                 _ => KeyAction::None,
             },
             _ => KeyAction::None,
@@ -812,6 +974,13 @@ impl MoraEditor {
                 _ => {}
             }
             return action;
+        }
+
+        // SPC as leader key prefix (coldnew-emacs style)
+        if key.modifiers.is_empty() && key.code == KeyCode::Char(' ') {
+            self.status_message = "SPC-".to_string();
+            self.waiting_prefix = Some(' ');
+            return KeyAction::None;
         }
 
         let action = keymap::normal_key(key);
@@ -2873,6 +3042,56 @@ impl MoraEditor {
             }
             KeyAction::BalanceWindows => {
                 self.balance_windows();
+            }
+            KeyAction::SaveBuffer => {
+                self.save_current_buffer();
+                self.status_message.clear();
+            }
+            KeyAction::FindFile => {
+                self.activate_minibuffer_with_prompt(EditorMode::Command, "Find file: ");
+                self.status_message = "Find file".to_string();
+            }
+            KeyAction::SwitchBuffer => {
+                self.activate_minibuffer_with_prompt(EditorMode::Command, "Switch buffer: ");
+                self.status_message = "Switch buffer".to_string();
+            }
+            KeyAction::Grep => {
+                self.activate_minibuffer_with_prompt(EditorMode::SearchForward, "Grep: ");
+                self.status_message = "Grep (ripgrep)".to_string();
+            }
+            KeyAction::GitStatus => {
+                self.status_message = "Git status — not yet implemented".to_string();
+            }
+            KeyAction::ProjectFindFile => {
+                self.activate_minibuffer_with_prompt(EditorMode::Command, "Project file: ");
+                self.status_message = "Project find file".to_string();
+            }
+            KeyAction::WindowUp => {
+                // Move to window above (like C-w k in vim)
+                self.other_window(); // simplified
+            }
+            KeyAction::WindowDown => {
+                self.other_window(); // simplified
+            }
+            KeyAction::WindowLeft => {
+                self.other_window(); // simplified
+            }
+            KeyAction::WindowRight => {
+                self.other_window(); // simplified
+            }
+            KeyAction::WindowSplitHorizontal => {
+                self.split_window_horizontal();
+            }
+            KeyAction::WindowSplitVertical => {
+                self.split_window_vertical();
+            }
+            KeyAction::EvalLispExpression => {
+                self.activate_minibuffer_with_prompt(EditorMode::Command, "Eval: ");
+                self.status_message = "Eval expression".to_string();
+            }
+            KeyAction::LeaderPrefix => {
+                // SPC was pressed, waiting_prefix already set
+                self.status_message = "SPC-".to_string();
             }
         }
     }
