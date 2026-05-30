@@ -10,7 +10,7 @@ use display_protocol_jsx::jsx;
 /// Layout (top to bottom):
 ///   - Editor area (buffer content with line numbers)
 ///   - Modeline (inverse, shows filename, modified, position, percentage)
-///   - Echo area / minibuffer (when active)
+///   - Echo area / minibuffer (always shown, shows status_message when inactive)
 ///
 /// If Lisp UI builders are registered, they augment/replace the default UI.
 pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
@@ -19,28 +19,37 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     }
 
     let modeline_height = 1u16;
-    let cmd_height: u16 = if editor.minibuffer_active() { 1 } else { 0 };
-    let editor_height = height.saturating_sub(modeline_height + cmd_height);
+    let echo_height = 1u16;
+    let editor_height = height.saturating_sub(modeline_height + echo_height);
 
-    let mut children = Vec::with_capacity(3);
-    children.push(build_editor_area(editor, width, editor_height));
-    children.push(build_modeline(editor, width));
+    let editor_area = build_editor_area(editor, width, editor_height);
+    let modeline = build_modeline(editor, width);
+    let echo = build_echo_area(editor, width);
 
-    if cmd_height > 0 {
-        children.push(build_echo_area(editor, width));
+    jsx! {
+        <Column>
+            {editor_area}
+            {modeline}
+            {echo}
+        </Column>
     }
-
-    UiNode::column(children)
 }
 
-/// Emacs-style modeline: inverse video bar showing buffer name, modified flag,
-/// major mode, position, and percentage.
+/// Emacs-style modeline matching the real Emacs mode-line format.
 ///
-/// Format: --:**  *scratch*  (Lisp Interaction Ln5 Col1)    100%   All
+/// Format: --:**-  *scratch*  (Lisp Interaction)  --L1--C1----  All
+///
+/// Components:
+///   - Modified flag: `**` (modified) or `--` (unmodified)
+///   - Dash separator
+///   - Buffer name (with `*...*` for special buffers)
+///   - Major mode (with submode if active)
+///   - Position with dashes: `--L<line>--C<col>----`
+///   - Percentage or `Top`/`Bot`/`All`
 fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     let buf = editor.buffer();
     let filename = buf.filename();
-    let modified = if buf.modified { "**" } else { "--" };
+    let modified_flag = if buf.modified { "**" } else { "--" };
 
     let line = buf.cursor.row + 1;
     let col = buf.cursor.col + 1;
@@ -57,7 +66,7 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     // Major mode name
     let major_mode = buf.major_mode.name();
 
-    // Editor submode indicator
+    // Editor submode indicator (shown next to major mode)
     let submode = match editor.mode() {
         EditorMode::Normal => " Evil",
         EditorMode::Insert => "",
@@ -68,10 +77,22 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
         EditorMode::Iedit => " Iedit",
     };
 
-    // Build emacs-style modeline:  --:**  buf_name  (major_mode Ln:Col)   Pct%
-    let left = format!(" {}  {} ", modified, buf_name);
-    let mode_info = format!("({}{} Ln{} C{})", major_mode, submode, line, col);
-    let right = format!(" {}% ", pct);
+    // Emacs-style position indicator: --L<line>--C<col>----
+    let pos_indicator = format!("--L{}--C{}----", line, col);
+
+    // Position percentage: All / Top / Bot / XX%
+    let pos_pct = if total_lines <= 1 || pct >= 100 {
+        "All".to_string()
+    } else if pct == 0 {
+        "Top".to_string()
+    } else {
+        format!("{}%", pct)
+    };
+
+    // Build emacs-style modeline:  --:**-  buf_name  (MajorMode Submode)  --L1--C1----  All
+    let left = format!("{}-  {}  ", modified_flag, buf_name);
+    let mode_info = format!("({}{})", major_mode, submode);
+    let right = format!(" {}  {}", pos_indicator, pos_pct);
 
     let left_len = left.len();
     let mode_len = mode_info.len();
@@ -90,18 +111,30 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     }
 }
 
-/// Echo area / minibuffer line
+/// Echo area: shows minibuffer prompt+input when active,
+/// or the status_message (like Emacs echo area).
 fn build_echo_area(editor: &MoraEditor, width: u16) -> UiNode {
-    let prompt = editor.minibuffer_prompt();
-    let input = editor.command_input();
-
     let prompt_fg = Color::new(80, 160, 240);
     let input_fg = Color::new(232, 236, 244);
+    let msg_fg = Color::new(180, 190, 200);
 
-    let mut row = Vec::with_capacity(2);
-    row.push(UiNode::text(prompt).color(prompt_fg).bold());
-    row.push(UiNode::text(input.to_string()).color(input_fg));
-    UiNode::row(row).width(width)
+    if editor.minibuffer_active() {
+        let prompt = editor.minibuffer_prompt();
+        let input = editor.command_input();
+        jsx! {
+            <Row width={width}>
+                <Text color={prompt_fg} bold>{prompt}</Text>
+                <Text color={input_fg}>{input.to_string()}</Text>
+            </Row>
+        }
+    } else {
+        let msg = editor.status_message();
+        if msg.is_empty() {
+            jsx! { <Row width={width}><Text>""</Text></Row> }
+        } else {
+            jsx! { <Row width={width}><Text color={msg_fg}>{msg.to_string()}</Text></Row> }
+        }
+    }
 }
 
 fn style_to_color(
@@ -321,7 +354,7 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     }
 
     for _ in display_row..height {
-        rows.push(UiNode::row(vec![UiNode::text("~").color(tilde_color)]));
+        rows.push(jsx! { <Row><Text color={tilde_color}>"~"</Text></Row> });
     }
 
     UiNode::column(rows).width(width)

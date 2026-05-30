@@ -192,8 +192,14 @@ impl OverlayStore {
     pub fn is_range_read_only(&self, start: usize, end: usize) -> bool {
         self.overlays.iter().any(|o| o.read_only && o.overlaps(start, end))
     }
-}
+    pub fn clear_by_category(&mut self, category: &str) {
+        self.overlays.retain(|o| o.category.as_deref() != Some(category));
+    }
 
+    pub fn all(&self) -> &[Overlay] {
+        &self.overlays
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

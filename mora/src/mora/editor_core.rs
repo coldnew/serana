@@ -4,7 +4,7 @@ use crate::mora::editor::MoraEditor;
 use crate::mora::ui_node;
 use display_protocol::{
     compute_layout, paint, Cell, Color, CursorState, CursorStyle, DisplayCmd, FrameUpdate, Grid,
-    InputEvent as ProtoInputEvent, KeyCode, KeyEvent, Style,
+    InputEvent as ProtoInputEvent, KeyCode, KeyEvent, Style, UiNode,
 };
 use std::path::Path;
 
@@ -45,6 +45,9 @@ impl MoraCore {
         let editor_height = height.saturating_sub(3) as usize;
         self.editor.set_height(editor_height);
     }
+
+    pub fn width(&self) -> u16 { self.width }
+    pub fn height(&self) -> u16 { self.height }
 
     /// Render editor state using the declarative UiNode pipeline.
     /// Builds a UiNode tree → layout → paint → Grid.
@@ -140,6 +143,12 @@ impl MoraCore {
 
     pub fn quit_requested(&self) -> bool {
         self.editor.quit_requested()
+    }
+
+    /// Build a UiNode tree directly for GPU rendering.
+    /// This bypasses the FrameUpdate→Grid conversion used by the TUI path.
+    pub fn build_ui_node(&self, width: u16, height: u16) -> UiNode {
+        ui_node::build_ui(&self.editor, width, height)
     }
 }
 

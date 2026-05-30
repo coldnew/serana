@@ -1,3 +1,4 @@
+pub mod font;
 mod buffer;
 pub mod display;
 mod editor;

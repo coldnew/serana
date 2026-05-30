@@ -1,10 +1,9 @@
 use clap::{Parser, Subcommand};
 use mora_bin::mora::editor_core::MoraCore;
-use mora_bin::mora::display::backend::{DisplayBackend, InputEvent};
-use mora_bin::mora::display::wgpu_backend::WgpuBackend;
-use mora_bin::mora::display::style::MoraStyle;
+use mora_bin::mora::font::DEFAULT_FONT;
 use mora_bin::lisp;
 use display_protocol::{FrameUpdate, WireMessage, PROTOCOL_VERSION, DisplayCmd};
+use display_wgpu::{WgpuWindow, WgpuConfig};
 use display_tui::TuiTerminal;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -199,71 +198,48 @@ fn run_editor_tui(file: Option<String>) -> anyhow::Result<()> {
 }
 
 fn run_editor_wgpu(file: Option<String>) -> anyhow::Result<()> {
-    use mora_bin::mora::display::backend::CellBuffer;
+    let config = WgpuConfig {
+        title: "mora".into(),
+        width: 1024,
+        height: 768,
+    };
 
-    let mut backend = WgpuBackend::new();
-    backend.init().map_err(|e| anyhow::anyhow!(e))?;
-
-    let (w, h) = backend.size();
+    // Create core with a default grid size; the callback will resize based on RenderCtx.
     let mut core = match file {
-        Some(ref path) => MoraCore::open(Path::new(path), w, h)
+        Some(ref path) => MoraCore::open(Path::new(path), 80, 24)
             .map_err(|e| anyhow::anyhow!(e))?,
-        None => MoraCore::new(w, h),
+        None => MoraCore::new(80, 24),
     };
 
     init_lisp_state(&core);
     core.editor.lisp_bridge.load_init_file();
 
-    let result = (|| -> anyhow::Result<()> {
-        loop {
-            let frame = core.render_ui_frame();
+    WgpuWindow::new(config, DEFAULT_FONT).run(move |events, ctx| {
+        // Resize core if grid dimensions changed.
+        let (cols, rows) = (ctx.grid_cols, ctx.grid_rows);
+        if cols != core.width() || rows != core.height() {
+            core.resize(cols, rows);
+        }
 
-            // Convert FrameUpdate grid to CellBuffer for wgpu backend
-            let mut cell_buf = CellBuffer::new(frame.grid.width, frame.grid.height);
-            for y in 0..frame.grid.height {
-                for x in 0..frame.grid.width {
-                    let cell = frame.grid.get(x, y);
-                    let style = MoraStyle {
-                        fg: cell.style.fg,
-                        bg: cell.style.bg,
-                        bold: cell.style.bold,
-                        italic: cell.style.italic,
-                        underline: cell.style.underline,
-                        strikethrough: cell.style.strikethrough,
-                        dim: cell.style.dim,
-                        reverse: cell.style.reverse,
-                        blink: cell.style.blink,
-                        underline_color: None,
-                    };
-                    cell_buf.set_cell(x, y, cell.ch, style);
+        // Process input events.
+        for ev in events {
+            let cmds = core.handle_input(ev.clone());
+            for cmd in &cmds {
+                if matches!(cmd, DisplayCmd::Quit) {
+                    std::process::exit(0);
                 }
-            }
-
-            backend.render_buffer(&cell_buf).map_err(|e| anyhow::anyhow!(e))?;
-
-            match backend.poll_event(50) {
-                Some(InputEvent::Key(key)) => {
-                    if core.handle_mora_input(InputEvent::Key(key)) {
-                        break;
-                    }
-                }
-                Some(event) => {
-                    if core.handle_mora_input(event) {
-                        break;
-                    }
-                }
-                _ => {}
-            }
-
-            if core.quit_requested() {
-                break;
             }
         }
-        Ok(())
-    })();
 
-    backend.cleanup().map_err(|e| anyhow::anyhow!(e))?;
-    result
+        if core.quit_requested() {
+            std::process::exit(0);
+        }
+
+        // Build UiNode tree directly — no FrameUpdate/Grid round-trip.
+        core.build_ui_node(cols, rows)
+    }).map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    Ok(())
 }
 
 fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
