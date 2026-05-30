@@ -536,9 +536,26 @@ impl MoraEditor {
                     self.status_message.clear();
                     KeyAction::None
                 }
-                // SPC /: search in project (consult-line equivalent)
-                KeyCode::Char('/') => KeyAction::FindForward(String::new()),
-                // SPC SPC: M-x (execute-extended-command)
+                // SPC v: expand region (coldnew-emacs: M-v)
+                KeyCode::Char('v') => KeyAction::ExpandRegion,
+                // SPC j: ace-jump (coldnew-emacs: C-c SPC)
+                KeyCode::Char('j') => {
+                    self.waiting_ace_jump = true;
+                    self.status_message = "Ace jump char: ".to_string();
+                    KeyAction::None
+                }
+                // SPC x: M-x commands
+                KeyCode::Char('x') => {
+                    self.activate_minibuffer_with_prompt(EditorMode::Command, "M-x ");
+                    KeyAction::None
+                }
+                // SPC o: other-window (coldnew-emacs: M-o)
+                KeyCode::Char('o') => KeyAction::OtherWindow,
+                // SPC /: search (consult-line equivalent)
+                KeyCode::Char('/') => {
+                    self.activate_minibuffer_with_prompt(EditorMode::SearchForward, "/ ");
+                    KeyAction::None
+                }
                 KeyCode::Esc => KeyAction::None,
                 _ => KeyAction::None,
             },
@@ -593,6 +610,17 @@ impl MoraEditor {
                 KeyCode::Char('d') => KeyAction::DeleteWindow,
                 KeyCode::Char('o') => KeyAction::DeleteOtherWindows,
                 KeyCode::Char('+') => KeyAction::BalanceWindows,
+                KeyCode::Char('u') => KeyAction::Undo,
+                KeyCode::Char('U') => KeyAction::Redo,
+                _ => KeyAction::None,
+            },
+            // SPC q: quit operations
+            'q' => match key.code {
+                KeyCode::Char('q') => KeyAction::Quit,
+                KeyCode::Char('s') => {
+                    self.save_current_buffer();
+                    KeyAction::Quit
+                }
                 _ => KeyAction::None,
             },
             // SPC g: git operations
@@ -617,16 +645,30 @@ impl MoraEditor {
                 KeyCode::Char('p') => KeyAction::ProjectFindFile,
                 _ => KeyAction::None,
             },
-            // SPC s: search operations
+            // SPC s: search/edit operations
             's' => match key.code {
-                KeyCode::Char('/') => KeyAction::FindForward(String::new()),
-                KeyCode::Char('e') => KeyAction::SetMode(EditorMode::SearchForward), // search in project
+                KeyCode::Char('/') => {
+                    self.activate_minibuffer_with_prompt(EditorMode::SearchForward, "/ ");
+                    KeyAction::None
+                }
+                KeyCode::Char('e') => {
+                    // SPC s e: iedit (multi-cursor edit all occurrences)
+                    self.start_iedit();
+                    KeyAction::None
+                }
+                KeyCode::Char('i') => {
+                    // SPC s i: iedit-regex
+                    self.start_iedit_regex();
+                    KeyAction::None
+                }
                 _ => KeyAction::None,
             },
-            // SPC e: eval operations
+            // SPC e: eval/editor operations
             'e' => match key.code {
                 KeyCode::Char('d') => KeyAction::EvalLispExpression,
-                KeyCode::Char('b') => KeyAction::EvalLispExpression, // eval buffer
+                KeyCode::Char('b') => KeyAction::EvalLispExpression,
+                KeyCode::Char(';') => KeyAction::CopyAndComment,
+                KeyCode::Char('=') => KeyAction::GotoLastChange,
                 _ => KeyAction::None,
             },
             // SPC a: AI/LLM operations
