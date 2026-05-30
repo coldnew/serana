@@ -1272,24 +1272,30 @@ impl MoraEditor {
     }
 
     fn iedit_delete_forward(&mut self) {
+        // Delete the last character of each region (end-1)
         for i in (0..self.iedit_regions.len()).rev() {
-            let (row, _start, end) = self.iedit_regions[i];
-            if row < self.buffer.lines.len() {
-                let line_chars: Vec<char> = self.buffer.lines[row].chars().collect();
-                if end < line_chars.len() {
-                    let byte_pos: usize = line_chars.iter().take(end).map(|ch| ch.len_utf8()).sum();
-                    let char_byte_len = line_chars[end].len_utf8();
-                    drop(line_chars);
-                    self.buffer.lines[row].drain(byte_pos..byte_pos + char_byte_len);
-                    self.buffer.modified = true;
-                    for j in 0..self.iedit_regions.len() {
-                        if self.iedit_regions[j].0 == row {
-                            if self.iedit_regions[j].2 > end {
-                                self.iedit_regions[j].2 -= 1;
-                            }
-                            if self.iedit_regions[j].1 > end {
-                                self.iedit_regions[j].1 -= 1;
-                            }
+            let (row, start, end) = self.iedit_regions[i];
+            if start < end && row < self.buffer.lines.len() {
+                let delete_pos = end - 1;
+                let byte_pos: usize = self.buffer.lines[row]
+                    .chars()
+                    .take(delete_pos)
+                    .map(|ch| ch.len_utf8())
+                    .sum();
+                let char_byte_len = self.buffer.lines[row]
+                    .chars()
+                    .nth(delete_pos)
+                    .map(|ch| ch.len_utf8())
+                    .unwrap_or(0);
+                self.buffer.lines[row].drain(byte_pos..byte_pos + char_byte_len);
+                self.buffer.modified = true;
+                for j in 0..self.iedit_regions.len() {
+                    if self.iedit_regions[j].0 == row {
+                        if self.iedit_regions[j].2 > delete_pos {
+                            self.iedit_regions[j].2 -= 1;
+                        }
+                        if self.iedit_regions[j].1 > delete_pos {
+                            self.iedit_regions[j].1 -= 1;
                         }
                     }
                 }
@@ -3793,6 +3799,30 @@ mod tests {
         assert!(editor.status_message.contains("expected"));
     }
 
+
+    #[test]
+    fn iedit_delete_forward_removes_correct_char() {
+        let mut editor = MoraEditor::new(20);
+        // Use "foo foo" so start_iedit finds 2 occurrences
+        editor.buffer.lines = vec![
+            "foo foo".to_string(),
+        ];
+        editor.buffer.cursor.row = 0;
+        editor.buffer.cursor.col = 0;
+        editor.start_iedit();
+
+        // Should find 2 occurrences of "foo"
+        assert_eq!(editor.mode, EditorMode::Iedit);
+        let regions_before = editor.iedit_regions.len();
+        assert!(regions_before >= 2, "expected at least 2 regions, got {}", regions_before);
+
+        // Delete forward in all regions
+        editor.iedit_delete_forward();
+        // Each "foo" should now be "fo" (deleted the last char)
+        assert!(editor.buffer.lines[0].contains("fo"), "expected 'fo' in line");
+        // The line should NOT contain the original "foo"
+        assert!(!editor.buffer.lines[0].contains("foo"), "should not contain 'foo' after delete");
+    }
     #[test]
     fn iedit_pushes_undo_snapshot() {
         let mut editor = MoraEditor::new(20);
