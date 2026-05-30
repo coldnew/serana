@@ -181,6 +181,8 @@ pub enum KeyAction {
     WindowSplitHorizontal,
     WindowSplitVertical,
     EvalLispExpression,
+    EvilExchange,
+    GitCommit,
 }
 
 impl KeyAction {

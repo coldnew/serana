@@ -642,6 +642,11 @@ impl MoraEditor {
                     self.run_git_diff();
                     KeyAction::None
                 }
+                KeyCode::Char('c') => {
+                    // SPC g c: git commit
+                    self.run_git_commit();
+                    KeyAction::None
+                }
                 _ => KeyAction::None,
             },
             // SPC p: project operations
@@ -792,10 +797,10 @@ impl MoraEditor {
 
         if self.waiting_g {
             self.waiting_g = false;
-            return if key.code == KeyCode::Char('g') {
-                KeyAction::MoveFileStart
-            } else {
-                KeyAction::None
+            return match key.code {
+                KeyCode::Char('g') => KeyAction::MoveFileStart,
+                KeyCode::Char('x') => KeyAction::EvilExchange,
+                _ => KeyAction::None,
             };
         }
 
@@ -3108,7 +3113,31 @@ impl MoraEditor {
                 self.status_message = "Grep (ripgrep)".to_string();
             }
             KeyAction::GitStatus => {
-                self.status_message = "Git status — not yet implemented".to_string();
+                self.run_git_status();
+            }
+            KeyAction::GitCommit => {
+                self.run_git_commit();
+            }
+            KeyAction::EvilExchange => {
+                // gx: exchange (swap) the character under cursor with next
+                let row = self.buffer.cursor.row;
+                let col = self.buffer.cursor.col;
+                if let Some(line) = self.buffer.lines.get_mut(row) {
+                    let chars: Vec<char> = line.chars().collect();
+                    if col + 1 < chars.len() {
+                        let mut new_line = String::new();
+                        for i in 0..chars.len() {
+                            if i == col {
+                                new_line.push(chars[i + 1]);
+                            } else if i == col + 1 {
+                                new_line.push(chars[i - 1]);
+                            } else {
+                                new_line.push(chars[i]);
+                            }
+                        }
+                        *line = new_line;
+                    }
+                }
             }
             KeyAction::ProjectFindFile => {
                 self.activate_minibuffer_with_prompt(EditorMode::Command, "Project file: ");
@@ -3147,6 +3176,27 @@ impl MoraEditor {
     fn execute_command(&mut self) {
         let input = self.command_input().to_string();
         let trimmed = input.trim();
+
+
+        // Handle git commit message input
+        if self.minibuffer.is_active() && self.minibuffer.prompt().contains("Git commit") {
+            if !trimmed.is_empty() {
+                self.run_git_commit_with_message(trimmed);
+            }
+            self.mode = EditorMode::Emacs;
+            self.clear_minibuffer();
+            return;
+        }
+
+        // Handle grep input (ripgrep)
+        if self.minibuffer.is_active() && self.minibuffer.prompt().contains("Grep") {
+            if !trimmed.is_empty() {
+                self.run_ripgrep(trimmed);
+            }
+            self.mode = EditorMode::Emacs;
+            self.clear_minibuffer();
+            return;
+        }
 
         // Handle iedit-regex input: user pressed Enter after typing regex pattern
         if self.waiting_iedit_regex {
@@ -3740,6 +3790,26 @@ impl MoraEditor {
         };
     }
 
+    fn run_ripgrep(&mut self, pattern: &str) {
+        let output = std::process::Command::new("rg")
+            .args(["--line-number", "--no-heading", "--max-count", "50", pattern])
+            .output();
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                if stdout.trim().is_empty() {
+                    self.status_message = format!("Grep: no matches for \"{pattern}\"");
+                } else {
+                    let first = stdout.lines().next().unwrap_or("");
+                    self.status_message = format!("Grep: {first} ({} matches)", stdout.lines().count());
+                }
+            }
+            Err(e) => {
+                self.status_message = format!("Grep: {e}");
+            }
+        }
+    }
+
     fn run_git_log(&mut self) {
         let output = self.run_git_command(&["log", "--oneline", "-20"]);
         self.status_message = if output.trim().is_empty() {
@@ -3757,6 +3827,28 @@ impl MoraEditor {
         } else {
             format!("Git diff: {}", output.lines().next().unwrap_or(""))
         };
+    }
+
+    fn run_git_commit(&mut self) {
+        // Stage all changes and commit with a message
+        let status = self.run_git_command(&["status", "--short"]);
+        if status.trim().is_empty() {
+            self.status_message = "Git: nothing to commit".to_string();
+            return;
+        }
+        self.activate_minibuffer_with_prompt(EditorMode::Command, "Git commit message: ");
+    }
+
+    fn run_git_commit_with_message(&mut self, msg: &str) {
+        // Stage all and commit
+        let add_output = self.run_git_command(&["add", "-A"]);
+        let commit_output = self.run_git_command(&["commit", "-m", msg]);
+        if commit_output.contains("nothing to commit") || commit_output.contains("no changes added") {
+            self.status_message = "Git: nothing to commit".to_string();
+        } else {
+            let first = commit_output.lines().find(|l| !l.is_empty()).unwrap_or("");
+            self.status_message = format!("Git: {first}");
+        }
     }
 
     fn kill_line_to_ring(&mut self) {
