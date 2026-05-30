@@ -19,17 +19,9 @@ struct Cli {
     /// File to open in the editor (default mode)
     file: Option<String>,
 
-    /// Force terminal UI (TUI) instead of GUI
+    /// Force terminal UI, like emacs -nw
     #[arg(long)]
-    tui: bool,
-
-    /// Run as headless server (accept TCP connections)
-    #[arg(long)]
-    server: bool,
-
-    /// TCP port for server mode
-    #[arg(long, default_value = "7890")]
-    port: u16,
+    nw: bool,
 }
 
 #[derive(Subcommand)]
@@ -115,11 +107,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         None => {
-            if cli.server {
-                run_server(cli.file, cli.port)
-            } else {
-                run_editor(cli.file, cli.tui)
-            }
+            run_editor(cli.file, cli.nw)
         }
 
         Some(Commands::Connect { addr }) => {
@@ -134,8 +122,8 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn run_editor(file: Option<String>, force_tui: bool) -> anyhow::Result<()> {
-    let use_gui = if force_tui {
+fn run_editor(file: Option<String>, force_nw: bool) -> anyhow::Result<()> {
+    let use_gui = if force_nw {
         false
     } else {
         // Auto-detect: GUI if a display server is available (like Emacs).
