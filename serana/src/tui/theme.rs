@@ -2,34 +2,34 @@
 //!
 //! Supports auto dark/light detection, colorblind mode, and live reload.
 
-use ratatui::style::{Color, Modifier, Style};
+use display_protocol::{Color, Style};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 // Default palette ported from ref/oh-my-pi's titanium theme.
-pub const CORAL: Color = Color::Rgb(0, 180, 255);
-pub const BRIGHT_CORAL: Color = Color::Rgb(255, 71, 87);
-pub const TEAL: Color = Color::Rgb(0, 130, 179);
-pub const AQUAMARINE: Color = Color::Rgb(0, 180, 255);
-pub const SEAFOAM_GREEN: Color = Color::Rgb(0, 255, 136);
-pub const MUTED_TEAL: Color = Color::Rgb(156, 163, 176);
-pub const DIM_TEAL: Color = Color::Rgb(107, 114, 128);
-pub const DEEP_BLUE: Color = Color::Rgb(15, 18, 22);
-pub const NAVY_BLUE: Color = Color::Rgb(31, 37, 45);
-pub const OCEAN_BLUE: Color = Color::Rgb(42, 48, 56);
-pub const MID_WATER: Color = Color::Rgb(21, 24, 32);
-pub const DARK_BORDER: Color = Color::Rgb(42, 48, 56);
-pub const ABYSS_BLACK: Color = Color::Rgb(15, 18, 22);
-pub const DEEP_WATER: Color = Color::Rgb(15, 18, 22);
-pub const USER_MSG_BG: Color = Color::Rgb(15, 18, 22);
-pub const TOOL_PENDING_BG: Color = Color::Rgb(15, 18, 22);
-pub const TOOL_SUCCESS_BG: Color = Color::Rgb(15, 18, 22);
-pub const TOOL_ERROR_BG: Color = Color::Rgb(26, 13, 15);
-pub const CODE_PURPLE: Color = Color::Rgb(0, 255, 136);
-pub const DIFF_GREEN: Color = Color::Rgb(0, 255, 136);
-pub const DIFF_RED: Color = Color::Rgb(255, 71, 87);
-pub const DIFF_YELLOW: Color = Color::Rgb(212, 192, 144);
+pub const CORAL: Color = Color::new(0, 180, 255);
+pub const BRIGHT_CORAL: Color = Color::new(255, 71, 87);
+pub const TEAL: Color = Color::new(0, 130, 179);
+pub const AQUAMARINE: Color = Color::new(0, 180, 255);
+pub const SEAFOAM_GREEN: Color = Color::new(0, 255, 136);
+pub const MUTED_TEAL: Color = Color::new(156, 163, 176);
+pub const DIM_TEAL: Color = Color::new(107, 114, 128);
+pub const DEEP_BLUE: Color = Color::new(15, 18, 22);
+pub const NAVY_BLUE: Color = Color::new(31, 37, 45);
+pub const OCEAN_BLUE: Color = Color::new(42, 48, 56);
+pub const MID_WATER: Color = Color::new(21, 24, 32);
+pub const DARK_BORDER: Color = Color::new(42, 48, 56);
+pub const ABYSS_BLACK: Color = Color::new(15, 18, 22);
+pub const DEEP_WATER: Color = Color::new(15, 18, 22);
+pub const USER_MSG_BG: Color = Color::new(15, 18, 22);
+pub const TOOL_PENDING_BG: Color = Color::new(15, 18, 22);
+pub const TOOL_SUCCESS_BG: Color = Color::new(15, 18, 22);
+pub const TOOL_ERROR_BG: Color = Color::new(26, 13, 15);
+pub const CODE_PURPLE: Color = Color::new(0, 255, 136);
+pub const DIFF_GREEN: Color = Color::new(0, 255, 136);
+pub const DIFF_RED: Color = Color::new(255, 71, 87);
+pub const DIFF_YELLOW: Color = Color::new(212, 192, 144);
 
 /// RGB color representation for JSON serialization.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -45,20 +45,17 @@ impl RgbColor {
     }
 
     pub fn to_color(self) -> Color {
-        Color::Rgb(self.r, self.g, self.b)
+        Color::new(self.r, self.g, self.b)
     }
 
     pub fn from_color(c: Color) -> Option<Self> {
-        match c {
-            Color::Rgb(r, g, b) => Some(Self { r, g, b }),
-            _ => None,
-        }
+        Some(Self { r: c.r, g: c.g, b: c.b })
     }
 }
 
 impl From<RgbColor> for Color {
     fn from(c: RgbColor) -> Self {
-        Color::Rgb(c.r, c.g, c.b)
+        Color::new(c.r, c.g, c.b)
     }
 }
 
@@ -346,16 +343,16 @@ impl Theme {
         Self {
             accent: Style::new()
                 .fg(config.accent.to_color())
-                .add_modifier(Modifier::BOLD),
+                .bold(),
             success: Style::new()
                 .fg(config.success.to_color())
-                .add_modifier(Modifier::BOLD),
+                .bold(),
             warning: Style::new()
                 .fg(config.warning.to_color())
-                .add_modifier(Modifier::BOLD),
+                .bold(),
             error: Style::new()
                 .fg(config.error.to_color())
-                .add_modifier(Modifier::BOLD),
+                .bold(),
             dim: Style::new().fg(config.text_dim.to_color()),
             muted: Style::new().fg(config.text_muted.to_color()),
             info: Style::new().fg(config.info.to_color()),
@@ -363,7 +360,7 @@ impl Theme {
             agent_fg: Style::new().fg(config.agent_fg.to_color()),
             thinking: Style::new()
                 .fg(config.thinking_fg.to_color())
-                .add_modifier(Modifier::ITALIC),
+                .italic(),
             border: Style::new().fg(config.border.to_color()),
         }
     }
@@ -510,7 +507,7 @@ mod tests {
         let config = ThemeConfig::default();
         let theme = Theme::from_config(&config);
         // Verify accent has BOLD modifier
-        assert!(theme.accent.add_modifier.contains(Modifier::BOLD));
+        assert!(theme.accent.bold);
     }
 
     #[test]
@@ -533,7 +530,7 @@ mod tests {
     fn test_rgb_color_conversions() {
         let c = RgbColor::new(100, 200, 50);
         let color: Color = c.into();
-        assert_eq!(color, Color::Rgb(100, 200, 50));
+        assert_eq!(color, Color::new(100, 200, 50));
         assert_eq!(RgbColor::from_color(color), Some(c));
     }
 
