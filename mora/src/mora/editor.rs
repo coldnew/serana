@@ -88,7 +88,7 @@ impl MoraEditor {
     pub fn new(height: usize) -> Self {
         let mut editor = Self {
             buffer: Buffer::new(),
-            mode: EditorMode::Normal,
+            mode: EditorMode::Emacs,
             view: View::new(height),
             command_input: String::new(),
             minibuffer: Minibuffer::default(),
@@ -305,6 +305,12 @@ impl MoraEditor {
         // Ace-jump: waiting for target char or hint key
         if self.waiting_ace_jump {
             return self.handle_ace_jump(key);
+        }
+
+        // Global M-x: works in every mode
+        if key.modifiers == KeyModifiers::ALT && key.code == KeyCode::Char('x') {
+            self.activate_minibuffer_with_prompt(EditorMode::Command, "M-x ");
+            return KeyAction::None;
         }
 
         // Minor mode intercept: higher priority modes get first chance
@@ -2824,7 +2830,27 @@ impl MoraEditor {
                 self.clear_minibuffer();
                 return;
             }
-            _ => {}
+            _ => {
+                // Unknown M-x command — try evaluating as lisp
+                self.push_lisp_state();
+                let lisp_code = format!("({})", trimmed);
+                let result = self.lisp_bridge.eval(&lisp_code);
+                self.pull_lisp_state();
+                match result {
+                    Ok(val) => {
+                        let s = format!("{}", val);
+                        if s != "nil" {
+                            self.status_message = s;
+                        }
+                    }
+                    Err(e) => {
+                        self.status_message = format!("{}: {}", trimmed, e);
+                    }
+                }
+                self.mode = EditorMode::Emacs;
+                self.clear_minibuffer();
+                return;
+            }
         }
 
         let action = match self.mode {
