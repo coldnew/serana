@@ -55,6 +55,7 @@ impl MoraLispBridge {
         let util_ns = eval.ns.find_or_create("mora.util");
         let hydra_ns = eval.ns.find_or_create("mora.hydra");
         let modeline_ns = eval.ns.find_or_create("mora.modeline");
+        let theme_ns = eval.ns.find_or_create("mora.theme");
 
         // Editor operations + constants (these stay in core since they're simple)
         let mut ns = editor_ns.lock();
@@ -106,6 +107,7 @@ impl MoraLispBridge {
         super::util::register(&mut util_ns.lock());
         super::hydra::register(&mut hydra_ns.lock());
         super::modeline::register(&mut modeline_ns.lock());
+        super::theme::register(&mut theme_ns.lock());
         // Note: search primitives are registered by buffer::register()
 
         // Also register keymap operations (define-key goes in hook namespace)
@@ -124,6 +126,7 @@ impl MoraLispBridge {
             "mora.visual", "mora.util",
             "mora.hydra",
             "mora.modeline",
+            "mora.theme",
         ] {
             eval.ns
                 .refer_all(ns_name, "user")

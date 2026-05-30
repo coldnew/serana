@@ -38,3 +38,4 @@ pub use editor_state::{
 #[cfg(test)]
 mod tests;pub mod hydra;
 pub mod modeline;
+pub mod theme;
