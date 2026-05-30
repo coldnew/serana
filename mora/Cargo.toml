@@ -25,6 +25,7 @@ display-protocol = { path = "../crates/display-protocol" }
 display-tui = { path = "../crates/display-tui" }
 display-protocol-jsx = { path = "../crates/display-protocol-jsx" }
 display-wgpu = { path = "../crates/display-wgpu" }
+mishell = { path = "../mishell" }
 tokio.workspace = true
 thiserror.workspace = true
 hostname = "0.4"

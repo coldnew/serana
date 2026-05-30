@@ -11,6 +11,7 @@ pub mod major_mode;
 mod mark;
 mod minibuffer;
 pub mod minor_mode;
+pub mod mshell;
 pub mod overlay;
 mod rectangle;
 mod register;

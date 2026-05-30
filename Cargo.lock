@@ -2194,6 +2194,7 @@ dependencies = [
  "display-wgpu",
  "glyphon",
  "hostname",
+ "mishell",
  "mishell-parser",
  "parking_lot",
  "pollster",

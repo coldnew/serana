@@ -90,6 +90,7 @@ pub struct MoraEditor {
     pub current_window_idx: usize,
     pub current_window_buffer_idx: usize,
     pub minor_modes: super::minor_mode::MinorModeRegistry,
+    pub mshell: super::mshell::MshellState,
 }
 
 impl MoraEditor {
@@ -158,6 +159,7 @@ impl MoraEditor {
             current_window_idx: 0,
             current_window_buffer_idx: 0,
             minor_modes: super::minor_mode::MinorModeRegistry::new(),
+            mshell: super::mshell::MshellState::new(),
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -307,6 +309,15 @@ impl MoraEditor {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
+
+        // Mshell: intercept all keys when shell is active
+        if self.mshell.is_active() {
+            if self.mshell.handle_key(&key) {
+                return true;
+            }
+            // If not consumed by mshell, fall through to normal handling
+        }
+
         self.macro_state.record_key(&key);
         if self.macro_state.is_playing() {
             return true;
@@ -3120,6 +3131,12 @@ impl MoraEditor {
                 self.clear_minibuffer();
                 return;
             }
+            "mshell" => {
+                self.mshell.start();
+                self.status_message = "Mshell started. Press Ctrl+G to exit.".to_string();
+                self.clear_minibuffer();
+                return;
+            }
             _ if trimmed.starts_with("shell-command ") => {
                 let cmd = trimmed["shell-command ".len()..].trim().to_string();
                 if cmd.is_empty() {
@@ -3286,6 +3303,7 @@ impl MoraEditor {
             "save-buffer",
             "save-some-buffers",
             "set-mode",
+            "mshell",
             "shell-command",
             "switch-mode",
             "toggle-fold",

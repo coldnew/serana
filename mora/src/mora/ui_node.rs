@@ -22,16 +22,30 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let echo_height = 1u16;
     let editor_height = height.saturating_sub(modeline_height + echo_height);
 
-    let editor_area = build_editor_area(editor, width, editor_height);
-    let modeline = build_modeline(editor, width);
-    let echo = build_echo_area(editor, width);
+    if editor.mshell.is_active() {
+        let shell_area = build_mshell_area(editor, width, editor_height);
+        let modeline = build_modeline(editor, width);
+        let echo = build_mshell_echo(editor, width);
 
-    jsx! {
-        <Column>
-            {editor_area}
-            {modeline}
-            {echo}
-        </Column>
+        jsx! {
+            <Column>
+                {shell_area}
+                {modeline}
+                {echo}
+            </Column>
+        }
+    } else {
+        let editor_area = build_editor_area(editor, width, editor_height);
+        let modeline = build_modeline(editor, width);
+        let echo = build_echo_area(editor, width);
+
+        jsx! {
+            <Column>
+                {editor_area}
+                {modeline}
+                {echo}
+            </Column>
+        }
     }
 }
 
@@ -360,4 +374,77 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     }
 
     UiNode::column(rows).width(width)
+}
+
+
+/// Build mshell output area — shows shell output history.
+fn build_mshell_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
+    let output = &editor.mshell.output_lines;
+    let output_fg = Color::new(200, 200, 200);
+    let prompt_fg = Color::new(100, 200, 100);
+    let cursor_bg = Color::new(0, 180, 255);
+    let cursor_fg = Color::new(15, 18, 22);
+
+    // Show the last `height` lines of output
+    let start = if output.len() > height as usize {
+        output.len() - height as usize
+    } else {
+        0
+    };
+
+    let mut rows = Vec::new();
+    for line in &output[start..] {
+        // Style prompt lines differently
+        let prompt = editor.mshell.prompt();
+        if line.starts_with(&prompt) {
+            let (p, rest) = line.split_at(prompt.len());
+            rows.push(UiNode::row(vec![
+                UiNode::text(p.to_string()).color(prompt_fg).bold(),
+                UiNode::text(rest.to_string()).color(output_fg),
+            ]));
+        } else {
+            rows.push(UiNode::row(vec![UiNode::text(line.clone()).color(output_fg)]));
+        }
+    }
+
+    // Fill remaining rows with blank lines
+    while rows.len() < height as usize {
+        rows.push(UiNode::row(vec![UiNode::text(" ")]));
+    }
+
+    UiNode::column(rows).width(width)
+}
+
+/// Build mshell echo area — shows shell prompt + input with cursor.
+fn build_mshell_echo(editor: &MoraEditor, width: u16) -> UiNode {
+    let prompt = editor.mshell.prompt();
+    let input = &editor.mshell.input;
+    let cursor_pos = editor.mshell.cursor;
+
+    let prompt_fg = Color::new(100, 200, 100);
+    let input_fg = Color::new(232, 236, 244);
+    let cursor_bg = Color::new(0, 180, 255);
+    let cursor_fg = Color::new(15, 18, 22);
+
+    let before_cursor = &input[..cursor_pos.min(input.len())];
+    let cursor_char = if cursor_pos < input.len() {
+        input[cursor_pos..].chars().next().unwrap_or(' ')
+    } else {
+        ' '
+    };
+    let after_cursor = if cursor_pos < input.len() {
+        let next_char_end = cursor_pos + cursor_char.len_utf8();
+        &input[next_char_end..]
+    } else {
+        ""
+    };
+
+    jsx! {
+        <Row width={width}>
+            <Text color={prompt_fg} bold>{prompt}</Text>
+            <Text color={input_fg}>{before_cursor.to_string()}</Text>
+            <Text color={cursor_fg} bg={cursor_bg}>{cursor_char.to_string()}</Text>
+            <Text color={input_fg}>{after_cursor.to_string()}</Text>
+        </Row>
+    }
 }
