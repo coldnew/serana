@@ -17,6 +17,7 @@ pub mod overlay;
 mod rectangle;
 mod register;
 pub mod syntax;
+pub mod snippet;
 pub mod theme;
 pub mod tramp;
 pub mod ui_node;

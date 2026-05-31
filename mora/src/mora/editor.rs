@@ -93,6 +93,8 @@ pub struct MoraEditor {
     pub mshell: super::mshell::MshellState,
     pub theme: super::theme::ThemeColors,
     pub lsp_client: super::lsp::LspClient,
+    pub snippet_engine: super::snippet::SnippetEngine,
+    pub active_snippet: Option<super::snippet::SnippetExpansion>,
 }
 
 impl MoraEditor {
@@ -164,6 +166,12 @@ impl MoraEditor {
             mshell: super::mshell::MshellState::new(),
             theme: super::theme::night(),
             lsp_client: super::lsp::LspClient::new(),
+            snippet_engine: {
+                let mut engine = super::snippet::SnippetEngine::new();
+                engine.load_defaults();
+                engine
+            },
+            active_snippet: None,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -2026,6 +2034,12 @@ impl MoraEditor {
             }
 
             KeyAction::InsertChar(c) => {
+                // Tab: check for snippet expansion
+                if c == '\t' {
+                    if self.try_expand_snippet() {
+                        return;
+                    }
+                }
                 self.record_change();
                 self.buffer.insert_char(c);
                 if let Some(action) = self.minor_modes.on_insert_char(c) {
@@ -3916,6 +3930,100 @@ impl MoraEditor {
         } else {
             self.status_message = format!("Go to definition: \"{word}\" — use SPC p g to grep (LSP not connected)");
         }
+    }
+
+    /// Returns true if a snippet was expanded.
+    fn try_expand_snippet(&mut self) -> bool {
+        // Get the word before cursor
+        let word_before = self.word_before_cursor();
+        if word_before.is_empty() {
+            return false;
+        }
+
+        // Detect file type
+        let file_type = self.buffer.path.as_ref()
+            .and_then(|p| p.extension())
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let lang = match file_type {
+            "rs" => "rust",
+            "py" => "python",
+            "js" | "jsx" => "javascript",
+            "ts" | "tsx" => "typescript",
+            "go" => "go",
+            "c" | "h" => "c",
+            "cpp" | "hpp" | "cc" => "c",
+            _ => "",
+        };
+
+        // Check if word matches a snippet trigger
+        if let Some(snippet) = self.snippet_engine.find_exact(&word_before, lang) {
+            let body = snippet.body.clone();
+
+            // Delete the trigger word
+            let word_len = word_before.len();
+            let col = self.buffer.cursor.col;
+            let start = col.saturating_sub(word_len);
+            self.buffer.cursor.col = start;
+            let line = &mut self.buffer.lines[self.buffer.cursor.row];
+            line.drain(start..start + word_len);
+
+            // Expand the snippet
+            let expansion = super::snippet::SnippetEngine::expand(&body);
+
+            // Insert the expanded text
+            let lines: Vec<&str> = expansion.body.split('\n').collect();
+            if lines.len() == 1 {
+                let line = &mut self.buffer.lines[self.buffer.cursor.row];
+                line.insert_str(start, lines[0]);
+                // Position cursor at first placeholder
+                if let Some(ph) = expansion.current() {
+                    self.buffer.cursor.col = start + ph.offset;
+                }
+            } else {
+                // Multi-line: insert first line, then new lines
+                let current_line = self.buffer.lines[self.buffer.cursor.row].clone();
+                let (before, _) = current_line.split_at(start);
+                self.buffer.lines[self.buffer.cursor.row] = format!("{}{}", before, lines[0]);
+                for (i, line) in lines[1..].iter().enumerate() {
+                    self.buffer.lines.insert(self.buffer.cursor.row + 1 + i, line.to_string());
+                }
+                // Position cursor at first placeholder
+                if let Some(ph) = expansion.current() {
+                    // Calculate line/col from offset
+                    let mut remaining = ph.offset;
+                    for (i, line) in lines.iter().enumerate() {
+                        if remaining <= line.len() {
+                            self.buffer.cursor.row += i;
+                            self.buffer.cursor.col = if i == 0 { start + remaining } else { remaining };
+                            break;
+                        }
+                        remaining -= line.len() + 1; // +1 for \n
+                    }
+                }
+            }
+
+            self.buffer.modified = true;
+            self.status_message = format!("Snippet: {}", snippet.description);
+            return true;
+        }
+        false
+    }
+
+    /// Get the word immediately before the cursor on the current line.
+    fn word_before_cursor(&self) -> String {
+        let line = self.buffer.current_line();
+        let col = self.buffer.cursor.col;
+        if col == 0 {
+            return String::new();
+        }
+        let chars: Vec<char> = line.chars().collect();
+        let col = col.min(chars.len());
+        let mut start = col;
+        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+            start -= 1;
+        }
+        chars[start..col].iter().collect()
     }
 
     fn start_lsp(&mut self) {
