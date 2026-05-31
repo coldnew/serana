@@ -92,6 +92,7 @@ pub struct MoraEditor {
     pub minor_modes: super::minor_mode::MinorModeRegistry,
     pub mshell: super::mshell::MshellState,
     pub theme: super::theme::ThemeColors,
+    pub lsp_client: super::lsp::LspClient,
 }
 
 impl MoraEditor {
@@ -162,6 +163,7 @@ impl MoraEditor {
             minor_modes: super::minor_mode::MinorModeRegistry::new(),
             mshell: super::mshell::MshellState::new(),
             theme: super::theme::night(),
+            lsp_client: super::lsp::LspClient::new(),
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {
@@ -733,6 +735,11 @@ impl MoraEditor {
                 KeyCode::Char('e') => {
                     // SPC m e: rename symbol (iedit)
                     self.start_iedit();
+                    KeyAction::None
+                }
+                KeyCode::Char('l') => {
+                    // SPC m l: start/connect LSP server
+                    self.start_lsp();
                     KeyAction::None
                 }
                 _ => KeyAction::None,
@@ -3892,7 +3899,55 @@ impl MoraEditor {
             self.status_message = "Go to definition: no word under cursor".to_string();
             return;
         }
-        self.status_message = format!("Go to definition: \"{word}\" — use SPC p g to grep");
+        if self.lsp_client.is_connected() {
+            let uri = self.buffer.path.as_ref()
+                .map(|p| format!("file://{}", p.display()))
+                .unwrap_or_default();
+            let line = self.buffer.cursor.row as u32;
+            let col = self.buffer.cursor.col as u32;
+            match self.lsp_client.definition(&uri, line, col) {
+                Ok(locs) if !locs.is_empty() => {
+                    let loc = &locs[0];
+                    self.status_message = format!("Definition: {} L{}:C{}", loc.uri, loc.range.start.line + 1, loc.range.start.character + 1);
+                }
+                Ok(_) => self.status_message = format!("Definition: no definition found for \"{word}\""),
+                Err(e) => self.status_message = format!("Definition: {e}"),
+            }
+        } else {
+            self.status_message = format!("Go to definition: \"{word}\" — use SPC p g to grep (LSP not connected)");
+        }
+    }
+
+    fn start_lsp(&mut self) {
+        let ext = self.buffer.path.as_ref()
+            .and_then(|p| p.extension())
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let root = self.buffer.path.as_ref()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        if let Some((cmd, args, lang_id)) = super::lsp::detect_language_server(ext) {
+            let root_uri = format!("file://{}", root.display());
+            let args_refs: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
+            match self.lsp_client.start(cmd, &args_refs, &root_uri) {
+                Ok(()) => {
+                    // Open the current document
+                    if let Some(ref path) = self.buffer.path {
+                        let uri = format!("file://{}", path.display());
+                        let text = self.buffer.lines.join("\n");
+                        let _ = self.lsp_client.did_open(&uri, lang_id, 1, &text);
+                    }
+                    self.status_message = format!("LSP: connected to {} ({})", self.lsp_client.server_name, ext);
+                }
+                Err(e) => {
+                    self.status_message = format!("LSP: failed to start {cmd}: {e}");
+                }
+            }
+        } else {
+            self.status_message = format!("LSP: no language server configured for .{ext}");
+        }
     }
 
     fn run_find_references(&mut self) {
@@ -3901,22 +3956,38 @@ impl MoraEditor {
             self.status_message = "Find references: no word under cursor".to_string();
             return;
         }
-        // Use ripgrep to find all occurrences
-        let output = std::process::Command::new("rg")
-            .args(["--line-number", "--no-heading", "--max-count", "50", "-w", &word])
-            .output();
-        match output {
-            Ok(out) => {
-                let stdout = String::from_utf8_lossy(&out.stdout);
-                if stdout.trim().is_empty() {
-                    self.status_message = format!("References: no references to \"{word}\"");
-                } else {
-                    let first = stdout.lines().next().unwrap_or("");
-                    self.status_message = format!("References: {first} ({} matches)", stdout.lines().count());
+        if self.lsp_client.is_connected() {
+            let uri = self.buffer.path.as_ref()
+                .map(|p| format!("file://{}", p.display()))
+                .unwrap_or_default();
+            let line = self.buffer.cursor.row as u32;
+            let col = self.buffer.cursor.col as u32;
+            match self.lsp_client.references(&uri, line, col) {
+                Ok(locs) => {
+                    let count = locs.len();
+                    let first = locs.first()
+                        .map(|l| format!("{} L{}", l.uri.rsplit('/').next().unwrap_or(&l.uri), l.range.start.line + 1))
+                        .unwrap_or_default();
+                    self.status_message = format!("References: {first} ({count} matches)");
                 }
+                Err(e) => self.status_message = format!("References: {e}"),
             }
-            Err(e) => {
-                self.status_message = format!("References: {e}");
+        } else {
+            // Fallback to ripgrep
+            let output = std::process::Command::new("rg")
+                .args(["--line-number", "--no-heading", "--max-count", "50", "-w", &word])
+                .output();
+            match output {
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    if stdout.trim().is_empty() {
+                        self.status_message = format!("References: no references to \"{word}\"");
+                    } else {
+                        let first = stdout.lines().next().unwrap_or("");
+                        self.status_message = format!("References: {first} ({} matches)", stdout.lines().count());
+                    }
+                }
+                Err(e) => self.status_message = format!("References: {e}"),
             }
         }
     }
@@ -3927,13 +3998,27 @@ impl MoraEditor {
             self.status_message = "Hover: no word under cursor".to_string();
             return;
         }
-        // Show word info in status bar
-        let row = self.buffer.cursor.row + 1;
-        let col = self.buffer.cursor.col + 1;
-        let line = self.buffer.current_line();
-        self.status_message = format!("\"{word}\" at L{row}:C{col} — {}", line.trim());
+        if self.lsp_client.is_connected() {
+            let uri = self.buffer.path.as_ref()
+                .map(|p| format!("file://{}", p.display()))
+                .unwrap_or_default();
+            let line = self.buffer.cursor.row as u32;
+            let col = self.buffer.cursor.col as u32;
+            match self.lsp_client.hover(&uri, line, col) {
+                Ok(Some(hover)) => {
+                    let truncated: String = hover.contents.chars().take(200).collect();
+                    self.status_message = format!("Hover: {truncated}");
+                }
+                Ok(None) => self.status_message = format!("Hover: no documentation for \"{word}\""),
+                Err(e) => self.status_message = format!("Hover: {e}"),
+            }
+        } else {
+            let row = self.buffer.cursor.row + 1;
+            let col = self.buffer.cursor.col + 1;
+            let line = self.buffer.current_line();
+            self.status_message = format!("\"{word}\" at L{row}:C{col} — {}", line.trim());
+        }
     }
-
     /// Flycheck: lint the current buffer based on file extension.
     /// Runs the appropriate linter and shows results in status bar.
     /// Errors/warnings are stored as overlays on the buffer.

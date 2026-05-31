@@ -4,6 +4,7 @@ pub mod display;
 mod editor;
 pub mod editor_core;
 mod keymap;
+pub mod lsp;
 mod kill_ring;
 pub mod lisp_ext;
 mod macro_state;
