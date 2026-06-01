@@ -38,15 +38,19 @@ pub struct GlyphAtlas {
     next_slot: u32,
     /// Dirty flag: true when pixels have changed since last upload.
     dirty: bool,
+    /// Horizontal advance width for monospace cell sizing.
+    advance_width: f32,
 }
 
 impl GlyphAtlas {
     /// Create a new atlas from raw font bytes at the given pixel size.
     pub fn new(font_bytes: &[u8], font_size: f32) -> Self {
-        let font = FontVec::try_from_vec(font_bytes.to_vec())
-            .expect("Failed to parse font");
+        let font = FontVec::try_from_vec(font_bytes.to_vec()).expect("Failed to parse font");
         let scale = PxScale::from(font_size);
-
+        // Measure advance width from a representative glyph ('M').
+        let scaled = font.as_scaled(scale);
+        let m_id = font.glyph_id('M');
+        let advance_width = scaled.h_advance(m_id);
         let mut atlas = Self {
             font,
             scale,
@@ -54,6 +58,7 @@ impl GlyphAtlas {
             cache: HashMap::new(),
             next_slot: 0,
             dirty: true,
+            advance_width,
         };
         atlas.populate_ascii();
         atlas
@@ -92,6 +97,11 @@ impl GlyphAtlas {
         GLYPH_SIZE
     }
 
+    /// Horizontal advance width for monospace cell sizing.
+    pub fn advance_width(&self) -> f32 {
+        self.advance_width
+    }
+
     // ── internal ──
 
     fn populate_ascii(&mut self) {
@@ -99,8 +109,10 @@ impl GlyphAtlas {
             self.rasterize(ch);
         }
         // Common box-drawing and block characters
-        for ch in ['│', '─', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼',
-                    '█', '▌', '▐', '▄', '▀', '░', '▒', '▓'] {
+        for ch in [
+            '│', '─', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '█', '▌', '▐', '▄', '▀', '░',
+            '▒', '▓',
+        ] {
             self.rasterize(ch);
         }
     }
@@ -129,22 +141,23 @@ impl GlyphAtlas {
             position: Point { x: 0.0, y: 0.0 },
         };
 
-        let (glyph_w, glyph_h, bitmap) = if let Some(outlined) = self.font.outline_glyph(glyph.clone()) {
-            let bounds = outlined.px_bounds();
-            let w = bounds.width().ceil() as u32;
-            let h = bounds.height().ceil() as u32;
-            let mut bmp = vec![0.0f32; (w * h) as usize];
-            outlined.draw(|x, y, v| {
-                if x < w && y < h {
-                    bmp[(y * w + x) as usize] = v;
-                }
-            });
-            (w, h, bmp)
-        } else {
-            // No outline (space, etc.) — use advance width only.
-            let adv = scaled.h_advance(glyph_id);
-            (adv.ceil() as u32, 0, Vec::new())
-        };
+        let (glyph_w, glyph_h, bitmap) =
+            if let Some(outlined) = self.font.outline_glyph(glyph.clone()) {
+                let bounds = outlined.px_bounds();
+                let w = bounds.width().ceil() as u32;
+                let h = bounds.height().ceil() as u32;
+                let mut bmp = vec![0.0f32; (w * h) as usize];
+                outlined.draw(|x, y, v| {
+                    if x < w && y < h {
+                        bmp[(y * w + x) as usize] = v;
+                    }
+                });
+                (w, h, bmp)
+            } else {
+                // No outline (space, etc.) — use advance width only.
+                let adv = scaled.h_advance(glyph_id);
+                (adv.ceil() as u32, 0, Vec::new())
+            };
 
         // Copy into atlas slot, centered vertically.
         let col = slot % ATLAS_COLS;
@@ -185,13 +198,16 @@ impl GlyphAtlas {
             }
         }
 
-        self.cache.insert(ch, GlyphInfo {
-            slot,
-            offset_x: x_off as f32,
-            offset_y: y_off as f32,
-            width: glyph_w,
-            height: glyph_h,
-        });
+        self.cache.insert(
+            ch,
+            GlyphInfo {
+                slot,
+                offset_x: x_off as f32,
+                offset_y: y_off as f32,
+                width: glyph_w,
+                height: glyph_h,
+            },
+        );
         self.dirty = true;
     }
 }

@@ -1,6 +1,6 @@
+use bytemuck::{Pod, Zeroable};
 use display_protocol::{Color, ScreenBuffer, ScreenCell};
 use wgpu::util::DeviceExt;
-use bytemuck::{Pod, Zeroable};
 
 use crate::atlas::GlyphAtlas;
 
@@ -29,11 +29,12 @@ struct CellInstance {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Uniforms {
     screen_size: [f32; 2],
+    cell_size: [f32; 2],
 }
 
 // Compile-time layout checks.
 const _: () = assert!(std::mem::size_of::<CellInstance>() == 24);
-const _: () = assert!(std::mem::size_of::<Uniforms>() == 8);
+const _: () = assert!(std::mem::size_of::<Uniforms>() == 16);
 
 // ── Color packing ──
 
@@ -43,13 +44,27 @@ fn pack_color(c: Color) -> u32 {
 
 fn style_flags(cell: &ScreenCell) -> u32 {
     let mut flags = 0u32;
-    if cell.reverse { flags |= 1 << 0; }
-    if cell.bold { flags |= 1 << 1; }
-    if cell.italic { flags |= 1 << 2; }
-    if cell.underline { flags |= 1 << 3; }
-    if cell.strikethrough { flags |= 1 << 4; }
-    if cell.dim { flags |= 1 << 5; }
-    if cell.blink { flags |= 1 << 6; }
+    if cell.reverse {
+        flags |= 1 << 0;
+    }
+    if cell.bold {
+        flags |= 1 << 1;
+    }
+    if cell.italic {
+        flags |= 1 << 2;
+    }
+    if cell.underline {
+        flags |= 1 << 3;
+    }
+    if cell.strikethrough {
+        flags |= 1 << 4;
+    }
+    if cell.dim {
+        flags |= 1 << 5;
+    }
+    if cell.blink {
+        flags |= 1 << 6;
+    }
     flags
 }
 
@@ -187,11 +202,18 @@ impl WgpuRenderer {
             },
         );
 
+        // ── cell dimensions ──
+        let cell_width = atlas.advance_width().ceil();
+        let cell_height = atlas.glyph_size() as f32;
+        let grid_cols = (pixel_width as f32 / cell_width) as u16;
+        let grid_rows = (pixel_height as f32 / cell_height) as u16;
+
         // ── uniform buffer ──
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("uniforms"),
             contents: bytemuck::bytes_of(&Uniforms {
                 screen_size: [pixel_width as f32, pixel_height as f32],
+                cell_size: [cell_width, cell_height],
             }),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -337,13 +359,6 @@ impl WgpuRenderer {
             mapped_at_creation: false,
         });
 
-        // ── cell dimensions ──
-        let glyph_size = atlas.glyph_size() as f32;
-        let cell_width = glyph_size;
-        let cell_height = glyph_size;
-        let grid_cols = (pixel_width as f32 / cell_width) as u16;
-        let grid_rows = (pixel_height as f32 / cell_height) as u16;
-
         Self {
             instance,
             device,
@@ -390,6 +405,7 @@ impl WgpuRenderer {
             0,
             bytemuck::bytes_of(&Uniforms {
                 screen_size: [width as f32, height as f32],
+                cell_size: [self.cell_width, self.cell_height],
             }),
         );
     }
@@ -434,10 +450,7 @@ impl WgpuRenderer {
                 let info = self.atlas.ensure_char(cell.ch);
 
                 instances.push(CellInstance {
-                    position: [
-                        x as f32 * self.cell_width,
-                        y as f32 * self.cell_height,
-                    ],
+                    position: [x as f32 * self.cell_width, y as f32 * self.cell_height],
                     fg_color: pack_color(cell.fg),
                     bg_color: pack_color(cell.bg),
                     char_code: info.slot,
@@ -462,13 +475,13 @@ impl WgpuRenderer {
             self.queue.write_buffer(&self.vertex_buffer, 0, byte_data);
         } else {
             // Reallocate larger buffer.
-            self.vertex_buffer = self.device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("instance-buffer"),
-                    contents: byte_data,
-                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                },
-            );
+            self.vertex_buffer =
+                self.device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("instance-buffer"),
+                        contents: byte_data,
+                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    });
         }
         self.vertex_count = instances.len() as u32;
 
@@ -484,10 +497,14 @@ impl WgpuRenderer {
             _ => return, // Timeout, Occluded, Validation — skip frame
         };
 
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor { label: Some("render-encoder") }
-        );
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("render-encoder"),
+            });
 
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -515,5 +532,22 @@ impl WgpuRenderer {
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uniforms_include_screen_and_cell_size() {
+        let uniforms = Uniforms {
+            screen_size: [1024.0, 768.0],
+            cell_size: [16.0, 16.0],
+        };
+
+        assert_eq!(std::mem::size_of_val(&uniforms), 16);
+        assert_eq!(uniforms.screen_size, [1024.0, 768.0]);
+        assert_eq!(uniforms.cell_size, [16.0, 16.0]);
     }
 }
