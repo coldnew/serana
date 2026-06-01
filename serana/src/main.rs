@@ -118,12 +118,11 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     use crossterm::{
         event::{self, Event, KeyCode, KeyModifiers},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     };
     use mora_bin::mora::MoraEditor;
-    use mora_bin::mora::display::event::MoraKeyEvent;
-    use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
+    use ratatui::backend::CrosstermBackend;
     use std::io;
     use std::path::Path;
     use std::time::Duration;
@@ -147,7 +146,7 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     let result = (|| -> anyhow::Result<()> {
         loop {
             let (width, height) = terminal.size().map(|s| (s.width, s.height))?;
-            let ui = mora_bin::mora::ui_node::build_ui(&editor, width, height);
+            let ui = mora_bin::mora::ui_node::build_ui(&mut editor, width, height);
             let buf = display_protocol::paint::paint(&ui, width, height);
             terminal.draw(|frame| {
                 for y in 0..height {
@@ -156,9 +155,15 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
                         let fg = ratatui::style::Color::Rgb(cell.fg.r, cell.fg.g, cell.fg.b);
                         let bg = ratatui::style::Color::Rgb(cell.bg.r, cell.bg.g, cell.bg.b);
                         let mut style = ratatui::style::Style::default().fg(fg).bg(bg);
-                        if cell.bold { style = style.add_modifier(ratatui::style::Modifier::BOLD); }
-                        if cell.italic { style = style.add_modifier(ratatui::style::Modifier::ITALIC); }
-                        if cell.underline { style = style.add_modifier(ratatui::style::Modifier::UNDERLINED); }
+                        if cell.bold {
+                            style = style.add_modifier(ratatui::style::Modifier::BOLD);
+                        }
+                        if cell.italic {
+                            style = style.add_modifier(ratatui::style::Modifier::ITALIC);
+                        }
+                        if cell.underline {
+                            style = style.add_modifier(ratatui::style::Modifier::UNDERLINED);
+                        }
                         let buf_cell = frame.buffer_mut().cell_mut((x, y)).unwrap();
                         buf_cell.set_char(cell.ch);
                         buf_cell.set_style(style);
