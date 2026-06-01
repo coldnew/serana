@@ -43,6 +43,7 @@ pub mod wire;
 
 // Declarative UI system
 pub mod buffer;
+pub mod inspect;
 pub mod layout;
 pub mod paint;
 pub mod render;
@@ -57,7 +58,11 @@ pub use wire::{WireMessage, PROTOCOL_VERSION};
 
 // Declarative UI re-exports
 pub use buffer::{ScreenBuffer, ScreenCell};
-pub use layout::{compute_layout, LayoutResult};
+pub use inspect::{
+    append_debug_overlay, debug_overlay_commands, element_data, flatten_layout, hit_test,
+    pointer_over_elements, pointer_over_ids, ElementData,
+};
+pub use layout::{compute_layout, hash_element_key, ElementId, LayoutResult, UiNodeKind};
 pub use paint::{collect_render_commands, paint};
 pub use render::{
     apply_render_command, render_commands_to_buffer, RenderCommand, RenderCommandArray,

@@ -56,6 +56,11 @@ fn paint_node<T: RenderTarget>(node: &UiNode, layout: &LayoutResult, buf: &mut T
                 }
             }
         }
+        UiNode::Keyed { child, .. } => {
+            if let Some(child_layout) = layout.children.first() {
+                paint_node(child, child_layout, buf);
+            }
+        }
         // ── Editor / IDE / Agent widgets ──
         UiNode::Input(i) => paint_input(i, layout, buf),
         UiNode::TextArea(t) => paint_textarea(t, layout, buf),

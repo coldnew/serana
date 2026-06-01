@@ -21,6 +21,9 @@ The shared display layer now uses a command-stream contract:
 - `collect_render_commands(node, width, height)` is the canonical way to turn a `UiNode` tree into backend-agnostic draw instructions.
 - `render_commands_to_buffer(commands, width, height)` is the canonical replay step for cell-based backends.
 - `paint(node, width, height)` exists only as a compatibility wrapper over the command pipeline.
+- `compute_layout` produces inspector metadata: `ElementId`, `UiNodeKind`, bounds, and child layout data.
+- Use `UiNode::keyed(key, child)` when an element needs a stable inspector/event identity.
+- Inspector-style queries live in `inspect`: `flatten_layout`, `element_data`, `hit_test`, `pointer_over_elements`, `pointer_over_ids`, and `debug_overlay_commands`.
 
 ---
 
@@ -30,6 +33,7 @@ The shared display layer now uses a command-stream contract:
 
 - Do not add new direct buffer-first rendering paths when the command stream can express the same behavior.
 - Do not reintroduce separate layout logic in individual backends.
+- Do not add widget-specific inspector logic to renderers; expose layout metadata from `display-protocol` instead.
 
 ---
 
@@ -39,6 +43,7 @@ The shared display layer now uses a command-stream contract:
 
 - Any new UI feature must be expressible through the shared command pipeline first.
 - Backends should consume `RenderCommandArray` or a replayed `ScreenBuffer`, not bespoke per-widget layout code.
+- New interactive or inspectable widgets should use explicit `UiNode::keyed` wrappers for stable IDs.
 
 ---
 
@@ -48,6 +53,7 @@ The shared display layer now uses a command-stream contract:
 
 - Add/adjust unit tests for command generation and replay parity.
 - If a UI widget changes output, verify the generated commands as well as the rendered cells.
+- If layout metadata changes, test `flatten_layout`, hit testing, and keyed IDs.
 
 ---
 

@@ -1,13 +1,81 @@
 use crate::ui::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+/// Stable-enough identifier assigned during a layout pass.
+///
+/// IDs are deterministic for the same tree shape and traversal order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ElementId(pub u64);
+
+/// Coarse node kind used by debug tooling and inspectors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UiNodeKind {
+    Text,
+    Box,
+    Row,
+    Column,
+    Span,
+    List,
+    ListItem,
+    Divider,
+    ProgressBar,
+    Table,
+    ScrollView,
+    Show,
+    For,
+    Keyed,
+    Input,
+    TextArea,
+    TabBar,
+    TreeView,
+    SplitPane,
+    StatusBar,
+    Canvas,
+    Overlay,
+    None,
+}
 
 /// Computed layout result for a node.
 #[derive(Debug, Clone)]
 pub struct LayoutResult {
+    pub id: Option<ElementId>,
+    pub kind: UiNodeKind,
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
     pub children: Vec<LayoutResult>,
+}
+
+impl LayoutResult {
+    fn empty() -> Self {
+        Self {
+            id: None,
+            kind: UiNodeKind::None,
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            children: Vec::new(),
+        }
+    }
+
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        x >= self.x && y >= self.y && x < self.x + self.width && y < self.y + self.height
+    }
+}
+
+#[derive(Debug, Default)]
+struct LayoutContext {
+    next_id: u64,
+}
+
+impl LayoutContext {
+    fn next_element_id(&mut self) -> ElementId {
+        self.next_id += 1;
+        ElementId(self.next_id)
+    }
 }
 
 /// Compute layout for a UiNode tree within the given bounds.
@@ -16,14 +84,45 @@ pub struct LayoutResult {
 /// columns lay out children vertically, boxes wrap children in a container.
 pub fn compute_layout(node: &UiNode, max_width: u16, max_height: u16) -> LayoutResult {
     let mut result = LayoutResult {
+        id: None,
+        kind: UiNodeKind::None,
         x: 0.0,
         y: 0.0,
         width: max_width as f32,
         height: max_height as f32,
         children: Vec::new(),
     };
-    layout_node(node, &mut result, max_width, max_height, 0.0, 0.0);
+    let mut ctx = LayoutContext::default();
+    layout_node(node, &mut result, max_width, max_height, 0.0, 0.0, &mut ctx);
     result
+}
+
+fn node_kind(node: &UiNode) -> UiNodeKind {
+    match node {
+        UiNode::Text(_) => UiNodeKind::Text,
+        UiNode::Box(_) => UiNodeKind::Box,
+        UiNode::Row(_) => UiNodeKind::Row,
+        UiNode::Column(_) => UiNodeKind::Column,
+        UiNode::Span(_) => UiNodeKind::Span,
+        UiNode::List(_) => UiNodeKind::List,
+        UiNode::ListItem(_) => UiNodeKind::ListItem,
+        UiNode::Divider(_) => UiNodeKind::Divider,
+        UiNode::ProgressBar(_) => UiNodeKind::ProgressBar,
+        UiNode::Table(_) => UiNodeKind::Table,
+        UiNode::ScrollView(_) => UiNodeKind::ScrollView,
+        UiNode::Show { .. } => UiNodeKind::Show,
+        UiNode::For { .. } => UiNodeKind::For,
+        UiNode::Keyed { .. } => UiNodeKind::Keyed,
+        UiNode::Input(_) => UiNodeKind::Input,
+        UiNode::TextArea(_) => UiNodeKind::TextArea,
+        UiNode::TabBar(_) => UiNodeKind::TabBar,
+        UiNode::TreeView(_) => UiNodeKind::TreeView,
+        UiNode::SplitPane(_) => UiNodeKind::SplitPane,
+        UiNode::StatusBar(_) => UiNodeKind::StatusBar,
+        UiNode::Canvas(_) => UiNodeKind::Canvas,
+        UiNode::Overlay(_) => UiNodeKind::Overlay,
+        UiNode::None => UiNodeKind::None,
+    }
 }
 
 fn layout_node(
@@ -33,7 +132,12 @@ fn layout_node(
     available_height: u16,
     offset_x: f32,
     offset_y: f32,
+    ctx: &mut LayoutContext,
 ) {
+    result.id = Some(ctx.next_element_id());
+    result.kind = node_kind(node);
+    result.children.clear();
+
     match node {
         UiNode::Text(t) => {
             let content_width = text_width(&t.content);
@@ -74,10 +178,16 @@ fn layout_node(
             let mut content_y = offset_y + pad.top as f32 + border_h as f32;
 
             for child in &b.children {
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-                };
-                layout_node(child, &mut child_result, inner_w, inner_h, content_x, content_y);
+                let mut child_result = LayoutResult::empty();
+                layout_node(
+                    child,
+                    &mut child_result,
+                    inner_w,
+                    inner_h,
+                    content_x,
+                    content_y,
+                    ctx,
+                );
                 content_y += child_result.height;
                 result.children.push(child_result);
             }
@@ -121,12 +231,15 @@ fn layout_node(
 
             for child in &f.children {
                 let (fixed_w, fg) = measure_child_fixed_width(child);
-                let w = if fg > 0.0 { remaining * fg / flex_grow_total } else { fixed_w };
-
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: w, height: 0.0, children: Vec::new(),
+                let w = if fg > 0.0 {
+                    remaining * fg / flex_grow_total
+                } else {
+                    fixed_w
                 };
-                layout_node(child, &mut child_result, w as u16, avail_h, cx, cy);
+
+                let mut child_result = LayoutResult::empty();
+                child_result.width = w;
+                layout_node(child, &mut child_result, w as u16, avail_h, cx, cy, ctx);
                 child_result.width = w;
                 result.children.push(child_result);
                 cx += w + f.gap as f32;
@@ -152,10 +265,8 @@ fn layout_node(
             let cx = offset_x + pad.left as f32;
 
             for child in &f.children {
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-                };
-                layout_node(child, &mut child_result, avail_w, avail_h, cx, cy);
+                let mut child_result = LayoutResult::empty();
+                layout_node(child, &mut child_result, avail_w, avail_h, cx, cy, ctx);
                 let h = child_result.height;
                 result.children.push(child_result);
                 cy += h + f.gap as f32;
@@ -190,10 +301,16 @@ fn layout_node(
 
             let mut cy = offset_y;
             for item in &l.items {
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-                };
-                layout_node(item, &mut child_result, available_width.saturating_sub(2), available_height, offset_x + 2.0, cy);
+                let mut child_result = LayoutResult::empty();
+                layout_node(
+                    item,
+                    &mut child_result,
+                    available_width.saturating_sub(2),
+                    available_height,
+                    offset_x + 2.0,
+                    cy,
+                    ctx,
+                );
                 let h = child_result.height.max(1.0);
                 result.children.push(child_result);
                 cy += h;
@@ -201,10 +318,16 @@ fn layout_node(
         }
 
         UiNode::ListItem(child) => {
-            let mut child_result = LayoutResult {
-                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-            };
-            layout_node(child, &mut child_result, available_width, available_height, offset_x, offset_y);
+            let mut child_result = LayoutResult::empty();
+            layout_node(
+                child,
+                &mut child_result,
+                available_width,
+                available_height,
+                offset_x,
+                offset_y,
+                ctx,
+            );
             *result = child_result;
         }
 
@@ -226,16 +349,30 @@ fn layout_node(
             result.width = s.viewport_width as f32;
             result.height = s.viewport_height as f32;
 
-            let mut child_result = LayoutResult {
-                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-            };
-            layout_node(&s.child, &mut child_result, available_width, available_height, offset_x, offset_y);
+            let mut child_result = LayoutResult::empty();
+            layout_node(
+                &s.child,
+                &mut child_result,
+                available_width,
+                available_height,
+                offset_x,
+                offset_y,
+                ctx,
+            );
             result.children.push(child_result);
         }
 
         UiNode::Show { when, child } => {
             if *when {
-                layout_node(child, result, available_width, available_height, offset_x, offset_y);
+                layout_node(
+                    child,
+                    result,
+                    available_width,
+                    available_height,
+                    offset_x,
+                    offset_y,
+                    ctx,
+                );
             } else {
                 result.x = offset_x;
                 result.y = offset_y;
@@ -252,10 +389,16 @@ fn layout_node(
 
             let mut cy = offset_y;
             for child in children {
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-                };
-                layout_node(child, &mut child_result, available_width, available_height, offset_x, cy);
+                let mut child_result = LayoutResult::empty();
+                layout_node(
+                    child,
+                    &mut child_result,
+                    available_width,
+                    available_height,
+                    offset_x,
+                    cy,
+                    ctx,
+                );
                 let h = child_result.height;
                 result.children.push(child_result);
                 cy += h;
@@ -263,8 +406,27 @@ fn layout_node(
             result.height = cy - offset_y;
         }
 
-        // ── Editor / IDE / Agent widgets ──
+        UiNode::Keyed { key, child } => {
+            result.id = Some(ElementId(hash_element_key(key)));
+            result.x = offset_x;
+            result.y = offset_y;
 
+            let mut child_result = LayoutResult::empty();
+            layout_node(
+                child,
+                &mut child_result,
+                available_width,
+                available_height,
+                offset_x,
+                offset_y,
+                ctx,
+            );
+            result.width = child_result.width;
+            result.height = child_result.height;
+            result.children.push(child_result);
+        }
+
+        // ── Editor / IDE / Agent widgets ──
         UiNode::Input(i) => {
             let w = i.width.unwrap_or(available_width);
             result.x = offset_x;
@@ -316,10 +478,16 @@ fn layout_node(
                 }
             };
 
-            let mut first_result = LayoutResult {
-                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-            };
-            layout_node(&s.first, &mut first_result, first_w, first_h, offset_x, offset_y);
+            let mut first_result = LayoutResult::empty();
+            layout_node(
+                &s.first,
+                &mut first_result,
+                first_w,
+                first_h,
+                offset_x,
+                offset_y,
+                ctx,
+            );
             result.children.push(first_result);
 
             let (second_ox, second_oy) = match s.orientation {
@@ -327,10 +495,16 @@ fn layout_node(
                 Orientation::Vertical => (offset_x, offset_y + first_h as f32 + 1.0),
             };
 
-            let mut second_result = LayoutResult {
-                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-            };
-            layout_node(&s.second, &mut second_result, second_w, second_h, second_ox, second_oy);
+            let mut second_result = LayoutResult::empty();
+            layout_node(
+                &s.second,
+                &mut second_result,
+                second_w,
+                second_h,
+                second_ox,
+                second_oy,
+                ctx,
+            );
             result.children.push(second_result);
         }
 
@@ -343,27 +517,38 @@ fn layout_node(
             // Layout left items
             let mut lx = offset_x;
             for child in &sb.left {
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-                };
-                layout_node(child, &mut child_result, available_width, 1, lx, offset_y);
+                let mut child_result = LayoutResult::empty();
+                layout_node(
+                    child,
+                    &mut child_result,
+                    available_width,
+                    1,
+                    lx,
+                    offset_y,
+                    ctx,
+                );
                 lx += child_result.width;
                 result.children.push(child_result);
             }
             // Layout right items (from right edge)
             let mut rx = offset_x + available_width as f32;
             for child in &sb.right {
-                let mut child_result = LayoutResult {
-                    x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-                };
-                layout_node(child, &mut child_result, available_width, 1, rx, offset_y);
+                let mut child_result = LayoutResult::empty();
+                layout_node(
+                    child,
+                    &mut child_result,
+                    available_width,
+                    1,
+                    rx,
+                    offset_y,
+                    ctx,
+                );
                 rx -= child_result.width;
                 result.children.push(child_result);
             }
         }
 
         // ── WGPU-only widgets ──
-
         UiNode::Canvas(c) => {
             result.x = offset_x;
             result.y = offset_y;
@@ -372,10 +557,16 @@ fn layout_node(
         }
 
         UiNode::Overlay(o) => {
-            let mut child_result = LayoutResult {
-                x: 0.0, y: 0.0, width: 0.0, height: 0.0, children: Vec::new(),
-            };
-            layout_node(&o.child, &mut child_result, available_width, available_height, 0.0, 0.0);
+            let mut child_result = LayoutResult::empty();
+            layout_node(
+                &o.child,
+                &mut child_result,
+                available_width,
+                available_height,
+                0.0,
+                0.0,
+                ctx,
+            );
             result.x = o.x as f32;
             result.y = o.y as f32;
             result.width = child_result.width;
@@ -409,6 +600,7 @@ fn measure_child_fixed_width(node: &UiNode) -> (f32, f32) {
             if *when { measure_child_fixed_width(child) } else { (0.0, 0.0) }
         }
         UiNode::For { .. } => (0.0, 1.0),
+        UiNode::Keyed { child, .. } => measure_child_fixed_width(child),
         UiNode::Input(i) => (i.width.map(|w| w as f32).unwrap_or(0.0), 0.0),
         UiNode::TextArea(_) => (0.0, 1.0),
         UiNode::TabBar(_) => (0.0, 1.0),
@@ -419,6 +611,12 @@ fn measure_child_fixed_width(node: &UiNode) -> (f32, f32) {
         UiNode::Overlay(_) => (0.0, 0.0),
         UiNode::None => (0.0, 0.0),
     }
+}
+
+pub fn hash_element_key(key: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Calculate display width of a string, accounting for CJK wide characters.

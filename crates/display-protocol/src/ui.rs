@@ -38,6 +38,8 @@ pub enum UiNode {
     Show { when: bool, child: Box<UiNode> },
     /// Iteration — renders children from an iterator.
     For { children: Vec<UiNode> },
+    /// Stable inspector/event identity wrapper.
+    Keyed { key: String, child: Box<UiNode> },
 
     // ── Editor / IDE / Agent widgets ──
 
@@ -751,7 +753,16 @@ impl UiNode {
     }
 
     pub fn for_each<T>(items: impl IntoIterator<Item = T>, mut f: impl FnMut(T) -> UiNode) -> Self {
-        UiNode::For { children: items.into_iter().map(|item| f(item)).collect() }
+        UiNode::For {
+            children: items.into_iter().map(|item| f(item)).collect(),
+        }
+    }
+
+    pub fn keyed(key: impl Into<String>, child: impl Into<UiNode>) -> Self {
+        UiNode::Keyed {
+            key: key.into(),
+            child: Box::new(child.into()),
+        }
     }
 
     pub fn input(value: impl Into<String>) -> Self {

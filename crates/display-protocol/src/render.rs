@@ -132,6 +132,10 @@ impl RenderCommandArray {
         self.shadow
     }
 
+    pub fn push_command(&mut self, command: RenderCommand) {
+        self.push(command);
+    }
+
     fn push(&mut self, command: RenderCommand) {
         apply_render_command(&mut self.shadow, &command);
         self.commands.push(command);
