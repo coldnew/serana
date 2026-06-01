@@ -20,6 +20,7 @@ pub mod syntax;
 pub mod snippet;
 pub mod theme;
 pub mod tramp;
+pub mod ui;
 pub mod ui_node;
 pub mod undo_tree;
 mod view;
