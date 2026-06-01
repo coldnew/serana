@@ -1,8 +1,8 @@
+use crate::lisp::types::{Symbol, Value};
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use parking_lot::Mutex;
-use crate::lisp::types::{Symbol, Value};
 /// Global documentation registry for native functions.
 /// Maps fully-qualified names (e.g. "mora.buffer/buffer-name") to doc strings.
 static DOC_REGISTRY: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
@@ -14,7 +14,9 @@ pub fn register_doc(ns_name: &str, fn_name: &str, doc: &str) {
     let qualified = format!("{}/{}", ns_name, fn_name);
     doc_registry().lock().insert(qualified, doc.to_string());
     // Also register unqualified
-    doc_registry().lock().insert(fn_name.to_string(), doc.to_string());
+    doc_registry()
+        .lock()
+        .insert(fn_name.to_string(), doc.to_string());
 }
 /// Look up a doc string by name (qualified or unqualified).
 pub fn lookup_doc(name: &str) -> Option<String> {
@@ -234,17 +236,29 @@ impl NamespaceRegistry {
         if let Some(alias_name) = alias {
             current.alias(alias_name, ns_name);
         }
-        // Import public vars from the required namespace
-        let required = ns.lock();
-        for (name, var) in &required.vars {
-            if !var.is_private {
-                current.refers.insert(name.clone(), var.clone());
-            }
+        if current.name == ns_name {
+            return Ok(());
         }
+        drop(current);
+
+        // Import public vars from the required namespace
+        let public_vars = ns
+            .lock()
+            .vars
+            .iter()
+            .filter(|(_, var)| !var.is_private)
+            .map(|(name, var)| (name.clone(), var.clone()))
+            .collect::<Vec<_>>();
+        let mut current = self.current.lock();
+        current.refers.extend(public_vars);
         Ok(())
     }
 
     pub fn refer_all(&mut self, from_ns: &str, to_ns: &str) -> Result<(), String> {
+        if from_ns == to_ns {
+            return Ok(());
+        }
+
         let source = self
             .namespaces
             .get(from_ns)
@@ -289,5 +303,32 @@ impl NamespaceRegistry {
         }
 
         current.find_var(sym.name.as_str()).map(|v| v.deref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refer_all_same_namespace_is_noop() {
+        let mut registry = NamespaceRegistry::new();
+
+        registry.refer_all("mora.core", "mora.core").unwrap();
+    }
+
+    #[test]
+    fn require_current_namespace_is_noop_but_records_alias() {
+        let mut registry = NamespaceRegistry::new();
+        registry.set_current("mora.core").unwrap();
+
+        registry.require("mora.core", Some("core")).unwrap();
+
+        let current = registry.current();
+        let current = current.lock();
+        assert_eq!(
+            current.aliases.get("core").map(String::as_str),
+            Some("mora.core")
+        );
     }
 }

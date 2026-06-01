@@ -26,8 +26,11 @@ impl MoraLispBridge {
             let forms = eval
                 .read_cached(code)
                 .unwrap_or_else(|err| panic!("failed to read Mora standard library {path}: {err}"));
-            crate::lisp::vm::compile_and_run(eval, &forms)
-                .unwrap_or_else(|err| panic!("failed to load Mora standard library {path}: {err}"));
+            for form in &forms {
+                eval.eval(form).unwrap_or_else(|err| {
+                    panic!("failed to load Mora standard library {path}: {err}")
+                });
+            }
         }
     }
 

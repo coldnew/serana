@@ -133,6 +133,7 @@ impl ApplicationHandler for WgpuApp {
                 .create_window(attrs)
                 .expect("Failed to create window"),
         );
+        window.focus_window();
 
         // Create surface.
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -150,7 +151,11 @@ impl ApplicationHandler for WgpuApp {
         self.window = Some(window);
         self.renderer = Some(renderer);
 
-        // Trigger first redraw.
+        // Present the first frame immediately so newly-mapped windows are never blank
+        // while waiting for the platform redraw event.
+        self.render_frame();
+
+        // Keep the normal redraw loop active.
         if let Some(w) = &self.window {
             w.request_redraw();
         }
