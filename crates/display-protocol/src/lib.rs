@@ -28,42 +28,46 @@
 //!     }
 //! };
 //!
-//! let buf = paint(&tree, 80, 24);
+//! let commands = collect_render_commands(&tree, 80, 24);
+//! let buf = render_commands_to_buffer(commands.commands(), 80, 24);
 //! ```
 //!
 //! The `rsx!` macro is provided by the `display-protocol-rsx` crate.
 //! The `jsx!` proc-macro is provided by `display-protocol-jsx`.
 
-mod types;
+mod command;
 mod frame;
 mod input;
-mod command;
+mod types;
 pub mod wire;
 
 // Declarative UI system
-pub mod ui;
 pub mod buffer;
 pub mod layout;
 pub mod paint;
+pub mod render;
 pub mod renderer;
+pub mod ui;
 
-pub use types::{Color, Style, StyledSpan, StyledLine, Selection, SelectionMode, MultiSelection};
-pub use frame::{Cell, Grid, CursorState, CursorStyle, StatusLine, FrameUpdate};
-pub use input::{KeyEvent, KeyCode, KeyModifiers, InputEvent, MouseEventKind};
 pub use command::{DisplayCmd, PopupItem, PopupItemKind};
+pub use frame::{Cell, CursorState, CursorStyle, FrameUpdate, Grid, StatusLine};
+pub use input::{InputEvent, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
+pub use types::{Color, MultiSelection, Selection, SelectionMode, Style, StyledLine, StyledSpan};
 pub use wire::{WireMessage, PROTOCOL_VERSION};
 
 // Declarative UI re-exports
-pub use ui::{
-    UiNode, TextNode, BoxNode, FlexNode, SpanNode, ListNode, DividerNode,
-    ProgressNode, TableNode, ScrollNode,
-    InputNode, TextAreaNode, TabBarNode, TabItem, TreeViewNode, TreeItem,
-    SplitPaneNode, CanvasNode, OverlayNode, StatusBarNode, Orientation,
-    Padding, Border, Wrap, Align, Justify, ListMarker,
-    WidgetEvent, AnnotationKind, GutterAnnotation, ScrollPolicy,
-    MenuNode, MenuItem, MenuAnchor, FocusOrder, FocusDirection,
-};
 pub use buffer::{ScreenBuffer, ScreenCell};
-pub use layout::{LayoutResult, compute_layout};
-pub use paint::{paint, paint_into};
-pub use renderer::{Renderer, AnsiRenderer};
+pub use layout::{compute_layout, LayoutResult};
+pub use paint::{collect_render_commands, paint};
+pub use render::{
+    apply_render_command, render_commands_to_buffer, RenderCommand, RenderCommandArray,
+    RenderTarget,
+};
+pub use renderer::{AnsiRenderer, Renderer};
+pub use ui::{
+    Align, AnnotationKind, Border, BoxNode, CanvasNode, DividerNode, FlexNode, FocusDirection,
+    FocusOrder, GutterAnnotation, InputNode, Justify, ListMarker, ListNode, MenuAnchor, MenuItem,
+    MenuNode, Orientation, OverlayNode, Padding, ProgressNode, ScrollNode, ScrollPolicy, SpanNode,
+    SplitPaneNode, StatusBarNode, TabBarNode, TabItem, TableNode, TextAreaNode, TextNode, TreeItem,
+    TreeViewNode, UiNode, WidgetEvent, Wrap,
+};

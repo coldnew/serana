@@ -1,3 +1,25 @@
+# Mora Display Protocol WGPU Fix
+
+Assumptions:
+- Keep the first architecture slice surgical: `MoraCore` remains the headless editor engine, Mora UI remains a `display_protocol::UiNode` built with `display-protocol-jsx`, and WGPU is only a backend for that protocol tree.
+- Do not remove the older `mora::display` event/style modules yet because editor input, themes, overlays, and Lisp extensions still depend on them.
+- Fix the black GUI by correcting the shared `display-wgpu` cell renderer, then verify the Mora binary builds.
+
+Success criteria for this slice:
+- [x] Ensure WGPU renders display-protocol cells at glyph-cell size instead of one pixel.
+- [x] Keep the Mora GUI path rendering `MoraCore::build_ui_node` directly from the JSX UI tree.
+- [x] Add focused coverage for the WGPU uniform/layout contract.
+- [x] Format touched Rust files and run focused tests/build.
+- [x] Record implementation results.
+
+Review:
+- Fixed `display-wgpu` so the renderer sends glyph cell dimensions through the uniform buffer.
+- Updated the WGPU shader to expand each cell instance by `u.cell_size`; previously each cell quad was only one pixel, making the GUI appear black.
+- Left Mora's architecture boundary intact: `MoraCore` builds a `UiNode` tree through `mora::ui_node`/`display-protocol-jsx`, and WGPU paints that protocol tree as a backend.
+- Added focused coverage for the WGPU uniform contract.
+- Verification passed with `cargo test -p display-wgpu` and `cargo build -p mora-bin`.
+- `cargo test -p mora-bin` currently fails in pre-existing untracked `mora/src/mora/org.rs` test `mora::org::tests::test_toggle_todo`, where line 220 asserts `lines[1].contains("TODO")`.
+
 # Hermes Agent Refactor
 
 # Vivi Smooth Cursor Movement
@@ -137,7 +159,7 @@ Assumptions:
 
 Success criteria for this slice:
 - [x] Build Vivi's editor layout with `display_protocol_jsx::jsx!`.
-- [x] Paint the JSX UI tree through `display_protocol::paint_into`.
+- [x] Paint the JSX UI tree through `display_protocol::collect_render_commands` and replay into a buffer.
 - [x] Route Vivi's terminal painting through `display-tui` instead of a local ratatui cell loop.
 - [x] Preserve Vim-like filler rows, status line, command row, and mode-aware cursor behavior.
 - [x] Format touched files and run focused Vivi tests.
@@ -145,7 +167,7 @@ Success criteria for this slice:
 
 Review:
 - Vivi render now builds a `display_protocol::UiNode` tree with `display_protocol_jsx::jsx!`.
-- The JSX tree uses `TextArea`, `StatusBar`, and `Text` nodes, then paints through `display_protocol::paint_into`.
+- The JSX tree uses `TextArea`, `StatusBar`, and `Text` nodes, then paints through `display_protocol::collect_render_commands`.
 - Runtime visual selection is patched onto the generated `TextArea` node because JSX optional props wrap values statically.
 - Vim-specific `~` filler rows remain as small `ScreenBuffer` post-processing because the generic `TextArea` node does not model Vim filler lines.
 - Added `TuiTerminal::render_screen_buffer` so Vivi uses `display-tui` instead of owning a local ratatui cell loop.

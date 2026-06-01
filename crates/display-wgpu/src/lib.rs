@@ -7,7 +7,7 @@
 //! # Architecture
 //!
 //! ```text
-//! UiNode tree ──► paint() ──► ScreenBuffer ──► WgpuRenderer ──► GPU ──► Screen
+//! UiNode tree ──► collect_render_commands() ──► RenderCommandArray ──► ScreenBuffer ──► WgpuRenderer ──► GPU ──► Screen
 //! ```
 //!
 //! Each character cell is rendered as an instanced quad:
@@ -39,7 +39,7 @@ pub mod input;
 pub mod renderer;
 pub mod window;
 
-pub use renderer::WgpuRenderer;
-pub use window::{WgpuConfig, WgpuWindow, RenderCtx};
 pub use atlas::GlyphAtlas;
-pub use input::{winit_to_input_event, winit_key_to_code, winit_mods_to_proto};
+pub use input::{winit_key_to_code, winit_mods_to_proto, winit_to_input_event};
+pub use renderer::WgpuRenderer;
+pub use window::{RenderCtx, WgpuConfig, WgpuWindow};

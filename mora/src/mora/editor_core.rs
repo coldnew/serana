@@ -3,8 +3,8 @@ use crate::mora::display::event::{MoraKeyCode, MoraKeyEvent};
 use crate::mora::editor::MoraEditor;
 use crate::mora::ui_node;
 use display_protocol::{
-    compute_layout, paint, Cell, Color, CursorState, CursorStyle, DisplayCmd, FrameUpdate, Grid,
-    InputEvent as ProtoInputEvent, KeyCode, KeyEvent, Style, UiNode,
+    collect_render_commands, render_commands_to_buffer, Cell, Color, CursorState, CursorStyle,
+    DisplayCmd, FrameUpdate, Grid, InputEvent as ProtoInputEvent, KeyCode, KeyEvent, Style, UiNode,
 };
 use std::path::Path;
 
@@ -57,7 +57,7 @@ impl MoraCore {
     }
 
     /// Render editor state using the declarative UiNode pipeline.
-    /// Builds a UiNode tree → layout → paint → Grid.
+    /// Builds a UiNode tree → render commands → ScreenBuffer → Grid.
     pub fn render_ui_frame(&mut self) -> FrameUpdate {
         let ui = ui_node::build_ui(
             &mut self.editor,
@@ -65,8 +65,8 @@ impl MoraCore {
             self.height,
             self.show_menu_bar,
         );
-        let _layout = compute_layout(&ui, self.width, self.height);
-        let buf = paint(&ui, self.width, self.height);
+        let commands = collect_render_commands(&ui, self.width, self.height);
+        let buf = render_commands_to_buffer(commands.commands(), self.width, self.height);
 
         let mut grid = Grid::new(self.width, self.height);
         for y in 0..self.height {

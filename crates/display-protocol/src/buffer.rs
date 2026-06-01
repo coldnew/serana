@@ -34,7 +34,12 @@ impl ScreenCell {
     };
 
     pub fn new(ch: char, fg: Color, bg: Color) -> Self {
-        Self { ch, fg, bg, ..Self::EMPTY }
+        Self {
+            ch,
+            fg,
+            bg,
+            ..Self::EMPTY
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -43,7 +48,9 @@ impl ScreenCell {
 }
 
 impl Default for ScreenCell {
-    fn default() -> Self { Self::EMPTY }
+    fn default() -> Self {
+        Self::EMPTY
+    }
 }
 
 /// Flat screen buffer with cell-level diffing.
@@ -119,17 +126,42 @@ impl ScreenBuffer {
         italic: bool,
         reverse: bool,
     ) {
-        self.set(x, y, ScreenCell {
-            ch, fg, bg, bold, italic, underline, strikethrough, dim, reverse,
-            blink: false, underline_color: None, hyperlink: None,
-        });
+        self.set(
+            x,
+            y,
+            ScreenCell {
+                ch,
+                fg,
+                bg,
+                bold,
+                italic,
+                underline,
+                strikethrough,
+                dim,
+                reverse,
+                blink: false,
+                underline_color: None,
+                hyperlink: None,
+            },
+        );
     }
 
     /// Write a string starting at (x, y) with basic style (bold/dim only).
-    pub fn write_str(&mut self, x: u16, y: u16, s: &str, fg: Color, bg: Color, bold: bool, dim: bool) {
+    pub fn write_str(
+        &mut self,
+        x: u16,
+        y: u16,
+        s: &str,
+        fg: Color,
+        bg: Color,
+        bold: bool,
+        dim: bool,
+    ) {
         for (i, ch) in s.chars().enumerate() {
             let cx = x + i as u16;
-            if cx >= self.width { break; }
+            if cx >= self.width {
+                break;
+            }
             self.set_char(cx, y, ch, fg, bg, bold, dim, false, false, false, false);
         }
     }
@@ -140,21 +172,27 @@ impl ScreenBuffer {
         let bg = style.bg.unwrap_or(Color::BLACK);
         for (i, ch) in s.chars().enumerate() {
             let cx = x + i as u16;
-            if cx >= self.width { break; }
-            self.set(cx, y, ScreenCell {
-                ch,
-                fg,
-                bg,
-                bold: style.bold,
-                italic: style.italic,
-                underline: style.underline,
-                strikethrough: style.strikethrough,
-                dim: style.dim,
-                reverse: style.reverse,
-                blink: style.blink,
-                underline_color: style.underline_color,
-                hyperlink: None,
-            });
+            if cx >= self.width {
+                break;
+            }
+            self.set(
+                cx,
+                y,
+                ScreenCell {
+                    ch,
+                    fg,
+                    bg,
+                    bold: style.bold,
+                    italic: style.italic,
+                    underline: style.underline,
+                    strikethrough: style.strikethrough,
+                    dim: style.dim,
+                    reverse: style.reverse,
+                    blink: style.blink,
+                    underline_color: style.underline_color,
+                    hyperlink: None,
+                },
+            );
         }
     }
 
@@ -175,18 +213,36 @@ impl ScreenBuffer {
     /// Draw a horizontal line.
     pub fn hline(&mut self, x: u16, y: u16, width: u16, ch: char, fg: Color, bg: Color) {
         for dx in 0..width {
-            self.set_char(x + dx, y, ch, fg, bg, false, false, false, false, false, false);
+            self.set_char(
+                x + dx,
+                y,
+                ch,
+                fg,
+                bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
         }
     }
 
     /// Draw a border around a region.
     pub fn draw_border(
         &mut self,
-        x: u16, y: u16, w: u16, h: u16,
-        fg: Color, bg: Color,
+        x: u16,
+        y: u16,
+        w: u16,
+        h: u16,
+        fg: Color,
+        bg: Color,
         title: Option<&str>,
     ) {
-        if w < 2 || h < 2 { return; }
+        if w < 2 || h < 2 {
+            return;
+        }
 
         let tl = '┌';
         let tr = '┐';
@@ -198,9 +254,33 @@ impl ScreenBuffer {
         // Top
         self.set_char(x, y, tl, fg, bg, false, false, false, false, false, false);
         for dx in 1..w - 1 {
-            self.set_char(x + dx, y, h_line, fg, bg, false, false, false, false, false, false);
+            self.set_char(
+                x + dx,
+                y,
+                h_line,
+                fg,
+                bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
         }
-        self.set_char(x + w - 1, y, tr, fg, bg, false, false, false, false, false, false);
+        self.set_char(
+            x + w - 1,
+            y,
+            tr,
+            fg,
+            bg,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
 
         // Title
         if let Some(title) = title {
@@ -212,16 +292,76 @@ impl ScreenBuffer {
 
         // Sides
         for dy in 1..h - 1 {
-            self.set_char(x, y + dy, v_line, fg, bg, false, false, false, false, false, false);
-            self.set_char(x + w - 1, y + dy, v_line, fg, bg, false, false, false, false, false, false);
+            self.set_char(
+                x,
+                y + dy,
+                v_line,
+                fg,
+                bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
+            self.set_char(
+                x + w - 1,
+                y + dy,
+                v_line,
+                fg,
+                bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
         }
 
         // Bottom
-        self.set_char(x, y + h - 1, bl, fg, bg, false, false, false, false, false, false);
+        self.set_char(
+            x,
+            y + h - 1,
+            bl,
+            fg,
+            bg,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         for dx in 1..w - 1 {
-            self.set_char(x + dx, y + h - 1, h_line, fg, bg, false, false, false, false, false, false);
+            self.set_char(
+                x + dx,
+                y + h - 1,
+                h_line,
+                fg,
+                bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
         }
-        self.set_char(x + w - 1, y + h - 1, br, fg, bg, false, false, false, false, false, false);
+        self.set_char(
+            x + w - 1,
+            y + h - 1,
+            br,
+            fg,
+            bg,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
     }
 
     /// Clear the entire buffer.
@@ -250,7 +390,12 @@ impl ScreenBuffer {
 
     /// Get the damaged bounding box (x1, y1, x2, y2).
     pub fn damage_rect(&self) -> (u16, u16, u16, u16) {
-        (self.damage_x1, self.damage_y1, self.damage_x2, self.damage_y2)
+        (
+            self.damage_x1,
+            self.damage_y1,
+            self.damage_x2,
+            self.damage_y2,
+        )
     }
 
     /// Clear damage tracking. Call after rendering.
@@ -275,21 +420,27 @@ impl ScreenBuffer {
             let fg = span.style.fg.unwrap_or(default_fg);
             let bg = span.style.bg.unwrap_or(default_bg);
             for ch in span.text.chars() {
-                if cx >= self.width { return; }
-                self.set(cx, y, ScreenCell {
-                    ch,
-                    fg,
-                    bg,
-                    bold: span.style.bold,
-                    italic: span.style.italic,
-                    underline: span.style.underline,
-                    strikethrough: span.style.strikethrough,
-                    dim: span.style.dim,
-                    reverse: span.style.reverse,
-                    blink: span.style.blink,
-                    underline_color: span.style.underline_color,
-                    hyperlink: None,
-                });
+                if cx >= self.width {
+                    return;
+                }
+                self.set(
+                    cx,
+                    y,
+                    ScreenCell {
+                        ch,
+                        fg,
+                        bg,
+                        bold: span.style.bold,
+                        italic: span.style.italic,
+                        underline: span.style.underline,
+                        strikethrough: span.style.strikethrough,
+                        dim: span.style.dim,
+                        reverse: span.style.reverse,
+                        blink: span.style.blink,
+                        underline_color: span.style.underline_color,
+                        hyperlink: None,
+                    },
+                );
                 cx += 1;
             }
         }
@@ -353,7 +504,19 @@ mod tests {
     #[test]
     fn test_set_and_get() {
         let mut buf = ScreenBuffer::new(10, 5);
-        buf.set_char(3, 2, 'X', Color::RED, Color::BLACK, false, false, false, false, false, false);
+        buf.set_char(
+            3,
+            2,
+            'X',
+            Color::RED,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         assert_eq!(buf.get(3, 2).ch, 'X');
         assert_eq!(buf.get(3, 2).fg, Color::RED);
     }
@@ -362,7 +525,19 @@ mod tests {
     fn test_damage_tracking() {
         let mut buf = ScreenBuffer::new(10, 5);
         assert!(!buf.has_damage());
-        buf.set_char(5, 3, 'A', Color::WHITE, Color::BLACK, false, false, false, false, false, false);
+        buf.set_char(
+            5,
+            3,
+            'A',
+            Color::WHITE,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         assert!(buf.has_damage());
         let (x1, y1, x2, y2) = buf.damage_rect();
         assert_eq!((x1, y1, x2, y2), (5, 3, 6, 4));
@@ -372,10 +547,25 @@ mod tests {
     fn test_diff() {
         let mut buf1 = ScreenBuffer::new(5, 3);
         let mut buf2 = ScreenBuffer::new(5, 3);
-        buf2.set_char(2, 1, 'X', Color::RED, Color::BLACK, false, false, false, false, false, false);
+        buf2.set_char(
+            2,
+            1,
+            'X',
+            Color::RED,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         let changes = buf2.diff(&buf1);
         assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0], (2, 1, ScreenCell::new('X', Color::RED, Color::BLACK)));
+        assert_eq!(
+            changes[0],
+            (2, 1, ScreenCell::new('X', Color::RED, Color::BLACK))
+        );
     }
 
     #[test]
@@ -400,7 +590,19 @@ mod tests {
     #[test]
     fn test_resize() {
         let mut buf = ScreenBuffer::new(5, 3);
-        buf.set_char(2, 1, 'X', Color::RED, Color::BLACK, false, false, false, false, false, false);
+        buf.set_char(
+            2,
+            1,
+            'X',
+            Color::RED,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         buf.resize(10, 5);
         assert_eq!(buf.get(2, 1).ch, 'X');
         assert_eq!(buf.width, 10);

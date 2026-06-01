@@ -1,25 +1,30 @@
 use crate::buffer::ScreenBuffer;
-use crate::layout::{compute_layout, LayoutResult, wrap_text};
+use crate::layout::{compute_layout, wrap_text, LayoutResult};
+use crate::render::{render_commands_to_buffer, RenderCommandArray, RenderTarget};
 use crate::types::Color;
 use crate::ui::*;
 
 /// Paint a UiNode tree into a ScreenBuffer.
 ///
-/// This is the rendering bridge: computes layout, then paints cells.
+/// Compatibility wrapper over the command-based pipeline.
 pub fn paint(node: &UiNode, width: u16, height: u16) -> ScreenBuffer {
-    let layout = compute_layout(node, width, height);
-    let mut buf = ScreenBuffer::new(width, height);
-    paint_node(node, &layout, &mut buf);
-    buf
+    let commands = collect_render_commands(node, width, height);
+    render_commands_to_buffer(commands.commands(), width, height)
 }
 
-/// Paint with an existing buffer (for incremental updates).
-pub fn paint_into(node: &UiNode, buf: &mut ScreenBuffer) {
-    let layout = compute_layout(node, buf.width, buf.height);
+/// Collect Clay-style render commands for a UI tree.
+pub fn collect_render_commands(node: &UiNode, width: u16, height: u16) -> RenderCommandArray {
+    let mut commands = RenderCommandArray::new(width, height);
+    paint_into_target(node, &mut commands);
+    commands
+}
+
+fn paint_into_target<T: RenderTarget>(node: &UiNode, buf: &mut T) {
+    let layout = compute_layout(node, buf.width(), buf.height());
     paint_node(node, &layout, buf);
 }
 
-fn paint_node(node: &UiNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_node<T: RenderTarget>(node: &UiNode, layout: &LayoutResult, buf: &mut T) {
     match node {
         UiNode::Text(t) => paint_text(t, layout, buf),
         UiNode::Span(s) => paint_span(s, layout, buf),
@@ -65,7 +70,7 @@ fn paint_node(node: &UiNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
     }
 }
 
-fn paint_text(node: &TextNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_text<T: RenderTarget>(node: &TextNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
 
@@ -82,20 +87,22 @@ fn paint_text(node: &TextNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
         Wrap::Wrap => {
             let lines = wrap_text(&node.content, layout.width as u16);
             for (i, line) in lines.iter().enumerate() {
-                if y + i as u16 >= buf.height { break; }
+                if y + i as u16 >= buf.height() {
+                    break;
+                }
                 buf.write_styled(x, y + i as u16, line, &node.style);
             }
         }
     }
 }
 
-fn paint_span(node: &SpanNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_span<T: RenderTarget>(node: &SpanNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     buf.write_styled(x, y, &node.content, &node.style);
 }
 
-fn paint_box(node: &BoxNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_box<T: RenderTarget>(node: &BoxNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -122,7 +129,7 @@ fn paint_box(node: &BoxNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
     }
 }
 
-fn paint_divider(node: &DividerNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_divider<T: RenderTarget>(node: &DividerNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -132,11 +139,15 @@ fn paint_divider(node: &DividerNode, layout: &LayoutResult, buf: &mut ScreenBuff
     buf.hline(x, y, w, ch, fg, bg);
 }
 
-fn paint_progress(node: &ProgressNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_progress<T: RenderTarget>(node: &ProgressNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = node.width;
-    let ratio = if node.max > 0.0 { (node.value / node.max).clamp(0.0, 1.0) } else { 0.0 };
+    let ratio = if node.max > 0.0 {
+        (node.value / node.max).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let filled = (w as f32 * ratio) as u16;
 
     let filled_fg = node.filled_style.fg.unwrap_or(Color::GREEN);
@@ -146,9 +157,33 @@ fn paint_progress(node: &ProgressNode, layout: &LayoutResult, buf: &mut ScreenBu
 
     for dx in 0..w {
         if dx < filled {
-            buf.set_char(x + dx, y, '█', filled_fg, filled_bg, false, false, false, false, false, false);
+            buf.set_char(
+                x + dx,
+                y,
+                '█',
+                filled_fg,
+                filled_bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
         } else {
-            buf.set_char(x + dx, y, '░', empty_fg, empty_bg, false, false, false, false, false, false);
+            buf.set_char(
+                x + dx,
+                y,
+                '░',
+                empty_fg,
+                empty_bg,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+            );
         }
     }
 
@@ -159,7 +194,7 @@ fn paint_progress(node: &ProgressNode, layout: &LayoutResult, buf: &mut ScreenBu
     }
 }
 
-fn paint_list(node: &ListNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_list<T: RenderTarget>(node: &ListNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let fg = node.style.fg.unwrap_or(Color::WHITE);
@@ -181,7 +216,7 @@ fn paint_list(node: &ListNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
     }
 }
 
-fn paint_table(node: &TableNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_table<T: RenderTarget>(node: &TableNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -213,7 +248,7 @@ fn paint_table(node: &TableNode, layout: &LayoutResult, buf: &mut ScreenBuffer) 
     }
 }
 
-fn paint_scroll_view(node: &ScrollNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_scroll_view<T: RenderTarget>(node: &ScrollNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = node.viewport_width;
@@ -231,13 +266,25 @@ fn paint_scroll_view(node: &ScrollNode, layout: &LayoutResult, buf: &mut ScreenB
     if total_h > h as u32 && node.scroll_policy != ScrollPolicy::Never {
         let ratio = node.scroll_y as f32 / total_h as f32;
         let indicator_y = y + (ratio * h as f32) as u16;
-        buf.set_char(x + w - 1, indicator_y, '▐', Color::WHITE, Color::BLACK, false, false, false, false, false, false);
+        buf.set_char(
+            x + w - 1,
+            indicator_y,
+            '▐',
+            Color::WHITE,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
     }
 }
 
 // ── Editor / IDE / Agent widget painters ──
 
-fn paint_input(node: &InputNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_input<T: RenderTarget>(node: &InputNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -266,11 +313,13 @@ fn paint_input(node: &InputNode, layout: &LayoutResult, buf: &mut ScreenBuffer) 
         } else {
             ' '
         };
-        buf.set_char(cx, y, ch, cursor_fg, cursor_bg, false, false, false, false, false, false);
+        buf.set_char(
+            cx, y, ch, cursor_fg, cursor_bg, false, false, false, false, false, false,
+        );
     }
 }
 
-fn paint_textarea(node: &TextAreaNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_textarea<T: RenderTarget>(node: &TextAreaNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -322,7 +371,9 @@ fn paint_textarea(node: &TextAreaNode, layout: &LayoutResult, buf: &mut ScreenBu
                 if sel.contains(line_u32, doc_col) {
                     let mut cell = buf.get(x + gutter_w + col, ry);
                     cell.bg = sel_bg;
-                    if let Some(sfg) = sel_fg { cell.fg = sfg; }
+                    if let Some(sfg) = sel_fg {
+                        cell.fg = sfg;
+                    }
                     buf.set(x + gutter_w + col, ry, cell);
                 }
             }
@@ -338,16 +389,19 @@ fn paint_textarea(node: &TextAreaNode, layout: &LayoutResult, buf: &mut ScreenBu
             let cy = y + cursor_row;
             let cursor_fg = node.cursor_style.fg.unwrap_or(Color::BLACK);
             let cursor_bg = node.cursor_style.bg.unwrap_or(Color::WHITE);
-            let ch = node.lines
+            let ch = node
+                .lines
                 .get(node.cursor_line as usize)
                 .and_then(|l| l.char_at(node.cursor_col as usize))
                 .unwrap_or(' ');
-            buf.set_char(cx, cy, ch, cursor_fg, cursor_bg, false, false, false, false, false, false);
+            buf.set_char(
+                cx, cy, ch, cursor_fg, cursor_bg, false, false, false, false, false, false,
+            );
         }
     }
 }
 
-fn paint_tab_bar(node: &TabBarNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_tab_bar<T: RenderTarget>(node: &TabBarNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -360,13 +414,17 @@ fn paint_tab_bar(node: &TabBarNode, layout: &LayoutResult, buf: &mut ScreenBuffe
 
     let mut cx = x;
     for (i, item) in node.items.iter().enumerate() {
-        if cx >= x + w { break; }
+        if cx >= x + w {
+            break;
+        }
 
         let is_active = i == node.active;
 
         let title = format!(" {}{} ", item.title, if item.modified { " ●" } else { "" });
         let title_w = title.len() as u16;
-        if cx + title_w > x + w { break; }
+        if cx + title_w > x + w {
+            break;
+        }
 
         if is_active {
             let style = node.active_style;
@@ -379,7 +437,7 @@ fn paint_tab_bar(node: &TabBarNode, layout: &LayoutResult, buf: &mut ScreenBuffe
     }
 }
 
-fn paint_tree_view(node: &TreeViewNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_tree_view<T: RenderTarget>(node: &TreeViewNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let w = layout.width as u16;
 
@@ -391,21 +449,28 @@ fn paint_tree_view(node: &TreeViewNode, layout: &LayoutResult, buf: &mut ScreenB
     let mut row: u16 = 0;
     let mut flat_idx: usize = 0;
 
-    fn paint_tree_item(
+    fn paint_tree_item<T: RenderTarget>(
         item: &TreeItem,
         depth: u16,
-        x: u16, w: u16,
+        x: u16,
+        w: u16,
         row: &mut u16,
         flat_idx: &mut usize,
         selected: Option<usize>,
         indent: u16,
-        fg: Color, bg: Color,
-        sel_fg: Color, sel_bg: Color,
-        buf: &mut ScreenBuffer,
+        fg: Color,
+        bg: Color,
+        sel_fg: Color,
+        sel_bg: Color,
+        buf: &mut T,
     ) {
         let y = *row;
         let is_selected = selected == Some(*flat_idx);
-        let (item_fg, item_bg) = if is_selected { (sel_fg, sel_bg) } else { (fg, bg) };
+        let (item_fg, item_bg) = if is_selected {
+            (sel_fg, sel_bg)
+        } else {
+            (fg, bg)
+        };
 
         // Fill row
         buf.fill_char(x, y, w, 1, ' ', item_fg, item_bg);
@@ -425,7 +490,15 @@ fn paint_tree_view(node: &TreeViewNode, layout: &LayoutResult, buf: &mut ScreenB
         let label_x = prefix_x + 2;
         if let Some(ref icon) = item.icon {
             buf.write_str(label_x, y, icon, item_fg, item_bg, false, false);
-            buf.write_str(label_x + icon.len() as u16 + 1, y, &item.label, item_fg, item_bg, false, false);
+            buf.write_str(
+                label_x + icon.len() as u16 + 1,
+                y,
+                &item.label,
+                item_fg,
+                item_bg,
+                false,
+                false,
+            );
         } else {
             buf.write_str(label_x, y, &item.label, item_fg, item_bg, false, false);
         }
@@ -435,17 +508,45 @@ fn paint_tree_view(node: &TreeViewNode, layout: &LayoutResult, buf: &mut ScreenB
 
         if item.expanded {
             for child in &item.children {
-                paint_tree_item(child, depth + 1, x, w, row, flat_idx, selected, indent, fg, bg, sel_fg, sel_bg, buf);
+                paint_tree_item(
+                    child,
+                    depth + 1,
+                    x,
+                    w,
+                    row,
+                    flat_idx,
+                    selected,
+                    indent,
+                    fg,
+                    bg,
+                    sel_fg,
+                    sel_bg,
+                    buf,
+                );
             }
         }
     }
 
     for item in &node.items {
-        paint_tree_item(item, 0, x, w, &mut row, &mut flat_idx, node.selected, node.indent, fg, bg, sel_fg, sel_bg, buf);
+        paint_tree_item(
+            item,
+            0,
+            x,
+            w,
+            &mut row,
+            &mut flat_idx,
+            node.selected,
+            node.indent,
+            fg,
+            bg,
+            sel_fg,
+            sel_bg,
+            buf,
+        );
     }
 }
 
-fn paint_split_pane(node: &SplitPaneNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_split_pane<T: RenderTarget>(node: &SplitPaneNode, layout: &LayoutResult, buf: &mut T) {
     // Paint first child
     if let Some(first_layout) = layout.children.first() {
         paint_node(&node.first, first_layout, buf);
@@ -460,7 +561,19 @@ fn paint_split_pane(node: &SplitPaneNode, layout: &LayoutResult, buf: &mut Scree
             let div_y = layout.y as u16;
             let div_h = layout.height as u16;
             for dy in 0..div_h {
-                buf.set_char(div_x, div_y + dy, '│', fg, bg, false, false, false, false, false, false);
+                buf.set_char(
+                    div_x,
+                    div_y + dy,
+                    '│',
+                    fg,
+                    bg,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                );
             }
         }
         Orientation::Vertical => {
@@ -477,7 +590,7 @@ fn paint_split_pane(node: &SplitPaneNode, layout: &LayoutResult, buf: &mut Scree
     }
 }
 
-fn paint_status_bar(node: &StatusBarNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_status_bar<T: RenderTarget>(node: &StatusBarNode, layout: &LayoutResult, buf: &mut T) {
     let x = layout.x as u16;
     let y = layout.y as u16;
     let w = layout.width as u16;
@@ -506,14 +619,14 @@ fn paint_status_bar(node: &StatusBarNode, layout: &LayoutResult, buf: &mut Scree
 
 // ── WGPU-only widget painters ──
 
-fn paint_canvas(_node: &CanvasNode, layout: &LayoutResult, _buf: &mut ScreenBuffer) {
+fn paint_canvas<T: RenderTarget>(_node: &CanvasNode, layout: &LayoutResult, _buf: &mut T) {
     // TUI: reserve the rect but leave it blank.
     // The layout system already allocated width×height.
     // WGPU backend reads frame_id and renders pixel content separately.
     let _ = layout;
 }
 
-fn paint_overlay(node: &OverlayNode, layout: &LayoutResult, buf: &mut ScreenBuffer) {
+fn paint_overlay<T: RenderTarget>(node: &OverlayNode, layout: &LayoutResult, buf: &mut T) {
     // TUI: paint child on top of existing content at absolute position.
     // No background clearing — overlay composites over existing cells.
     if let Some(child_layout) = layout.children.first() {
@@ -545,10 +658,7 @@ mod tests {
 
     #[test]
     fn test_paint_column() {
-        let node = UiNode::column(vec![
-            UiNode::text("A"),
-            UiNode::text("B"),
-        ]);
+        let node = UiNode::column(vec![UiNode::text("A"), UiNode::text("B")]);
         let buf = paint(&node, 20, 5);
         assert_eq!(buf.get(0, 0).ch, 'A');
         assert_eq!(buf.get(0, 1).ch, 'B');
@@ -574,10 +684,8 @@ mod tests {
 
     #[test]
     fn test_paint_list() {
-        let node = UiNode::list(vec![
-            UiNode::text("Item 1"),
-            UiNode::text("Item 2"),
-        ]).marker(ListMarker::Bullet);
+        let node = UiNode::list(vec![UiNode::text("Item 1"), UiNode::text("Item 2")])
+            .marker(ListMarker::Bullet);
         let buf = paint(&node, 20, 5);
         assert_eq!(buf.get(0, 0).ch, '•');
         assert_eq!(buf.get(0, 1).ch, '•');
@@ -607,10 +715,9 @@ mod tests {
 
     #[test]
     fn test_paint_textarea() {
-        let node = UiNode::textarea_plain(vec![
-            "line one".into(),
-            "line two".into(),
-        ]).height(3).focused(true);
+        let node = UiNode::textarea_plain(vec!["line one".into(), "line two".into()])
+            .height(3)
+            .focused(true);
         let buf = paint(&node, 20, 3);
         assert_eq!(buf.get(0, 0).ch, 'l');
         assert_eq!(buf.get(0, 1).ch, 'l');
@@ -619,7 +726,8 @@ mod tests {
     #[test]
     fn test_paint_textarea_with_gutter() {
         let node = UiNode::textarea_plain(vec!["code".into()])
-            .height(2).gutter(true);
+            .height(2)
+            .gutter(true);
         let buf = paint(&node, 20, 2);
         // Gutter shows "1 " for first line
         assert_eq!(buf.get(0, 0).ch, '1');
@@ -630,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_paint_textarea_styled_lines() {
-        use crate::types::{StyledLine, StyledSpan, Style};
+        use crate::types::{Style, StyledLine, StyledSpan};
 
         // "let x = 5;" with "let" in magenta, rest in white
         let keyword_style = Style::default().fg(Color::MAGENTA).bold();
@@ -688,10 +796,8 @@ mod tests {
 
     #[test]
     fn test_paint_tab_bar() {
-        let node = UiNode::tab_bar(vec![
-            TabItem::new("file1.rs"),
-            TabItem::new("file2.rs"),
-        ]).active_tab(0);
+        let node =
+            UiNode::tab_bar(vec![TabItem::new("file1.rs"), TabItem::new("file2.rs")]).active_tab(0);
         let buf = paint(&node, 40, 1);
         // Tab format: " file1.rs " with underline at row 0 for active tab
         assert_eq!(buf.get(1, 0).ch, 'f');
@@ -700,9 +806,9 @@ mod tests {
     #[test]
     fn test_paint_tree_view() {
         let node = UiNode::tree_view(vec![
-            TreeItem::new("src").children(vec![
-                TreeItem::new("main.rs"),
-            ]).expanded(true),
+            TreeItem::new("src")
+                .children(vec![TreeItem::new("main.rs")])
+                .expanded(true),
             TreeItem::new("Cargo.toml"),
         ]);
         let buf = paint(&node, 30, 5);
@@ -719,7 +825,8 @@ mod tests {
             Orientation::Horizontal,
             UiNode::text("left"),
             UiNode::text("right"),
-        ).ratio(0.5);
+        )
+        .ratio(0.5);
         let buf = paint(&node, 20, 3);
         assert_eq!(buf.get(0, 0).ch, 'l');
         // Divider at midpoint
@@ -751,11 +858,20 @@ mod tests {
     }
 
     #[test]
+    fn test_collect_render_commands_matches_paint() {
+        let node = UiNode::boxed(vec![UiNode::text("Hello")])
+            .border(Border::all(None))
+            .title("Test");
+        let painted = paint(&node, 20, 5);
+        let rendered = collect_render_commands(&node, 20, 5).into_buffer();
+        assert_eq!(painted.get(0, 0).ch, rendered.get(0, 0).ch);
+        assert_eq!(painted.get(1, 1).ch, rendered.get(1, 1).ch);
+        assert_eq!(painted.get(19, 0).ch, rendered.get(19, 0).ch);
+    }
+
+    #[test]
     fn test_paint_overlay() {
-        let node = UiNode::overlay(
-            UiNode::boxed(vec![UiNode::text("popup")]),
-            5, 2,
-        );
+        let node = UiNode::overlay(UiNode::boxed(vec![UiNode::text("popup")]), 5, 2);
         let layout = crate::layout::compute_layout(&node, 40, 20);
         assert_eq!(layout.x, 5.0);
         assert_eq!(layout.y, 2.0);

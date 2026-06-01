@@ -4,6 +4,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use display_protocol::buffer::ScreenBuffer;
+use display_protocol::render::{render_commands_to_buffer, RenderCommandArray};
 use display_protocol::{CursorStyle, FrameUpdate, Grid, InputEvent};
 use ratatui::{backend::CrosstermBackend, buffer::Buffer as RatatuiBuffer, layout::Rect, Terminal};
 use std::io;
@@ -161,6 +162,13 @@ impl TuiTerminal {
     /// Flush the terminal.
     pub fn flush(&mut self) -> Result<(), io::Error> {
         self.terminal.flush()
+    }
+
+    /// Render a Clay-style render command array by first rasterizing it to a screen buffer.
+    pub fn render_command_array(&mut self, commands: &RenderCommandArray) -> Result<(), io::Error> {
+        let screen =
+            render_commands_to_buffer(commands.commands(), commands.width, commands.height);
+        self.render_screen_buffer(&screen)
     }
 }
 

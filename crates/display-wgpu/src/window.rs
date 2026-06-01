@@ -1,4 +1,4 @@
-use display_protocol::{InputEvent, UiNode, paint};
+use display_protocol::{collect_render_commands, InputEvent, UiNode};
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -129,18 +129,23 @@ impl ApplicationHandler for WgpuApp {
             ));
 
         let window = Arc::new(
-            event_loop.create_window(attrs).expect("Failed to create window")
+            event_loop
+                .create_window(attrs)
+                .expect("Failed to create window"),
         );
 
         // Create surface.
-        let instance = wgpu::Instance::new(
-            wgpu::InstanceDescriptor::new_without_display_handle()
-        );
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let surface = instance.create_surface(window.clone()).unwrap();
 
         // Create renderer (needs async, so we block on it).
         // Pass instance so it lives as long as the renderer (surface requires the instance to stay alive in wgpu 29.x).
-        let renderer = pollster::block_on(WgpuRenderer::new(instance, surface, &window, &self.font_bytes));
+        let renderer = pollster::block_on(WgpuRenderer::new(
+            instance,
+            surface,
+            &window,
+            &self.font_bytes,
+        ));
 
         self.window = Some(window);
         self.renderer = Some(renderer);
@@ -204,8 +209,9 @@ impl WgpuApp {
         let events: Vec<InputEvent> = self.pending_events.drain(..).collect();
         let ui = (self.render_fn)(&events, &ctx);
 
-        // Paint UI tree into a ScreenBuffer.
-        let buf = paint(&ui, ctx.grid_cols, ctx.grid_rows);
+        // Build a Clay-style render command array, then rasterize for the GPU backend.
+        let commands = collect_render_commands(&ui, ctx.grid_cols, ctx.grid_rows);
+        let buf = commands.into_buffer();
 
         // Render.
         if let Some(renderer) = &mut self.renderer {
