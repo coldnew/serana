@@ -1185,7 +1185,7 @@ impl Evaluator {
                             }
                         }
                     }
-                    result.push(self.expand_quasiquote(Env::new(), item)?);
+                    result.push(self.expand_quasiquote(env.clone(), item)?);
                 }
                 Ok(Value::list(result))
             }
@@ -1853,7 +1853,7 @@ impl Evaluator {
         }
         let atom = self.eval_in(env.clone(), &args[0])?;
         let func = self.eval_in(env.clone(), &args[1])?;
-        let extra_args = self.eval_args(Env::new(), &args[2..])?;
+        let extra_args = self.eval_args(env.clone(), &args[2..])?;
 
         match atom {
             Value::Atom(a) => {
@@ -1862,6 +1862,7 @@ impl Evaluator {
                 all_args.extend(extra_args);
                 let new_val = match func {
                     Value::Fn(f) => self.call_fn(f, all_args)?,
+                    Value::Native(f) => f(&all_args).map_err(EvalError::Custom)?,
                     _ => {
                         return Err(EvalError::NotAFunction(
                             "swap! second arg must be a function".to_string(),
@@ -1986,7 +1987,7 @@ impl Evaluator {
         }
         let agent = self.eval_in(env.clone(), &args[0])?;
         let func = self.eval_in(env.clone(), &args[1])?;
-        let extra_args = self.eval_args(Env::new(), &args[2..])?;
+        let extra_args = self.eval_args(env.clone(), &args[2..])?;
 
         match agent {
             Value::Agent(a) => {
@@ -1995,6 +1996,7 @@ impl Evaluator {
                 all_args.extend(extra_args);
                 let new_val = match func {
                     Value::Fn(f) => self.call_fn(f, all_args)?,
+                    Value::Native(f) => f(&all_args).map_err(EvalError::Custom)?,
                     _ => {
                         return Err(EvalError::NotAFunction(
                             "send second arg must be a function".to_string(),
@@ -2068,7 +2070,7 @@ impl Evaluator {
         }
         let ref_val = self.eval_in(env.clone(), &args[0])?;
         let func = self.eval_in(env.clone(), &args[1])?;
-        let extra_args = self.eval_args(Env::new(), &args[2..])?;
+        let extra_args = self.eval_args(env.clone(), &args[2..])?;
 
         match ref_val {
             Value::Ref(r) => {
@@ -2077,6 +2079,7 @@ impl Evaluator {
                 all_args.extend(extra_args);
                 let new_val = match func {
                     Value::Fn(f) => self.call_fn(f, all_args)?,
+                    Value::Native(f) => f(&all_args).map_err(EvalError::Custom)?,
                     _ => {
                         return Err(EvalError::NotAFunction(
                             "alter second arg must be a function".to_string(),

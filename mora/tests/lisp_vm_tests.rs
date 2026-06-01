@@ -1457,4 +1457,32 @@ mod tests {
             .unwrap();
         assert_eq!(result, Value::Int(42));
     }
+    // ── mora.test framework integration ──
+    #[test]
+    fn test_mora_test_framework() {
+        let mut lisp = MoraLisp::new();
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let test_framework = std::fs::read_to_string(format!("{}/lisp/test.mora", manifest)).unwrap();
+        let core_tests = std::fs::read_to_string(format!("{}/lisp/tests/core.mora", manifest)).unwrap();
+        let forms = mora_bin::lisp::reader::read_all(&format!("{}\n{}", test_framework, core_tests)).unwrap();
+        for form in &forms {
+            lisp.eval_form(form).expect("eval failed");
+        }
+        let result = lisp.eval("(run-all-tests)").expect("run-all-tests failed");
+        assert_eq!(result, Value::Bool(true), "some mora.test assertions failed");
+    }
+    #[test]
+    fn test_mora_test_individual_suite() {
+        let mut lisp = MoraLisp::new();
+        let manifest = env!("CARGO_MANIFEST_DIR");
+        let test_framework = std::fs::read_to_string(format!("{}/lisp/test.mora", manifest)).unwrap();
+        let core_tests = std::fs::read_to_string(format!("{}/lisp/tests/core.mora", manifest)).unwrap();
+        let combined = format!("{}\n{}", test_framework, core_tests);
+        let forms = mora_bin::lisp::reader::read_all(&combined).expect("parse failed");
+        for form in &forms {
+            lisp.eval_form(form).expect("eval failed");
+        }
+        let result = lisp.eval("(run-tests)").unwrap();
+        assert_eq!(result, Value::Bool(true), "some tests failed");
+    }
 }

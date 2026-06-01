@@ -1,0 +1,52 @@
+;;; mora.test --- Testing framework for Mora Lisp
+
+(def *test-registry* (atom {}))
+(def *test-pass-count* (atom 0))
+(def *test-fail-count* (atom 0))
+(def *test-failures* (atom []))
+
+(def register-test
+  (fn [name test-fn]
+    (swap! *test-registry* assoc name test-fn)))
+
+(def is-expr
+  (fn [expr-result expr-str]
+    (if expr-result
+      (swap! *test-pass-count* inc)
+      (do
+        (swap! *test-fail-count* inc)
+        (swap! *test-failures* conj expr-str)))
+    expr-result))
+
+(def set-test-context
+  (fn [ctx]
+    nil))
+
+(def run-tests
+  (fn []
+    (reset! *test-pass-count* 0)
+    (reset! *test-fail-count* 0)
+    (reset! *test-failures* [])
+    (let [tests @*test-registry*
+          names (sort (keys tests))]
+      (doseq [name names]
+        (let [test-fn (get tests name)]
+          (try
+            (test-fn)
+            (catch e
+              (swap! *test-fail-count* inc)
+              (swap! *test-failures* conj (str "Exception in " name)))))))
+    (let [p @*test-pass-count*
+          f @*test-fail-count*]
+      (println (str "\n--- mora.test report ---"))
+      (println (str "Total: " (+ p f) "  Pass: " p "  Fail: " f))
+      (when (> f 0)
+        (println "\nFAILURES:")
+        (doseq [msg @*test-failures*]
+          (println (str "  FAIL: " msg))))
+      (println "")
+      (= f 0))))
+
+(def run-all-tests
+  (fn []
+    (run-tests)))
