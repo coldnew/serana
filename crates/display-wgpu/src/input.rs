@@ -4,15 +4,19 @@ use winit::keyboard::{Key, NamedKey, ModifiersState};
 
 /// Convert a winit `WindowEvent` into a display-protocol `InputEvent`.
 ///
+/// `modifiers` is the most recently observed `ModifiersState` (from
+/// `ModifiersChanged`); winit does not include modifier info on
+/// `KeyboardInput` events, so the caller must track it.
+///
 /// Returns `None` for events that don't map to the display protocol
 /// (e.g. redraw requested, close requested).
-pub fn winit_to_input_event(event: &WindowEvent) -> Option<InputEvent> {
+pub fn winit_to_input_event(event: &WindowEvent, modifiers: ModifiersState) -> Option<InputEvent> {
+    let proto_mods = winit_mods_to_proto(modifiers);
     match event {
         WindowEvent::KeyboardInput { event, .. } => {
             if event.state == ElementState::Pressed {
                 let code = winit_key_to_code(&event.logical_key);
-                let mods = winit_mods_to_proto(ModifiersState::default()); // modifiers come from event elsewhere
-                Some(InputEvent::Key(KeyEvent::new(code, mods)))
+                Some(InputEvent::Key(KeyEvent::new(code, proto_mods)))
             } else {
                 None
             }
@@ -27,7 +31,7 @@ pub fn winit_to_input_event(event: &WindowEvent) -> Option<InputEvent> {
                 x: 0,
                 y: 0,
                 kind,
-                modifiers: KeyModifiers::default(),
+                modifiers: proto_mods,
             })
         }
         WindowEvent::CursorMoved { position, .. } => {
@@ -35,7 +39,7 @@ pub fn winit_to_input_event(event: &WindowEvent) -> Option<InputEvent> {
                 x: position.x as u16,
                 y: position.y as u16,
                 kind: MouseEventKind::Drag,
-                modifiers: KeyModifiers::default(),
+                modifiers: proto_mods,
             })
         }
         WindowEvent::MouseWheel { delta, .. } => {
@@ -54,7 +58,7 @@ pub fn winit_to_input_event(event: &WindowEvent) -> Option<InputEvent> {
                 x: 0,
                 y: 0,
                 kind,
-                modifiers: KeyModifiers::default(),
+                modifiers: proto_mods,
             })
         }
         WindowEvent::Resized(size) => {

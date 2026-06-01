@@ -3,6 +3,7 @@ use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
 use crate::input::winit_to_input_event;
@@ -85,6 +86,7 @@ impl WgpuWindow {
             window: None,
             renderer: None,
             pending_events: Vec::new(),
+            modifiers: ModifiersState::default(),
             render_fn: Box::new(render_fn),
         };
 
@@ -109,6 +111,7 @@ struct WgpuApp {
     window: Option<Arc<Window>>,
     renderer: Option<WgpuRenderer>,
     pending_events: Vec<InputEvent>,
+    modifiers: ModifiersState,
     render_fn: Box<dyn FnMut(&[InputEvent], &RenderCtx) -> UiNode>,
 }
 
@@ -163,11 +166,15 @@ impl ApplicationHandler for WgpuApp {
                 self.render_frame();
                 return;
             }
+            WindowEvent::ModifiersChanged(mods) => {
+                self.modifiers = mods.state();
+                return;
+            }
             _ => {}
         }
 
         // Accumulate input events.
-        if let Some(input) = winit_to_input_event(&event) {
+        if let Some(input) = winit_to_input_event(&event, self.modifiers) {
             self.pending_events.push(input);
         }
     }
