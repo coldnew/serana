@@ -29,7 +29,7 @@ pub fn render(editor: &Editor, width: u16, height: u16) -> ScreenBuffer {
     }
 
     let tree = build_ui(editor, width, height);
-    display_protocol::paint_into(&tree, &mut buf);
+    buf = display_protocol::collect_render_commands(&tree, width, height).into_buffer();
     paint_filler_lines(&mut buf, editor, text_area_height(height));
 
     buf

@@ -146,7 +146,8 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     let result = (|| -> anyhow::Result<()> {
         loop {
             let (width, height) = terminal.size().map(|s| (s.width, s.height))?;
-            let ui = mora_bin::mora::ui_node::build_ui(&mut editor, width, height);
+            let show_menu_bar = editor.show_menu_bar;
+            let ui = mora_bin::mora::ui_node::build_ui(&mut editor, width, height, show_menu_bar);
             let buf = display_protocol::paint::paint(&ui, width, height);
             terminal.draw(|frame| {
                 for y in 0..height {
