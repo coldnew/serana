@@ -107,16 +107,26 @@ thread_local! {
 pub fn with_editor_state<R>(f: impl FnOnce(&EditorState) -> R) -> R {
     EDITOR_STATE.with(|state| {
         let state = state.borrow();
-        let state = state.as_ref().expect("No editor context available");
-        f(state)
+        match state.as_ref() {
+            Some(s) => f(s),
+            None => {
+                eprintln!("[mora] with_editor_state: no editor context (thread-local None), using default state");
+                f(&EditorState::new())
+            }
+        }
     })
 }
 
 pub fn with_editor_state_mut<R>(f: impl FnOnce(&mut EditorState) -> R) -> R {
     EDITOR_STATE.with(|state| {
         let mut state = state.borrow_mut();
-        let state = state.as_mut().expect("No editor context available");
-        f(state)
+        match state.as_mut() {
+            Some(s) => f(s),
+            None => {
+                eprintln!("[mora] with_editor_state_mut: no editor context (thread-local None), using default state (changes will be lost)");
+                f(&mut EditorState::new())
+            }
+        }
     })
 }
 
