@@ -136,7 +136,8 @@ impl ApplicationHandler for WgpuApp {
         let surface = instance.create_surface(window.clone()).unwrap();
 
         // Create renderer (needs async, so we block on it).
-        let renderer = pollster::block_on(WgpuRenderer::new(surface, &window, &self.font_bytes));
+        // Pass instance so it lives as long as the renderer (surface requires the instance to stay alive in wgpu 29.x).
+        let renderer = pollster::block_on(WgpuRenderer::new(instance, surface, &window, &self.font_bytes));
 
         self.window = Some(window);
         self.renderer = Some(renderer);

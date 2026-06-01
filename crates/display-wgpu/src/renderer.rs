@@ -59,6 +59,7 @@ fn style_flags(cell: &ScreenCell) -> u32 {
 ///
 /// Renders character cells using instanced quads with a glyph atlas.
 pub struct WgpuRenderer {
+    pub instance: wgpu::Instance,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub surface: wgpu::Surface<'static>,
@@ -85,6 +86,7 @@ impl WgpuRenderer {
     ///
     /// `font_bytes` should be a TrueType/OpenType font (monospace recommended).
     pub async fn new(
+        instance: wgpu::Instance,
         surface: wgpu::Surface<'static>,
         window: &winit::window::Window,
         font_bytes: &[u8],
@@ -92,11 +94,6 @@ impl WgpuRenderer {
         let size = window.inner_size();
         let pixel_width = size.width.max(1);
         let pixel_height = size.height.max(1);
-
-        // ── wgpu init ──
-        let instance = wgpu::Instance::new(
-            wgpu::InstanceDescriptor::new_without_display_handle()
-        );
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -348,6 +345,7 @@ impl WgpuRenderer {
         let grid_rows = (pixel_height as f32 / cell_height) as u16;
 
         Self {
+            instance,
             device,
             queue,
             surface,
