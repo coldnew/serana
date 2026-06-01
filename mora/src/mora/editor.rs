@@ -7,6 +7,7 @@ use super::keymap::{EditorMode, KeyAction, PendingOp};
 use super::kill_ring::KillRing;
 use super::lisp_ext::MoraLispBridge;
 use super::macro_state::MacroState;
+use super::major_mode::{self, MajorModeKind};
 use super::mark::MarkRing;
 use super::minibuffer::Minibuffer;
 use super::register::Registers;
@@ -202,10 +203,10 @@ impl MoraEditor {
             "".to_string(),
             "".to_string(),
         ];
+        self.buffer.major_mode = major_mode::create_mode(MajorModeKind::Lisp);
         self.buffer.cursor.row = 4;
         self.buffer.cursor.col = 0;
         self.buffer.modified = false;
-        self.message("Welcome to Mora. Type M-x for commands.");
     }
 
     /// Log a message to the *Messages* buffer (like emacs)
@@ -791,12 +792,14 @@ mod tests {
 
         assert!(editor.scratch_initialized);
         assert_eq!(editor.buffer.lines.len(), 5);
+        assert_eq!(editor.buffer.major_mode.name(), "Lisp");
         assert_eq!(
             editor.buffer.lines[0],
             ";; This buffer is for text that is not saved."
         );
         assert_eq!(editor.buffer.cursor.row, 4);
         assert!(!editor.buffer.modified);
+        assert!(editor.messages.is_empty());
     }
 
     #[test]

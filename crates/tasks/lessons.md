@@ -1,5 +1,6 @@
 # Lessons
 
+- WGPU cell renderers need the shader and CPU instance layout to share both screen size and cell size; positioning instances on a glyph grid is not enough if the vertex shader expands each quad by only one pixel.
 - JSX UI trees are a good fit for stable editor layout, but runtime optional state like visual selection may still need a narrow post-construction patch if the macro models optional attributes as `Some(expr)`.
 - Terminal editors that need mode-specific cursor shape should prefer the real terminal cursor over a painted cursor cell; otherwise cursor shape, command-line cursor placement, and terminal cleanup all fight the render layer.
 - When refactoring a large Rust module, child modules can keep the parent type's private state encapsulated while allowing cohesive `impl` blocks to move out of the main file with only `pub(super)` methods where cross-module dispatch needs them.
@@ -78,3 +79,4 @@
 - Footnotes also require the pulldown option; render both reference and definition markers or the transcript loses navigational structure.
 - Math markdown also needs the pulldown option enabled; render formulas visibly as text so equations do not disappear in transcript views.
 - Definition lists need both the pulldown option and explicit tag handling; otherwise terms and definitions lose their relationship in rendered transcripts.
+- Mora's default Emacs-like frame should be driven from startup policy, not the renderer: scratch mode, menu labels, and whether line numbers are shown need to be set before UI composition so the default frame stays consistent.

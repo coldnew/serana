@@ -10,7 +10,7 @@ pub(super) fn build_menu_bar(editor: &MoraEditor, width: u16) -> UiNode {
     let t = &editor.theme;
     let fg = t.modeline_fg;
     let bg = t.modeline_bg;
-    let menus = " File  Edit  Options  Buffers  Tools  Lisp  Help ";
+    let menus = " File  Edit  Options  Buffers  Tools  Help ";
     let content = pad_to_width(menus, width as usize);
 
     jsx! {

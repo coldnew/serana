@@ -3,17 +3,10 @@ use crate::mora::keymap::EditorMode;
 use display_protocol::UiNode;
 use display_protocol_jsx::jsx;
 
-/// Emacs-style modeline matching the real Emacs mode-line format.
+/// Emacs-style modeline for the default frame.
 ///
-/// Format: --:**-  *scratch*  (Lisp Interaction)  --L1--C1----  All
-///
-/// Components:
-///   - Modified flag: `**` (modified) or `--` (unmodified)
-///   - Dash separator
-///   - Buffer name (with `*...*` for special buffers)
-///   - Major mode (with submode if active)
-///   - Position with dashes: `--L<line>--C<col>----`
-///   - Percentage or `Top`/`Bot`/`All`
+/// The line keeps the same shape as the stock Emacs frame:
+/// modified flag, buffer name, mode, minor-mode indicators, and position.
 pub(super) fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     let buf = editor.buffer();
     let filename = buf.filename();
@@ -34,6 +27,7 @@ pub(super) fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     };
 
     let major_mode = buf.major_mode.name();
+    let minor_modes = editor.minor_modes.modeline_string();
     let submode = match editor.mode() {
         EditorMode::Normal => " Evil",
         EditorMode::Insert => "",
@@ -54,8 +48,12 @@ pub(super) fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
         format!("{:>3}%", pct)
     };
 
-    let left = format!("{}-  {}  ", modified_flag, buf_name);
-    let mode_info = format!("({}{})", major_mode, submode);
+    let left = format!("{}  {}  ", modified_flag, buf_name);
+    let mode_info = if minor_modes.is_empty() {
+        format!("({}{})", major_mode, submode)
+    } else {
+        format!("({}{}{})", major_mode, minor_modes, submode)
+    };
     let right = format!(" {}", pos_pct);
 
     let left_len = left.len();

@@ -41,11 +41,17 @@ fn syntax_style_for_col(tokens: &[syntax::HighlightToken], col: usize) -> Option
     None
 }
 
-/// Build editor area with syntax highlighting, line numbers, cursor, and selection.
+/// Build editor area with syntax highlighting, cursor, and selection.
 pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let buf = editor.buffer();
     let view = editor.view();
-    let gutter_w = view.gutter_width;
+    let show_line_numbers = editor.minor_modes.is_enabled("line-numbers")
+        || editor.minor_modes.is_enabled("relative-line-numbers");
+    let gutter_w = if show_line_numbers {
+        view.gutter_width
+    } else {
+        0
+    };
     let text_width = width.saturating_sub(gutter_w);
     let narrow_start = buf.narrow_start.unwrap_or(0);
     let narrow_end = buf.narrow_end.unwrap_or(buf.line_count().saturating_sub(1));
@@ -58,10 +64,8 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
     let highlighter = syntax::create_highlighter(buf.major_mode.name(), &full_content);
 
     let t = &editor.theme;
-    let gutter_dim = t.gutter_dim;
-    let gutter_current = t.gutter_current;
     let text_fg = t.foreground;
-    let current_line_fg = t.cursor;
+    let current_line_fg = t.foreground;
     let cursor_fg = t.background;
     let cursor_bg = t.cursor;
     let sel_bg = t.selection;
@@ -95,21 +99,24 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
         }
 
         let is_current = line_idx == buf.cursor.row;
-        let gutter_c = if is_current {
-            gutter_current
-        } else {
-            gutter_dim
-        };
-        let line_num = if is_current {
-            format!("{:>w$}", line_idx + 1, w = gutter_w as usize - 1)
-        } else {
-            format!("{:>w$} ", line_idx + 1, w = gutter_w as usize - 1)
-        };
+        let mut spans = Vec::new();
+        if show_line_numbers {
+            let gutter_dim = t.gutter_dim;
+            let gutter_current = t.gutter_current;
+            let gutter_c = if is_current {
+                gutter_current
+            } else {
+                gutter_dim
+            };
+            let line_num = if is_current {
+                format!("{:>w$}", line_idx + 1, w = gutter_w as usize - 1)
+            } else {
+                format!("{:>w$} ", line_idx + 1, w = gutter_w as usize - 1)
+            };
 
-        let mut spans = vec![
-            UiNode::text(line_num).color(gutter_c).bold(),
-            UiNode::text(" ").color(gutter_c),
-        ];
+            spans.push(UiNode::text(line_num).color(gutter_c).bold());
+            spans.push(UiNode::text(" ").color(gutter_c));
+        }
 
         let line_text = buf.line(line_idx);
         let highlight_tokens = highlighter.highlight_line(line_text, line_idx);
@@ -205,13 +212,6 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
         }
 
         flush_span(&mut spans, &mut span_text, span_fg, span_bg, span_bold);
-
-        if is_current {
-            while display_col < text_width {
-                spans.push(UiNode::text(" ").bg(t.current_line));
-                display_col += 1;
-            }
-        }
 
         rows.push(jsx_row(spans, width));
         display_row += 1;
