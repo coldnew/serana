@@ -86,12 +86,18 @@ impl TuiTerminal {
 
     pub fn render_frame(&mut self, frame: &FrameUpdate) -> Result<(), io::Error> {
         let grid = &frame.grid;
+        let strip_menu_row = self.grid_starts_with_menu_bar(grid);
         self.terminal.draw(|f| {
             let area = f.area();
             let buf = f.buffer_mut();
             for y in 0..grid.height.min(area.height) {
+                let source_y = if strip_menu_row { y + 1 } else { y };
                 for x in 0..grid.width.min(area.width) {
-                    let cell = grid.get(x, y);
+                    let cell = if strip_menu_row && source_y >= grid.height {
+                        Default::default()
+                    } else {
+                        grid.get(x, source_y)
+                    };
                     let ratatui_cell = buf.get_mut(x, y);
                     ratatui_cell.set_symbol(&cell.ch.to_string());
                     ratatui_cell.set_style(crate::conversions::style_to_ratatui(cell.style));
@@ -161,6 +167,18 @@ impl TuiTerminal {
     /// Flush the terminal.
     pub fn flush(&mut self) -> Result<(), io::Error> {
         self.terminal.flush()
+    }
+
+    fn grid_starts_with_menu_bar(&self, grid: &Grid) -> bool {
+        let mut first_row = String::new();
+        for x in 0..grid.width {
+            let ch = grid.get(x, 0).ch;
+            if ch == '\0' {
+                break;
+            }
+            first_row.push(ch);
+        }
+        first_row.trim_end() == "File Edit Options Buffers Tools Help"
     }
 }
 

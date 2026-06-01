@@ -12,6 +12,7 @@ use std::path::Path;
 /// and consumes InputEvent protocol messages. No display dependency.
 pub struct MoraCore {
     pub editor: MoraEditor,
+    pub show_menu_bar: bool,
     width: u16,
     height: u16,
 }
@@ -23,6 +24,7 @@ impl MoraCore {
         editor.init_scratch_buffer();
         Self {
             editor,
+            show_menu_bar: true,
             width,
             height,
         }
@@ -34,6 +36,7 @@ impl MoraCore {
             .map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
         Ok(Self {
             editor,
+            show_menu_bar: true,
             width,
             height,
         })
@@ -46,13 +49,22 @@ impl MoraCore {
         self.editor.set_height(editor_height);
     }
 
-    pub fn width(&self) -> u16 { self.width }
-    pub fn height(&self) -> u16 { self.height }
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+    pub fn height(&self) -> u16 {
+        self.height
+    }
 
     /// Render editor state using the declarative UiNode pipeline.
     /// Builds a UiNode tree → layout → paint → Grid.
     pub fn render_ui_frame(&mut self) -> FrameUpdate {
-        let ui = ui_node::build_ui(&mut self.editor, self.width, self.height);
+        let ui = ui_node::build_ui(
+            &mut self.editor,
+            self.width,
+            self.height,
+            self.show_menu_bar,
+        );
         let _layout = compute_layout(&ui, self.width, self.height);
         let buf = paint(&ui, self.width, self.height);
 
@@ -75,6 +87,10 @@ impl MoraCore {
             }
         }
 
+        if !self.show_menu_bar && self.grid_has_menu_bar(&grid) {
+            self.strip_top_row(&mut grid);
+        }
+
         let cursor_visible = true;
         let cursor_style = match self.editor.mode() {
             crate::mora::keymap::EditorMode::Insert => CursorStyle::Bar,
@@ -93,6 +109,36 @@ impl MoraCore {
             command_line: None,
             help_bar: None,
             full_redraw: true,
+        }
+    }
+
+    fn grid_has_menu_bar(&self, grid: &Grid) -> bool {
+        let mut first_row = String::new();
+        for x in 0..grid.width {
+            let ch = grid.get(x, 0).ch;
+            if ch == '\0' {
+                break;
+            }
+            first_row.push(ch);
+        }
+        first_row.trim_end() == "File Edit Options Buffers Tools Help"
+    }
+
+    fn strip_top_row(&self, grid: &mut Grid) {
+        if grid.height == 0 {
+            return;
+        }
+        let width = grid.width as usize;
+        let height = grid.height as usize;
+        for y in 1..height {
+            for x in 0..width {
+                let cell = grid.cells[y * width + x];
+                grid.cells[(y - 1) * width + x] = cell;
+            }
+        }
+        let last_row = (height - 1) * width;
+        for x in 0..width {
+            grid.cells[last_row + x] = Cell::default();
         }
     }
 
@@ -148,7 +194,7 @@ impl MoraCore {
     /// Build a UiNode tree directly for GPU rendering.
     /// This bypasses the FrameUpdate→Grid conversion used by the TUI path.
     pub fn build_ui_node(&mut self, width: u16, height: u16) -> UiNode {
-        ui_node::build_ui(&mut self.editor, width, height)
+        ui_node::build_ui(&mut self.editor, width, height, self.show_menu_bar)
     }
 }
 

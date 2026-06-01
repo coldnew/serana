@@ -97,6 +97,7 @@ pub struct MoraEditor {
     pub lsp_client: super::lsp::LspClient,
     pub snippet_engine: super::snippet::SnippetEngine,
     pub active_snippet: Option<super::snippet::SnippetExpansion>,
+    pub show_menu_bar: bool,
 }
 
 impl MoraEditor {
@@ -174,6 +175,7 @@ impl MoraEditor {
                 engine
             },
             active_snippet: None,
+            show_menu_bar: true,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {

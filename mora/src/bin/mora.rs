@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
+use display_protocol::{DisplayCmd, FrameUpdate, WireMessage, PROTOCOL_VERSION};
+use display_tui::TuiTerminal;
+use display_wgpu::{WgpuConfig, WgpuWindow};
+use mora_bin::lisp;
 use mora_bin::mora::editor_core::MoraCore;
 use mora_bin::mora::font::DEFAULT_FONT;
-use mora_bin::lisp;
-use display_protocol::{FrameUpdate, WireMessage, PROTOCOL_VERSION, DisplayCmd};
-use display_wgpu::{WgpuWindow, WgpuConfig};
-use display_tui::TuiTerminal;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -49,13 +49,12 @@ enum Commands {
     },
     /// Start an interactive REPL
     Repl,
- }
+}
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-
         Some(Commands::Eval { code }) => {
             let code = if code == "-" {
                 let mut buf = String::new();
@@ -88,10 +87,8 @@ fn main() -> anyhow::Result<()> {
             let mut lisp = lisp::MoraLisp::new();
 
             // Set command line args
-            let args_vec: Vec<lisp::types::Value> = args
-                .into_iter()
-                .map(lisp::types::Value::string)
-                .collect();
+            let args_vec: Vec<lisp::types::Value> =
+                args.into_iter().map(lisp::types::Value::string).collect();
             lisp.ns_mut()
                 .current()
                 .lock()
@@ -106,13 +103,9 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        None => {
-            run_editor(cli.file, cli.nw)
-        }
+        None => run_editor(cli.file, cli.nw),
 
-        Some(Commands::Connect { addr }) => {
-            run_client(&addr)
-        }
+        Some(Commands::Connect { addr }) => run_client(&addr),
 
         Some(Commands::Repl) => {
             println!("mora-lisp REPL (Ctrl-D to exit)");
@@ -143,7 +136,12 @@ fn init_lisp_state(core: &MoraCore) {
     state.cursor_row = core.editor.buffer.cursor.row;
     state.cursor_col = core.editor.buffer.cursor.col;
     state.modified = core.editor.buffer.modified;
-    state.file_path = core.editor.buffer.path.as_ref().map(|p| p.to_string_lossy().to_string());
+    state.file_path = core
+        .editor
+        .buffer
+        .path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string());
     state.mode = format!("{:?}", core.editor.mode()).to_lowercase();
     state.window_count = core.editor.windows.len().max(1);
     mora_bin::mora::lisp_ext::set_editor_state(state);
@@ -156,13 +154,13 @@ fn run_editor_tui(file: Option<String>) -> anyhow::Result<()> {
 
     let (w, h) = tui.size();
     let mut core = match file {
-        Some(ref path) => MoraCore::open(Path::new(path), w, h)
-            .map_err(|e| anyhow::anyhow!(e))?,
+        Some(ref path) => MoraCore::open(Path::new(path), w, h).map_err(|e| anyhow::anyhow!(e))?,
         None => MoraCore::new(w, h),
     };
 
     init_lisp_state(&core);
     core.editor.lisp_bridge.load_init_file();
+    core.show_menu_bar = false;
 
     let result = (|| -> anyhow::Result<()> {
         loop {
@@ -201,38 +199,42 @@ fn run_editor_wgpu(file: Option<String>) -> anyhow::Result<()> {
 
     // Create core with a default grid size; the callback will resize based on RenderCtx.
     let mut core = match file {
-        Some(ref path) => MoraCore::open(Path::new(path), 80, 24)
-            .map_err(|e| anyhow::anyhow!(e))?,
+        Some(ref path) => {
+            MoraCore::open(Path::new(path), 80, 24).map_err(|e| anyhow::anyhow!(e))?
+        }
         None => MoraCore::new(80, 24),
     };
 
     init_lisp_state(&core);
     core.editor.lisp_bridge.load_init_file();
+    core.show_menu_bar = true;
 
-    WgpuWindow::new(config, DEFAULT_FONT).run(move |events, ctx| {
-        // Resize core if grid dimensions changed.
-        let (cols, rows) = (ctx.grid_cols, ctx.grid_rows);
-        if cols != core.width() || rows != core.height() {
-            core.resize(cols, rows);
-        }
+    WgpuWindow::new(config, DEFAULT_FONT)
+        .run(move |events, ctx| {
+            // Resize core if grid dimensions changed.
+            let (cols, rows) = (ctx.grid_cols, ctx.grid_rows);
+            if cols != core.width() || rows != core.height() {
+                core.resize(cols, rows);
+            }
 
-        // Process input events.
-        for ev in events {
-            let cmds = core.handle_input(ev.clone());
-            for cmd in &cmds {
-                if matches!(cmd, DisplayCmd::Quit) {
-                    std::process::exit(0);
+            // Process input events.
+            for ev in events {
+                let cmds = core.handle_input(ev.clone());
+                for cmd in &cmds {
+                    if matches!(cmd, DisplayCmd::Quit) {
+                        std::process::exit(0);
+                    }
                 }
             }
-        }
 
-        if core.quit_requested() {
-            std::process::exit(0);
-        }
+            if core.quit_requested() {
+                std::process::exit(0);
+            }
 
-        // Build UiNode tree directly — no FrameUpdate/Grid round-trip.
-        core.build_ui_node(cols, rows)
-    }).map_err(|e| anyhow::anyhow!("{}", e))?;
+            // Build UiNode tree directly — no FrameUpdate/Grid round-trip.
+            core.build_ui_node(cols, rows)
+        })
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     Ok(())
 }
@@ -243,8 +245,9 @@ fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
     let addr = format!("127.0.0.1:{}", port);
 
     let mut core = match &file {
-        Some(path) => MoraCore::open(Path::new(path), width, height)
-            .map_err(|e| anyhow::anyhow!(e))?,
+        Some(path) => {
+            MoraCore::open(Path::new(path), width, height).map_err(|e| anyhow::anyhow!(e))?
+        }
         None => MoraCore::new(width, height),
     };
 
@@ -291,12 +294,20 @@ fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
                             for cmd in &cmds {
                                 match cmd {
                                     DisplayCmd::Quit => {
-                                        let _ = stream.write_all(&WireMessage::Cmd(DisplayCmd::Quit).to_json_line().unwrap());
+                                        let _ = stream.write_all(
+                                            &WireMessage::Cmd(DisplayCmd::Quit)
+                                                .to_json_line()
+                                                .unwrap(),
+                                        );
                                         let _ = stream.flush();
                                         return Ok(());
                                     }
                                     other => {
-                                        let _ = stream.write_all(&WireMessage::Cmd(other.clone()).to_json_line().unwrap());
+                                        let _ = stream.write_all(
+                                            &WireMessage::Cmd(other.clone())
+                                                .to_json_line()
+                                                .unwrap(),
+                                        );
                                     }
                                 }
                             }
@@ -337,13 +348,19 @@ fn run_client(addr: &str) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Protocol error: {}", e))?;
 
     let (_width, _height) = match &hello {
-        WireMessage::ServerHello { version, width, height } => {
+        WireMessage::ServerHello {
+            version,
+            width,
+            height,
+        } => {
             eprintln!("Server protocol v{}, size {}x{}", version, width, height);
             (*width, *height)
         }
         _ => anyhow::bail!("Expected ServerHello, got {:?}", hello),
     };
-    let client_hello = WireMessage::ClientHello { version: PROTOCOL_VERSION };
+    let client_hello = WireMessage::ClientHello {
+        version: PROTOCOL_VERSION,
+    };
     stream.write_all(&client_hello.to_json_line().unwrap())?;
     stream.flush()?;
 
@@ -366,19 +383,25 @@ fn run_client(addr: &str) -> anyhow::Result<()> {
                     }
                     Ok(_) => {
                         let trimmed = line.trim();
-                        if trimmed.is_empty() { continue; }
+                        if trimmed.is_empty() {
+                            continue;
+                        }
                         match WireMessage::from_json_line(trimmed.as_bytes()) {
                             Ok(WireMessage::Frame(frame)) => {
                                 current_frame = Some(frame);
                             }
                             Ok(WireMessage::Cmd(DisplayCmd::Quit)) => return Ok(()),
-                            Ok(WireMessage::Cmd(DisplayCmd::Bell)) => { eprint!("\x07"); }
+                            Ok(WireMessage::Cmd(DisplayCmd::Bell)) => {
+                                eprint!("\x07");
+                            }
                             Ok(_) => {}
                             Err(_) => {}
                         }
                     }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock
-                        || e.kind() == io::ErrorKind::ConnectionAborted => {
+                    Err(ref e)
+                        if e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::ConnectionAborted =>
+                    {
                         break;
                     }
                     Err(e) => {
