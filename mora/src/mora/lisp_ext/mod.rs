@@ -31,7 +31,7 @@ pub mod util;
 pub mod window;
 // Re-exports for backward compatibility
 pub use core::MoraLispBridge;
-pub use core::{build_lisp_ui, lisp_value_to_uinode};
+pub use core::{build_lisp_ui, build_lisp_ui_component, lisp_value_to_uinode};
 pub use editor_state::{
     EditorState, set_editor_state, take_editor_state, with_editor_state, with_editor_state_mut,
 };

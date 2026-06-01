@@ -51,8 +51,8 @@ impl MoraCore {
 
     /// Render editor state using the declarative UiNode pipeline.
     /// Builds a UiNode tree → layout → paint → Grid.
-    pub fn render_ui_frame(&self) -> FrameUpdate {
-        let ui = ui_node::build_ui(&self.editor, self.width, self.height);
+    pub fn render_ui_frame(&mut self) -> FrameUpdate {
+        let ui = ui_node::build_ui(&mut self.editor, self.width, self.height);
         let _layout = compute_layout(&ui, self.width, self.height);
         let buf = paint(&ui, self.width, self.height);
 
@@ -147,8 +147,8 @@ impl MoraCore {
 
     /// Build a UiNode tree directly for GPU rendering.
     /// This bypasses the FrameUpdate→Grid conversion used by the TUI path.
-    pub fn build_ui_node(&self, width: u16, height: u16) -> UiNode {
-        ui_node::build_ui(&self.editor, width, height)
+    pub fn build_ui_node(&mut self, width: u16, height: u16) -> UiNode {
+        ui_node::build_ui(&mut self.editor, width, height)
     }
 }
 

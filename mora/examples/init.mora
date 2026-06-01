@@ -8,8 +8,20 @@
 (require [mora.editor :as editor])
 (require [mora.hook :as hook])
 (require [mora.mode :as mode])
+(require [mora.ui :as ui])
 ;;; ---- Display Settings ----
 (editor/message "Welcome to Mora!")
+;; Mora UI can be customized from Lisp, similar to Emacs mode-line/menu-bar hooks.
+;; Component builders receive width and height. Return nil to keep the Rust default.
+;;
+;; (ui/set-ui-component-builder :modeline
+;;   (fn mora-modeline [width height]
+;;     (text
+;;       (str "--:**-  " (buffer/name) "  (Mora Lisp)  All")
+;;       {:fg "#ffffff" :bg "#000000" :bold true})))
+;;
+;; Available components:
+;; :frame, :menu-bar, :editor-area, :shell-area, :modeline, :echo-area, :shell-echo-area
 ;;; ---- Helper Functions ----
 (defn ^:interactive toggle-line-numbers
   "Toggle line numbers."

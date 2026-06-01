@@ -67,6 +67,54 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 - `ui/editor_area.rs`: buffer rows, gutter, cursor, selection, syntax spans.
 - `ui/mshell_area.rs`: shell output and shell prompt echo area.
 
+### Contract: Lisp UI Customization Hooks
+
+**Scope / Trigger**: Mora Lisp can customize the display-protocol UI at either
+the whole-frame level or at named component slots. Use component slots when Lisp
+should redesign chrome while keeping Rust defaults for the editor buffer.
+
+**Signatures**:
+
+```clojure
+(mora.ui/register-ui-builder fn)              ; append whole-frame builder
+(mora.ui/clear-ui-builders)
+(mora.ui/set-ui-component-builder component fn)
+(mora.ui/clear-ui-component-builder component)
+(mora.ui/clear-ui-component-builders)
+(mora.ui/ui-component-builders)               ; => vector of component keywords
+```
+
+**Builder Contract**:
+- Builders receive `(width height)`.
+- Builders return a Lisp UI value convertible by `lisp_value_to_uinode`.
+- Returning `nil` from a component builder means "use the Rust default".
+- Component names are keywords, symbols, or strings.
+
+**Named Components**:
+- `:frame`: replaces the entire default frame after legacy whole-frame builders.
+- `:menu-bar`: replaces the top menu bar.
+- `:editor-area`: replaces the buffer display area.
+- `:shell-area`: replaces mshell output.
+- `:modeline`: replaces the modeline.
+- `:echo-area`: replaces the editor echo/minibuffer area.
+- `:shell-echo-area`: replaces mshell's prompt area, with `:echo-area` as fallback.
+
+**Example**:
+
+```clojure
+(require [mora.ui :as ui])
+
+(ui/set-ui-component-builder :modeline
+  (fn mora-modeline [width height]
+    (text "--:**-  *scratch*  (Mora Lisp)  All"
+          {:fg "#ffffff" :bg "#000000" :bold true})))
+```
+
+**Tests Required**:
+- A component builder overrides a named slot.
+- A component builder returning `nil` falls back to the Rust default.
+- Lisp UI maps using nested `:props` apply layout fields like width/height/gap.
+
 ---
 
 ## Naming Conventions

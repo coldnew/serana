@@ -1,14 +1,11 @@
-use std::collections::HashMap;
-
 use crate::lisp::eval::{EvalError, Evaluator};
 use crate::lisp::types::Value;
 
-use super::editor_state::*;
 use super::command;
 
 // Re-export from editor_state and submodules for backward compat
 pub use super::editor_state::{
-    EditorState, set_editor_state, take_editor_state, with_editor_state, with_editor_state_mut,
+    set_editor_state, take_editor_state, with_editor_state, with_editor_state_mut, EditorState,
 };
 
 pub struct MoraLispBridge {
@@ -72,8 +69,36 @@ impl MoraLispBridge {
 
         // UI DSL primitives (simple ones stay here, converter is public below)
         let mut ns = ui_ns.lock();
-        ns.intern("register-ui-builder", Value::Native(prim_register_ui_builder));
+        ns.intern(
+            "register-ui-builder",
+            Value::Native(prim_register_ui_builder),
+        );
         ns.intern_private("register-builder", Value::Native(prim_register_ui_builder));
+        ns.intern("clear-ui-builders", Value::Native(prim_clear_ui_builders));
+        ns.intern(
+            "set-ui-component-builder",
+            Value::Native(prim_set_ui_component_builder),
+        );
+        ns.intern_private(
+            "set-component-builder",
+            Value::Native(prim_set_ui_component_builder),
+        );
+        ns.intern(
+            "clear-ui-component-builder",
+            Value::Native(prim_clear_ui_component_builder),
+        );
+        ns.intern_private(
+            "clear-component-builder",
+            Value::Native(prim_clear_ui_component_builder),
+        );
+        ns.intern(
+            "clear-ui-component-builders",
+            Value::Native(prim_clear_ui_component_builders),
+        );
+        ns.intern(
+            "ui-component-builders",
+            Value::Native(prim_ui_component_builders),
+        );
         ns.intern("ui-builders", Value::Native(prim_ui_builders));
         ns.intern_private("builders", Value::Native(prim_ui_builders));
         drop(ns);
@@ -116,16 +141,35 @@ impl MoraLispBridge {
         // This is handled by hook::register() since it adds to state.keybindings
 
         for ns_name in [
-            "mora.buffer", "mora.cursor", "mora.mode", "mora.editor",
-            "mora.window", "mora.hook", "mora.keymap", "mora.overlay",
-            "mora.shell", "mora.ui", "mora.command", "mora.kill-ring",
+            "mora.buffer",
+            "mora.cursor",
+            "mora.mode",
+            "mora.editor",
+            "mora.window",
+            "mora.hook",
+            "mora.keymap",
+            "mora.overlay",
+            "mora.shell",
+            "mora.ui",
+            "mora.command",
+            "mora.kill-ring",
             "mora.editing",
-            "mora.mark", "mora.register", "mora.var", "mora.minibuffer",
-            "mora.region", "mora.undo", "mora.tramp", "mora.history",
-            "mora.grep", "mora.org",
-            "mora.project", "mora.session",
-            "mora.smartparens", "mora.leader",
-            "mora.visual", "mora.util",
+            "mora.mark",
+            "mora.register",
+            "mora.var",
+            "mora.minibuffer",
+            "mora.region",
+            "mora.undo",
+            "mora.tramp",
+            "mora.history",
+            "mora.grep",
+            "mora.org",
+            "mora.project",
+            "mora.session",
+            "mora.smartparens",
+            "mora.leader",
+            "mora.visual",
+            "mora.util",
             "mora.hydra",
             "mora.modeline",
             "mora.theme",
@@ -137,7 +181,10 @@ impl MoraLispBridge {
     }
     pub fn eval(&mut self, code: &str) -> Result<Value, EvalError> {
         let forms = self.evaluator.read_cached(code)?;
-        Ok(crate::lisp::vm::compile_and_run(&mut self.evaluator, &forms)?)
+        Ok(crate::lisp::vm::compile_and_run(
+            &mut self.evaluator,
+            &forms,
+        )?)
     }
     pub fn load_init_file(&mut self) {
         let home_init = dirs::home_dir().map(|h| h.join(".mora").join("init.mora"));
@@ -155,7 +202,10 @@ impl MoraLispBridge {
                                 eprintln!("Error loading {}: {}", path.display(), e);
                             }
                             Err(_) => {
-                                eprintln!("Panic loading {}: init file caused a crash", path.display());
+                                eprintln!(
+                                    "Panic loading {}: init file caused a crash",
+                                    path.display()
+                                );
                             }
                         }
                     }
@@ -193,6 +243,19 @@ impl MoraLispBridge {
             }
         };
         Ok(Some(value))
+    }
+
+    pub fn build_ui(&mut self, width: u16, height: u16) -> Option<display_protocol::UiNode> {
+        build_lisp_ui_with_evaluator(&mut self.evaluator, width, height)
+    }
+
+    pub fn build_ui_component(
+        &mut self,
+        component: &str,
+        width: u16,
+        height: u16,
+    ) -> Option<display_protocol::UiNode> {
+        build_lisp_ui_component_with_evaluator(&mut self.evaluator, component, width, height)
     }
 }
 
@@ -239,8 +302,16 @@ fn prim_register_ui_builder(args: &[Value]) -> Result<Value, String> {
         return Err("register-ui-builder requires 1 argument (a function)".to_string());
     }
     let builder = args[0].clone();
+    ensure_callable(&builder, "register-ui-builder")?;
     with_editor_state_mut(|state| {
         state.ui_builders.push(builder);
+        Ok(Value::Nil)
+    })
+}
+
+fn prim_clear_ui_builders(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        state.ui_builders.clear();
         Ok(Value::Nil)
     })
 }
@@ -249,13 +320,90 @@ fn prim_ui_builders(_args: &[Value]) -> Result<Value, String> {
     with_editor_state(|state| Ok(Value::Int(state.ui_builders.len() as i64)))
 }
 
+fn prim_set_ui_component_builder(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err(
+            "set-ui-component-builder requires 2 arguments (component, function)".to_string(),
+        );
+    }
+    let component = component_name(&args[0])?;
+    let builder = args[1].clone();
+    ensure_callable(&builder, "set-ui-component-builder")?;
+    with_editor_state_mut(|state| {
+        state.ui_component_builders.insert(component, builder);
+        Ok(Value::Nil)
+    })
+}
+
+fn prim_clear_ui_component_builder(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("clear-ui-component-builder requires 1 argument (component)".to_string());
+    }
+    let component = component_name(&args[0])?;
+    with_editor_state_mut(|state| {
+        state.ui_component_builders.remove(&component);
+        Ok(Value::Nil)
+    })
+}
+
+fn prim_clear_ui_component_builders(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state_mut(|state| {
+        state.ui_component_builders.clear();
+        Ok(Value::Nil)
+    })
+}
+
+fn prim_ui_component_builders(_args: &[Value]) -> Result<Value, String> {
+    with_editor_state(|state| {
+        let mut names: Vec<_> = state
+            .ui_component_builders
+            .keys()
+            .map(|name| Value::keyword(name.clone()))
+            .collect();
+        names.sort_by_key(|value| value.to_string());
+        Ok(Value::vector(names))
+    })
+}
+
+fn ensure_callable(value: &Value, primitive: &str) -> Result<(), String> {
+    match value {
+        Value::Fn(_) | Value::Native(_) => Ok(()),
+        other => Err(format!(
+            "{} requires a function, got {}",
+            primitive,
+            other.type_name()
+        )),
+    }
+}
+
+fn component_name(value: &Value) -> Result<String, String> {
+    match value {
+        Value::String(s) => Ok(s.to_string()),
+        Value::Keyword(k) => Ok(k.name.to_string()),
+        Value::Symbol(s) => Ok(s.name.to_string()),
+        other => Err(format!(
+            "UI component name must be a keyword, symbol, or string, got {}",
+            other.type_name()
+        )),
+    }
+}
+
 // ── Lisp Value → UiNode converter ────────────────────────────
 
 fn map_get_kw<'a>(
     map: &'a std::collections::HashMap<Value, Value>,
     key: &str,
 ) -> Option<&'a Value> {
-    map.get(&Value::keyword(key))
+    let key_value = Value::keyword(key);
+    if let Some(value) = map.get(&key_value) {
+        return Some(value);
+    }
+    if key != "props" {
+        if let Some(Value::Map(props)) = map.get(&Value::keyword("props")) {
+            return props.get(&key_value);
+        }
+    }
+    None
 }
 
 fn map_get_str_kw(map: &std::collections::HashMap<Value, Value>, key: &str) -> Option<String> {
@@ -307,13 +455,27 @@ fn lisp_value_to_style(val: &Value) -> display_protocol::Style {
         if let Some(bg) = map_get_str_kw(map, "bg") {
             style.bg = Some(parse_color_str(&bg));
         }
-        if let Some(b) = map_get_bool_kw(map, "bold") { style.bold = b; }
-        if let Some(b) = map_get_bool_kw(map, "italic") { style.italic = b; }
-        if let Some(b) = map_get_bool_kw(map, "underline") { style.underline = b; }
-        if let Some(b) = map_get_bool_kw(map, "dim") { style.dim = b; }
-        if let Some(b) = map_get_bool_kw(map, "strikethrough") { style.strikethrough = b; }
-        if let Some(b) = map_get_bool_kw(map, "reverse") { style.reverse = b; }
-        if let Some(b) = map_get_bool_kw(map, "blink") { style.blink = b; }
+        if let Some(b) = map_get_bool_kw(map, "bold") {
+            style.bold = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "italic") {
+            style.italic = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "underline") {
+            style.underline = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "dim") {
+            style.dim = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "strikethrough") {
+            style.strikethrough = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "reverse") {
+            style.reverse = b;
+        }
+        if let Some(b) = map_get_bool_kw(map, "blink") {
+            style.blink = b;
+        }
     }
     style
 }
@@ -323,13 +485,24 @@ fn apply_style_to_text(
     style: &display_protocol::Style,
 ) -> display_protocol::UiNode {
     if *style != display_protocol::Style::default() {
-        node = node.bold().dim();
-        if style.bold { node = node.bold(); }
-        if style.dim { node = node.dim(); }
-        if style.italic { node = node.italic(); }
-        if style.underline { node = node.underline(); }
-        if let Some(fg) = style.fg { node = node.color(fg); }
-        if let Some(bg) = style.bg { node = node.bg(bg); }
+        if style.bold {
+            node = node.bold();
+        }
+        if style.dim {
+            node = node.dim();
+        }
+        if style.italic {
+            node = node.italic();
+        }
+        if style.underline {
+            node = node.underline();
+        }
+        if let Some(fg) = style.fg {
+            node = node.color(fg);
+        }
+        if let Some(bg) = style.bg {
+            node = node.bg(bg);
+        }
     }
     node
 }
@@ -478,6 +651,7 @@ fn apply_flex_props(
     mut node: display_protocol::UiNode,
     map: &std::collections::HashMap<Value, Value>,
 ) -> display_protocol::UiNode {
+    node = apply_layout_props(node, map);
     if let Some(gap) = map_get_f64_kw(map, "gap") {
         node = node.gap(gap as u16);
     }
@@ -504,44 +678,119 @@ fn apply_flex_props(
     }
     node
 }
+
+fn apply_layout_props(
+    mut node: display_protocol::UiNode,
+    map: &std::collections::HashMap<Value, Value>,
+) -> display_protocol::UiNode {
+    if let Some(style) = map_get_kw(map, "style") {
+        node = apply_style_to_node(node, lisp_value_to_style(style));
+    }
+    if let Some(width) = map_get_u16_kw(map, "width") {
+        node = node.width(width);
+    }
+    if let Some(height) = map_get_u16_kw(map, "height") {
+        node = node.height(height);
+    }
+    if let Some(grow) = map_get_f64_kw(map, "flex-grow") {
+        node = node.flex_grow(grow as f32);
+    }
+    if let Some(shrink) = map_get_f64_kw(map, "flex-shrink") {
+        node = node.flex_shrink(shrink as f32);
+    }
+    if let Some(padding) = map_get_f64_kw(map, "padding") {
+        let p = padding as u16;
+        node = node.padding(display_protocol::Padding {
+            top: p,
+            right: p,
+            bottom: p,
+            left: p,
+        });
+    }
+    node
+}
+
+fn apply_style_to_node(
+    node: display_protocol::UiNode,
+    style: display_protocol::Style,
+) -> display_protocol::UiNode {
+    match node {
+        display_protocol::UiNode::Text(text) => display_protocol::UiNode::Text(text.style(style)),
+        display_protocol::UiNode::Box(box_node) => {
+            display_protocol::UiNode::Box(box_node.style(style))
+        }
+        display_protocol::UiNode::Row(row) => display_protocol::UiNode::Row(row.style(style)),
+        display_protocol::UiNode::Column(column) => {
+            display_protocol::UiNode::Column(column.style(style))
+        }
+        display_protocol::UiNode::Span(mut span) => {
+            span.style = style;
+            display_protocol::UiNode::Span(span)
+        }
+        display_protocol::UiNode::List(list) => display_protocol::UiNode::List(list.style(style)),
+        display_protocol::UiNode::Divider(divider) => {
+            display_protocol::UiNode::Divider(divider.style(style))
+        }
+        other => other,
+    }
+}
+
 fn apply_box_props(
     mut node: display_protocol::UiNode,
     map: &std::collections::HashMap<Value, Value>,
 ) -> display_protocol::UiNode {
+    node = apply_layout_props(node, map);
     if let Some(title) = map_get_str_kw(map, "title") {
         node = node.title(title);
     }
     if map_get_bool_kw(map, "border").unwrap_or(false) {
         node = node.border(display_protocol::Border {
-            top: true, right: true, bottom: true, left: true, style: None,
+            top: true,
+            right: true,
+            bottom: true,
+            left: true,
+            style: None,
         });
     }
     if let Some(padding) = map_get_f64_kw(map, "padding") {
         let p = padding as u16;
         node = node.padding(display_protocol::Padding {
-            top: p, right: p, bottom: p, left: p,
+            top: p,
+            right: p,
+            bottom: p,
+            left: p,
         });
     }
     if let Some(style) = map_get_kw(map, "style") {
         let s = lisp_value_to_style(style);
-        if let Some(fg) = s.fg { node = node.color(fg); }
-        if let Some(bg) = s.bg { node = node.bg(bg); }
+        if let Some(fg) = s.fg {
+            node = node.color(fg);
+        }
+        if let Some(bg) = s.bg {
+            node = node.bg(bg);
+        }
     }
     node
 }
 pub fn build_lisp_ui(width: u16, height: u16) -> Option<display_protocol::UiNode> {
+    crate::lisp::eval::with_evaluator(|eval| build_lisp_ui_with_evaluator(eval, width, height))
+}
+
+fn build_lisp_ui_with_evaluator(
+    eval: &mut Evaluator,
+    width: u16,
+    height: u16,
+) -> Option<display_protocol::UiNode> {
     let mut nodes = Vec::new();
     let builder_count = with_editor_state(|state| state.ui_builders.len());
     for i in 0..builder_count {
         let builder = with_editor_state(|state| state.ui_builders.get(i).cloned());
         if let Some(func) = builder {
-            let result = crate::lisp::eval::with_evaluator(|eval| {
-                match func {
-                    Value::Fn(f) => eval.call_fn(f, vec![Value::Int(width as i64), Value::Int(height as i64)]),
-                    Value::Native(f) => f(&[Value::Int(width as i64), Value::Int(height as i64)]).map_err(|e| crate::lisp::eval::EvalError::Custom(e)),
-                    _ => Err(crate::lisp::eval::EvalError::NotAFunction("ui builder is not callable".to_string())),
-                }
-            });
+            let result = call_ui_builder(
+                eval,
+                func,
+                vec![Value::Int(width as i64), Value::Int(height as i64)],
+            );
             match result {
                 Ok(val) => {
                     nodes.push(lisp_value_to_uinode(&val));
@@ -556,6 +805,50 @@ pub fn build_lisp_ui(width: u16, height: u16) -> Option<display_protocol::UiNode
         Some(nodes.into_iter().next().unwrap())
     } else {
         Some(display_protocol::UiNode::column(nodes))
+    }
+}
+
+pub fn build_lisp_ui_component(
+    component: &str,
+    width: u16,
+    height: u16,
+) -> Option<display_protocol::UiNode> {
+    crate::lisp::eval::with_evaluator(|eval| {
+        build_lisp_ui_component_with_evaluator(eval, component, width, height)
+    })
+}
+
+fn build_lisp_ui_component_with_evaluator(
+    eval: &mut Evaluator,
+    component: &str,
+    width: u16,
+    height: u16,
+) -> Option<display_protocol::UiNode> {
+    let builder = with_editor_state(|state| state.ui_component_builders.get(component).cloned());
+    let func = builder?;
+    let result = call_ui_builder(
+        eval,
+        func,
+        vec![Value::Int(width as i64), Value::Int(height as i64)],
+    );
+    match result {
+        Ok(Value::Nil) => None,
+        Ok(val) => Some(lisp_value_to_uinode(&val)),
+        Err(_) => None,
+    }
+}
+
+fn call_ui_builder(
+    eval: &mut Evaluator,
+    func: Value,
+    args: Vec<Value>,
+) -> Result<Value, crate::lisp::eval::EvalError> {
+    match func {
+        Value::Fn(f) => eval.call_fn(f, args),
+        Value::Native(f) => f(&args).map_err(crate::lisp::eval::EvalError::Custom),
+        _ => Err(crate::lisp::eval::EvalError::NotAFunction(
+            "ui builder is not callable".to_string(),
+        )),
     }
 }
 
@@ -652,5 +945,92 @@ mod tests {
             assert_eq!(state.status_message, "hello from interactive defn");
         });
         take_editor_state();
+    }
+
+    #[test]
+    fn lisp_ui_component_builder_overrides_named_slot() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge
+            .eval(
+                r##"
+                (require [mora.ui :as ui])
+                (ui/set-ui-component-builder :modeline
+                  (fn modeline-builder [width height]
+                    "lisp modeline"))
+                "##,
+            )
+            .unwrap();
+
+        let node = bridge.build_ui_component("modeline", 80, 1).unwrap();
+        match node {
+            display_protocol::UiNode::Text(text) => {
+                assert_eq!(text.content, "lisp modeline");
+                assert!(!text.style.bold);
+                assert!(!text.style.dim);
+            }
+            other => panic!("expected text node, got {:?}", other),
+        }
+        take_editor_state();
+    }
+
+    #[test]
+    fn lisp_ui_component_builder_nil_falls_back_to_default() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        bridge
+            .eval(
+                r#"
+                (require [mora.ui :as ui])
+                (ui/set-ui-component-builder :modeline (fn [width height] nil))
+                "#,
+            )
+            .unwrap();
+
+        assert!(bridge.build_ui_component("modeline", 80, 1).is_none());
+        take_editor_state();
+    }
+
+    #[test]
+    fn lisp_ui_converter_applies_nested_props_without_forcing_text_weight() {
+        let text = Value::map(vec![
+            (Value::keyword("type"), Value::keyword("text")),
+            (Value::keyword("content"), Value::string("styled")),
+            (
+                Value::keyword("style"),
+                Value::map(vec![(Value::keyword("fg"), Value::string("#ff0000"))]),
+            ),
+        ]);
+        match lisp_value_to_uinode(&text) {
+            display_protocol::UiNode::Text(text) => {
+                assert_eq!(text.content, "styled");
+                assert_eq!(text.style.fg, Some(display_protocol::Color::new(255, 0, 0)));
+                assert!(!text.style.bold);
+                assert!(!text.style.dim);
+            }
+            other => panic!("expected text node, got {:?}", other),
+        }
+
+        let row = Value::map(vec![
+            (Value::keyword("type"), Value::keyword("row")),
+            (
+                Value::keyword("props"),
+                Value::map(vec![
+                    (Value::keyword("width"), Value::Int(12)),
+                    (Value::keyword("height"), Value::Int(2)),
+                    (Value::keyword("gap"), Value::Int(1)),
+                ]),
+            ),
+        ]);
+        match lisp_value_to_uinode(&row) {
+            display_protocol::UiNode::Row(row) => {
+                assert_eq!(row.width, Some(12));
+                assert_eq!(row.height, Some(2));
+                assert_eq!(row.gap, 1);
+            }
+            other => panic!("expected row node, got {:?}", other),
+        }
     }
 }

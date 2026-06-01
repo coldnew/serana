@@ -1,5 +1,4 @@
 use crate::mora::editor::MoraEditor;
-use crate::mora::lisp_ext;
 use display_protocol::UiNode;
 use display_protocol_jsx::jsx;
 
@@ -18,8 +17,8 @@ mod mshell_area;
 ///   - Echo area / minibuffer
 ///
 /// If Lisp UI builders are registered, they augment/replace the default UI.
-pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
-    if let Some(lisp_ui) = lisp_ext::build_lisp_ui(width, height) {
+pub fn build_ui(editor: &mut MoraEditor, width: u16, height: u16) -> UiNode {
+    if let Some(lisp_ui) = editor.lisp_bridge.build_ui(width, height) {
         return lisp_ui;
     }
 
@@ -27,12 +26,36 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let modeline_height = 1u16;
     let echo_height = 1u16;
     let editor_height = height.saturating_sub(menu_height + modeline_height + echo_height);
-    let menu = menu_bar::build_menu_bar(editor, width);
+    if let Some(lisp_ui) = editor
+        .lisp_bridge
+        .build_ui_component("frame", width, height)
+    {
+        return lisp_ui;
+    }
+
+    let menu = editor
+        .lisp_bridge
+        .build_ui_component("menu-bar", width, menu_height)
+        .unwrap_or_else(|| menu_bar::build_menu_bar(editor, width));
 
     if editor.mshell.is_active() {
-        let shell_area = mshell_area::build_mshell_area(editor, width, editor_height);
-        let modeline = modeline::build_modeline(editor, width);
-        let echo = mshell_area::build_mshell_echo(editor, width);
+        let shell_area = editor
+            .lisp_bridge
+            .build_ui_component("shell-area", width, editor_height)
+            .unwrap_or_else(|| mshell_area::build_mshell_area(editor, width, editor_height));
+        let modeline = editor
+            .lisp_bridge
+            .build_ui_component("modeline", width, modeline_height)
+            .unwrap_or_else(|| modeline::build_modeline(editor, width));
+        let echo = editor
+            .lisp_bridge
+            .build_ui_component("shell-echo-area", width, echo_height)
+            .or_else(|| {
+                editor
+                    .lisp_bridge
+                    .build_ui_component("echo-area", width, echo_height)
+            })
+            .unwrap_or_else(|| mshell_area::build_mshell_echo(editor, width));
 
         jsx! {
             <Column>
@@ -43,9 +66,18 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
             </Column>
         }
     } else {
-        let editor_area = editor_area::build_editor_area(editor, width, editor_height);
-        let modeline = modeline::build_modeline(editor, width);
-        let echo = echo_area::build_echo_area(editor, width);
+        let editor_area = editor
+            .lisp_bridge
+            .build_ui_component("editor-area", width, editor_height)
+            .unwrap_or_else(|| editor_area::build_editor_area(editor, width, editor_height));
+        let modeline = editor
+            .lisp_bridge
+            .build_ui_component("modeline", width, modeline_height)
+            .unwrap_or_else(|| modeline::build_modeline(editor, width));
+        let echo = editor
+            .lisp_bridge
+            .build_ui_component("echo-area", width, echo_height)
+            .unwrap_or_else(|| echo_area::build_echo_area(editor, width));
 
         jsx! {
             <Column>

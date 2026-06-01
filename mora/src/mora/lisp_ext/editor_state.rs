@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 
 use crate::lisp::types::Value;
 
@@ -23,6 +23,7 @@ pub struct EditorState {
     pub keybindings: HashMap<String, Value>,
     pub overlays: OverlayStore,
     pub ui_builders: Vec<Value>,
+    pub ui_component_builders: HashMap<String, Value>,
     // --- Emacs-like state ---
     /// Buffer-local variables: var_name -> value
     pub buffer_local_vars: HashMap<String, Value>,
@@ -74,6 +75,7 @@ impl EditorState {
             keybindings: HashMap::new(),
             overlays: OverlayStore::new(),
             ui_builders: Vec::new(),
+            ui_component_builders: HashMap::new(),
             buffer_local_vars: HashMap::new(),
             mark_ring: Vec::new(),
             mark_active: false,
