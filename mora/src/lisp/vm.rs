@@ -31,6 +31,7 @@ pub struct BytecodeCompiler {
     ops: Vec<Op>,
     local_scope: Vec<HashMap<String, u16>>,
     next_local: u16,
+    pub interactive_defns: Vec<(String, String)>, // (full-command-name, fn-name)
 }
 
 impl BytecodeCompiler {
@@ -46,6 +47,7 @@ impl BytecodeCompiler {
             ops: Vec::new(),
             local_scope: Vec::new(),
             next_local: 0,
+            interactive_defns: Vec::new(),
         }
     }
 
@@ -349,10 +351,8 @@ impl BytecodeCompiler {
         if list.len() < 4 {
             return Err(CompilerError::InvalidForm("defn requires name, params, and body".into()));
         }
-        let name = match &list[1] {
-            Value::Symbol(s) => self.symbol_to_string(s),
-            _ => return Err(CompilerError::InvalidForm("defn name must be symbol".into())),
-        };
+
+        let (name, interactive) = Self::parse_defn_name(&list[1]);
 
         // Compile as (def name (fn params body...))
         let fn_form = Value::list(
@@ -371,10 +371,47 @@ impl BytecodeCompiler {
             last_fn.name = Some(name.clone());
         }
 
-        let name_idx = self.add_string(name);
+        let name_idx = self.add_string(name.clone());
         self.ops.push(Op::DefineSymbol(name_idx));
         self.ops.push(Op::PushNil); // defn returns nil
+
+        if interactive {
+            // Store the function name for post-run interactive registration
+            // Namespace qualification is resolved at registration time
+            let command_name = name.clone();
+            self.interactive_defns.push((command_name, name));
+        }
         Ok(())
+    }
+
+    fn parse_defn_name(form: &Value) -> (String, bool) {
+        match form {
+            Value::Symbol(s) => (Self::symbol_to_string_static(s), false),
+            Value::List(list) if !list.is_empty() => {
+                if let Value::Symbol(meta_sym) = &list[0] {
+                    if meta_sym.ns.is_none() && meta_sym.name.as_str() == "with-meta"
+                        && list.len() == 3
+                    {
+                        if let Value::Symbol(actual_sym) = &list[1] {
+                            let interactive = match &list[2] {
+                                Value::Keyword(k) => k.name.as_str() == "interactive",
+                                _ => false,
+                            };
+                            return (Self::symbol_to_string_static(actual_sym), interactive);
+                        }
+                    }
+                }
+                (String::new(), false)
+            }
+            _ => (String::new(), false),
+        }
+    }
+
+    fn symbol_to_string_static(sym: &Symbol) -> String {
+        match &sym.ns {
+            Some(ns) => format!("{}/{}", ns, sym.name),
+            None => sym.name.to_string(),
+        }
     }
 
     fn compile_quote(&mut self, list: &[Value]) -> Result<(), CompilerError> {
@@ -677,9 +714,15 @@ impl BytecodeVm {
                         .cloned()
                         .unwrap_or_default();
                     // Pop alias if present
-                    let _alias_val = self.stack.pop();
+                    let alias_val = self.stack.pop();
+                    let alias = match alias_val {
+                        Some(Value::String(s)) if s.starts_with("alias:") => {
+                            Some(s["alias:".len()..].to_string())
+                        }
+                        _ => None,
+                    };
                     eval.ns
-                        .require(&name, None)
+                        .require(&name, alias.as_deref())
                         .map_err(|e| EvalError::SpecialForm(e))?;
                 }
 
@@ -950,6 +993,8 @@ pub fn compile_and_run(
         }
     };
 
+    let interactive_defns = compiler.interactive_defns.clone();
+
     let program = CompiledProgram {
         main,
         constants: compiler.constants,
@@ -959,7 +1004,30 @@ pub fn compile_and_run(
     };
 
     let mut vm = BytecodeVm::new();
-    vm.run(&program, eval)
+    let result = vm.run(&program, eval)?;
+
+    // Register interactive defns with the command registry
+    let current_ns = eval.ns.current_name();
+    for (command_name, fn_name) in interactive_defns {
+        let full_name = format!("{}/{}", current_ns, command_name);
+        let fn_sym = Symbol {
+            ns: None,
+            name: Arc::new(fn_name),
+        };
+        if let Some(fn_val) = eval.ns.resolve_symbol(&fn_sym) {
+            if let Some(register) = eval.ns.resolve_symbol(&Symbol {
+                ns: Some(Arc::new("mora.command".to_string())),
+                name: Arc::new("register!".to_string()),
+            }) {
+                if let Value::Native(f) = register {
+                    let register_args = vec![Value::string(full_name), fn_val];
+                    f(&register_args).map_err(EvalError::Custom)?;
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]

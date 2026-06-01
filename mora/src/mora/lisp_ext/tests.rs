@@ -66,7 +66,7 @@ fn defcommand_registers_and_executes_editor_command() {
             r#"
                 (ns coldnew.commands)
                 (require [mora.editor :as editor])
-                (defcommand say-hello
+                (defn ^:interactive say-hello
                   "Say hello from a user command."
                   []
                   (editor/message "hello from command"))
@@ -100,10 +100,9 @@ fn interactive_defn_registers_and_executes_editor_command() {
             r#"
                 (ns coldnew.commands)
                 (require [mora.editor :as editor])
-                (defn say-hello
+                (defn ^:interactive say-hello
                   "Say hello through interactive defn."
                   []
-                  (interactive)
                   (editor/message "hello from interactive defn"))
                 "#,
         )
@@ -452,10 +451,9 @@ fn emacs_like_init_config() {
                 (var-set "tab-width" 4)
                 (var-set "indent-tabs-mode" false)
                 ;; Define a command using mark and region
-                (defn delete-line
+                (defn ^:interactive delete-line
                   "Delete current line."
                   []
-                  (interactive)
                   (set-mark)
                   (cursor-end-of-line)
                   (delete-region))

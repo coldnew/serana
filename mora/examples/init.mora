@@ -11,10 +11,9 @@
 ;;; ---- Display Settings ----
 (editor/message "Welcome to Mora!")
 ;;; ---- Helper Functions ----
-(defn toggle-line-numbers
+(defn ^:interactive toggle-line-numbers
   "Toggle line numbers."
   []
-  (interactive)
   (mode/toggle-minor! "line-numbers"))
 (defn insert-date []
   (buffer/insert! "2026-01-01"))
@@ -35,20 +34,17 @@
   (fn []
     (editor/message (str "Saving: " (buffer/name)))))
 ;;; ---- Custom Commands ----
-(defn show-status
+(defn ^:interactive show-status
   "Show Mora editor status."
   []
-  (interactive)
   (editor/message (editor/status)))
-(defn show-version
+(defn ^:interactive show-version
   "Show Mora version."
   []
-  (interactive)
   (editor/message (str "Mora version: " editor/*mora-version*)))
-(defn toggle-insert-mode
+(defn ^:interactive toggle-insert-mode
   "Toggle normal and insert mode."
   []
-  (interactive)
   (if (= (mode/current) :insert)
     (mode/set! :normal)
     (mode/set! :insert)))
@@ -91,18 +87,16 @@
 ;; (completing-read "p" [..])— read with completion
 ;; (y-or-n? "question?")     — yes/no prompt
 ;; ---- Example: delete-line command using mark + region ----
-(defn delete-line
+(defn ^:interactive delete-line
   "Delete the current line."
   []
-  (interactive)
   (set-mark)
   (cursor-end-of-line)
   (delete-region))
 ;; ---- Example: copy-line to register ----
-(defn copy-line-to-register
+(defn ^:interactive copy-line-to-register
   "Copy current line to named register."
   []
-  (interactive)
   (let [line (buffer/current-line)]
     (register-set "0" line)
     (editor/message (str "Copied: " line))))

@@ -940,8 +940,37 @@ impl Evaluator {
                 "defn requires at least 3 arguments".to_string(),
             ));
         }
-        let sym = match &args[0] {
-            Value::Symbol(s) => s.clone(),
+
+        let (sym, interactive) = match &args[0] {
+            Value::Symbol(s) => (s.clone(), false),
+            Value::List(list) if !list.is_empty() => {
+                // ^:interactive expands to (with-meta sym :interactive)
+                if let Value::Symbol(meta_sym) = &list[0] {
+                    if meta_sym.ns.is_none() && meta_sym.name.as_str() == "with-meta"
+                        && list.len() == 3
+                    {
+                        if let Value::Symbol(actual_sym) = &list[1] {
+                            let is_interactive = match &list[2] {
+                                Value::Keyword(k) => k.name.as_str() == "interactive",
+                                _ => false,
+                            };
+                            (actual_sym.clone(), is_interactive)
+                        } else {
+                            return Err(EvalError::SpecialForm(
+                                "defn with-meta target must be a symbol".to_string(),
+                            ));
+                        }
+                    } else {
+                        return Err(EvalError::SpecialForm(
+                            "defn first arg must be a symbol".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(EvalError::SpecialForm(
+                        "defn first arg must be a symbol".to_string(),
+                    ));
+                }
+            }
             _ => {
                 return Err(EvalError::SpecialForm(
                     "defn first arg must be a symbol".to_string(),
@@ -955,7 +984,8 @@ impl Evaluator {
                 "defn requires parameter vector".to_string(),
             ));
         }
-        let (interactive, body_start) = self.parse_interactive_marker(args, params_idx + 1);
+
+        let body_start = params_idx + 1;
 
         let mut fn_args = Vec::with_capacity(args.len() - params_idx + 1);
         fn_args.push(Value::symbol(sym.name.to_string()));
@@ -1002,18 +1032,6 @@ impl Evaluator {
         match args.get(idx) {
             Some(Value::String(s)) => (Some(Value::String(s.clone())), idx + 1),
             _ => (None, idx),
-        }
-    }
-
-    fn parse_interactive_marker(&self, args: &[Value], body_start: usize) -> (bool, usize) {
-        match args.get(body_start) {
-            Some(Value::List(list)) if !list.is_empty() => match &list[0] {
-                Value::Symbol(sym) if sym.ns.is_none() && sym.name.as_str() == "interactive" => {
-                    (true, body_start + 1)
-                }
-                _ => (false, body_start),
-            },
-            _ => (false, body_start),
         }
     }
 

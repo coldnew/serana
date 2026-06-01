@@ -612,7 +612,7 @@ mod tests {
                 r#"
                 (ns coldnew.commands)
                 (require [mora.editor :as editor])
-                (defcommand say-hello
+                (defn ^:interactive say-hello
                   "Say hello from a user command."
                   []
                   (editor/message "hello from command"))
@@ -638,10 +638,9 @@ mod tests {
                 r#"
                 (ns coldnew.commands)
                 (require [mora.editor :as editor])
-                (defn say-hello
+                (defn ^:interactive say-hello
                   "Say hello through interactive defn."
                   []
-                  (interactive)
                   (editor/message "hello from interactive defn"))
                 "#,
             )

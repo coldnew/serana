@@ -199,9 +199,9 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_defn_interactive_marker_is_not_executed() {
+    fn test_eval_defn_interactive_meta_does_not_affect_call() {
         let mut lisp = MoraLisp::new();
-        lisp.eval("(defn answer [] (interactive) 42)").unwrap();
+        lisp.eval("(defn ^:interactive answer [] 42)").unwrap();
         assert_eq!(lisp.eval("(answer)").unwrap(), Value::Int(42));
     }
 

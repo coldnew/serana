@@ -4542,8 +4542,7 @@ mod tests {
                 r#"
                 (ns coldnew.commands)
                 (require [mora.buffer :as buffer])
-                (defn insert-marker []
-                  (interactive)
+                (defn ^:interactive insert-marker []
                   (buffer/insert! "marker"))
                 "#,
             )
@@ -4565,8 +4564,7 @@ mod tests {
             .eval(
                 r#"
                 (ns coldnew.commands)
-                (defn coldnew-test-command []
-                  (interactive)
+                (defn ^:interactive coldnew-test-command []
                   nil)
                 "#,
             )
