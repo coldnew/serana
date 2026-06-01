@@ -5,6 +5,7 @@
 
 struct Uniforms {
     screen_size: vec2<f32>,
+    cell_size: vec2<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -47,14 +48,14 @@ fn vs_main(inst: InstanceInput, @builtin(vertex_index) vid: u32) -> VertexOutput
         vec2<f32>(1.0, 1.0),
     );
     let uvs = array<vec2<f32>, 4>(
-        vec2<f32>(0.0, 1.0),
-        vec2<f32>(1.0, 1.0),
         vec2<f32>(0.0, 0.0),
         vec2<f32>(1.0, 0.0),
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 1.0),
     );
 
     let corner = corners[vid];
-    let cell_px = inst.cell_pos + corner;
+    let cell_px = inst.cell_pos + corner * u.cell_size;
 
     // Convert pixel coords to NDC (top-left origin, Y+ down)
     let ndc_x = (cell_px.x / u.screen_size.x) * 2.0 - 1.0;
