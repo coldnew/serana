@@ -94,32 +94,35 @@ not as long Rust `match` arms.
 
 ```text
 mora/
-  std/
-    mora/
-      core.mora          ; defcommand, interactive, hook/advice helpers
-      files.mora         ; find-file, save-buffer, write-file
-      buffers.mora       ; switch-buffer, kill-buffer, buffer-list
-      windows.mora       ; split/delete/select windows
-      minibuffer.mora    ; read-from-minibuffer, completion policy
-      keymap.mora        ; global-map, ctl-x-map, esc-map
-      ui.mora            ; frame/menu/modeline/echo builders
-      modes/
-        fundamental.mora
-        text.mora
-        lisp.mora
-        rust.mora
-      packages/
-        grep.mora
-        project.mora
-        vc.mora
+  lisp/                 ; Mora Lisp standard library source
+    core.mora           ; defcommand, interactive, hook/advice helpers
+    files.mora          ; find-file, save-buffer, write-file
+    buffers.mora        ; switch-buffer, kill-buffer, buffer-list
+    windows.mora        ; split/delete/select windows
+    minibuffer.mora     ; read-from-minibuffer, completion policy
+    keymap.mora         ; global-map, ctl-x-map, esc-map
+    ui.mora             ; frame/menu/modeline/echo builders
+    modes/
+      fundamental.mora
+      text.mora
+      lisp.mora
+      rust.mora
+    packages/
+      grep.mora
+      project.mora
+      vc.mora
   src/
-    lisp/                ; language runtime
+    lisp/                ; Rust implementation of the Mora Lisp runtime
     mora/
       kernel/            ; editor state and primitive services
       primitives/        ; Rust functions exported to Mora Lisp
       ui/                ; fallback/prebuilt UI components
       display/           ; legacy display adapters until fully retired
 ```
+
+`mora/lisp/` is intentionally distinct from `mora/src/lisp/`: the first is
+Mora Lisp standard-library code, while the second is Rust code implementing the
+language runtime.
 
 `mora/src/mora/editor/commands.rs` should shrink over time. Its long `M-x`
 dispatch table should be replaced by registered Lisp commands plus a small Rust
@@ -133,7 +136,7 @@ Startup:
 mora binary
   -> create Runtime
   -> register Rust primitives
-  -> load mora/std/mora/core.mora
+  -> load mora/lisp/core.mora
   -> load standard command/mode/UI files
   -> load user init file
   -> enter event loop
@@ -200,12 +203,12 @@ The first group exposes capability. The second group hardcodes editor policy.
 
 ## Migration Plan
 
-1. Introduce a `mora/std/` loader and load it before user init files.
+1. Introduce a `mora/lisp/` loader and load it before user init files.
 2. Move command registration defaults from Rust arrays and `match` arms into
    Lisp `defcommand` files.
 3. Split Rust primitives from policy-heavy `lisp_ext` modules. Keep primitive
    modules small and namespaced.
-4. Move default UI builders into `mora/std/mora/ui.mora`, leaving Rust UI
+4. Move default UI builders into `mora/lisp/ui.mora`, leaving Rust UI
    components as fallback and test fixtures.
 5. Move major/minor mode defaults into Lisp, with Rust adapters only for
    performance engines such as tree-sitter.
