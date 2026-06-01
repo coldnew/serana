@@ -2,9 +2,7 @@ use crate::mora::display::style::MoraStyle;
 use crate::mora::editor::MoraEditor;
 use crate::mora::keymap::EditorMode;
 use crate::mora::syntax;
-use display_protocol::{Color, UiNode};
-
-use super::{jsx_column, jsx_row};
+use display_protocol::{Color, Selection, SelectionMode, Style, StyledLine, StyledSpan, UiNode};
 
 fn style_to_color(
     s: MoraStyle,
@@ -42,17 +40,11 @@ fn syntax_style_for_col(tokens: &[syntax::HighlightToken], col: usize) -> Option
 }
 
 /// Build editor area with syntax highlighting, cursor, and selection.
-pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
+pub(super) fn build_editor_area(editor: &MoraEditor, _width: u16, height: u16) -> UiNode {
     let buf = editor.buffer();
     let view = editor.view();
     let show_line_numbers = editor.minor_modes.is_enabled("line-numbers")
         || editor.minor_modes.is_enabled("relative-line-numbers");
-    let gutter_w = if show_line_numbers {
-        view.gutter_width
-    } else {
-        0
-    };
-    let text_width = width.saturating_sub(gutter_w);
     let narrow_start = buf.narrow_start.unwrap_or(0);
     let narrow_end = buf.narrow_end.unwrap_or(buf.line_count().saturating_sub(1));
     let total = buf.line_count();
@@ -87,36 +79,15 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
         (None, None)
     };
 
-    let mut rows = Vec::new();
-    let mut display_row: u16 = 0;
+    let mut lines = Vec::new();
 
     for line_idx in render_start..render_end {
         if buf.is_line_folded(line_idx) {
             continue;
         }
-        if display_row >= height {
-            break;
-        }
 
         let is_current = line_idx == buf.cursor.row;
         let mut spans = Vec::new();
-        if show_line_numbers {
-            let gutter_dim = t.gutter_dim;
-            let gutter_current = t.gutter_current;
-            let gutter_c = if is_current {
-                gutter_current
-            } else {
-                gutter_dim
-            };
-            let line_num = if is_current {
-                format!("{:>w$}", line_idx + 1, w = gutter_w as usize - 1)
-            } else {
-                format!("{:>w$} ", line_idx + 1, w = gutter_w as usize - 1)
-            };
-
-            spans.push(UiNode::text(line_num).color(gutter_c).bold());
-            spans.push(UiNode::text(" ").color(gutter_c));
-        }
 
         let line_text = buf.line(line_idx);
         let highlight_tokens = highlighter.highlight_line(line_text, line_idx);
@@ -125,35 +96,15 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
         let mut byte_col = 0usize;
         let mut display_col: u16 = 0;
         let mut span_text = String::new();
-        let mut span_fg: Option<Color> = None;
-        let mut span_bg: Option<Color> = None;
-        let mut span_bold = false;
+        let mut span_style = Style::default();
 
-        let flush_span = |spans: &mut Vec<UiNode>,
-                          text: &mut String,
-                          fg: Option<Color>,
-                          bg: Option<Color>,
-                          bold: bool| {
+        let flush_span = |spans: &mut Vec<StyledSpan>, text: &mut String, style: Style| {
             if !text.is_empty() {
-                let mut node = UiNode::text(std::mem::take(text));
-                if let Some(c) = fg {
-                    node = node.color(c);
-                }
-                if let Some(c) = bg {
-                    node = node.bg(c);
-                }
-                if bold {
-                    node = node.bold();
-                }
-                spans.push(node);
+                spans.push(StyledSpan::new(std::mem::take(text), style));
             }
         };
 
         for ch in line_text.chars() {
-            if display_col >= text_width {
-                break;
-            }
-
             let is_cursor =
                 is_current && byte_col == buf.cursor.col && editor.mode() != EditorMode::Normal;
             let in_sel = sel_start.map_or(false, |start| {
@@ -187,19 +138,21 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
                 (Some(text_fg), None, false)
             };
 
-            if ch_fg != span_fg || ch_bg != span_bg || ch_bold != span_bold {
-                flush_span(&mut spans, &mut span_text, span_fg, span_bg, span_bold);
-                span_fg = ch_fg;
-                span_bg = ch_bg;
-                span_bold = ch_bold;
+            let next_style = Style {
+                fg: ch_fg,
+                bg: ch_bg,
+                bold: ch_bold,
+                ..Style::default()
+            };
+
+            if next_style != span_style {
+                flush_span(&mut spans, &mut span_text, span_style);
+                span_style = next_style;
             }
 
             if ch == '\t' {
                 let tab_stop = 4 - (display_col % 4);
                 for _ in 0..tab_stop {
-                    if display_col >= text_width {
-                        break;
-                    }
                     span_text.push(' ');
                     display_col += 1;
                 }
@@ -211,17 +164,44 @@ pub(super) fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) ->
             byte_col += ch.len_utf8();
         }
 
-        flush_span(&mut spans, &mut span_text, span_fg, span_bg, span_bold);
-
-        rows.push(jsx_row(spans, width));
-        display_row += 1;
+        flush_span(&mut spans, &mut span_text, span_style);
+        lines.push(StyledLine::new(spans));
     }
 
-    // Emacs: empty lines beyond buffer content are blank (no ~ marker).
-    // The ~ prefix is a Vim convention, not Emacs.
-    for _ in display_row..height {
-        rows.push(jsx_row(vec![UiNode::text(" ")], width));
-    }
+    let selection = if in_visual {
+        sel_start.zip(sel_end).map(|(start, end)| {
+            Selection::range(
+                start.row as u32,
+                start.col as u32,
+                end.row as u32,
+                end.col as u32,
+                SelectionMode::Char,
+            )
+        })
+    } else {
+        None
+    };
 
-    jsx_column(rows, width, height)
+    let mut node = display_protocol::TextAreaNode {
+        lines,
+        cursor_line: buf.cursor.row as u16,
+        cursor_col: buf.cursor.col as u16,
+        selection: None,
+        scroll_top: 0,
+        scroll_left: 0,
+        height,
+        style: Style::default().fg(text_fg).bg(t.background),
+        cursor_style: Style::default().fg(cursor_fg).bg(cursor_bg),
+        selection_style: Style::default().bg(sel_bg),
+        gutter: show_line_numbers,
+        focused: true,
+    }
+    .scroll(view.scroll_top as u16, 0)
+    .cursor(buf.cursor.row as u16, buf.cursor.col as u16);
+    if let Some(sel) = selection {
+        node = node.selection(sel);
+    } else {
+        node = node.clear_selection();
+    }
+    UiNode::TextArea(node)
 }
