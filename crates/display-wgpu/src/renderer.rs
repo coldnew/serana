@@ -431,7 +431,7 @@ impl WgpuRenderer {
         for y in 0..rows {
             for x in 0..cols {
                 let cell = buffer.get(x, y);
-                let _info = self.atlas.ensure_char(cell.ch);
+                let info = self.atlas.ensure_char(cell.ch);
 
                 instances.push(CellInstance {
                     position: [
@@ -440,7 +440,7 @@ impl WgpuRenderer {
                     ],
                     fg_color: pack_color(cell.fg),
                     bg_color: pack_color(cell.bg),
-                    char_code: cell.ch as u32,
+                    char_code: info.slot,
                     flags: style_flags(&cell),
                 });
             }
