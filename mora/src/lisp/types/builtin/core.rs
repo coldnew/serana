@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use super::invoke_fn;
+use super::register_native;
 use crate::lisp::ns::Namespace;
 use crate::lisp::types::{Symbol, Value};
-use super::register_native;
-use super::invoke_fn;
 
 pub fn register(ns: &mut Namespace) {
     // --- Arithmetic ---
@@ -148,6 +148,7 @@ pub fn register(ns: &mut Namespace) {
     register_native(ns, "nil", native_nil_val);
     register_native(ns, "type", native_type);
     register_native(ns, "hash", native_hash);
+    register_native(ns, "await-all", native_await_all);
 }
 // --- Implementations ---
 
@@ -1949,7 +1950,9 @@ fn native_read_string(args: &[Value]) -> Result<Value, String> {
         return Err("read-string requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::String(s) => crate::lisp::reader::read_str(s).map_err(|e| format!("read error: {}", e)),
+        Value::String(s) => {
+            crate::lisp::reader::read_str(s).map_err(|e| format!("read error: {}", e))
+        }
         _ => Err("read-string requires a string".to_string()),
     }
 }
@@ -2068,4 +2071,36 @@ fn native_hash(args: &[Value]) -> Result<Value, String> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     args[0].hash(&mut hasher);
     Ok(Value::Int(hasher.finish() as i64))
+}
+
+fn native_await_all(args: &[Value]) -> Result<Value, String> {
+    if args.is_empty() {
+        return Err("await-all requires at least 1 argument".to_string());
+    }
+    let mut results = Vec::with_capacity(args.len());
+    for arg in args {
+        match arg {
+            Value::Future(f) => {
+                while !f.done.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
+                let result = f.result.lock();
+                match result.as_ref() {
+                    Some(Ok(v)) => results.push(v.clone()),
+                    Some(Err(e)) => return Err(format!("async error: {}", e)),
+                    None => results.push(Value::Nil),
+                }
+            }
+            Value::Promise(p) => {
+                while !p.done.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
+                let result = p.result.lock();
+                results.push(result.clone().unwrap_or(Value::Nil));
+            }
+            Value::Agent(a) => results.push(a.state.lock().clone()),
+            _ => return Err("await-all requires future, promise, or agent values".to_string()),
+        }
+    }
+    Ok(Value::vector(results))
 }

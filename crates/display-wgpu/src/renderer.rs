@@ -386,6 +386,11 @@ impl WgpuRenderer {
         (self.grid_cols, self.grid_rows)
     }
 
+    /// Cell dimensions in pixels (width, height).
+    pub fn cell_size(&self) -> (f32, f32) {
+        (self.cell_width, self.cell_height)
+    }
+
     /// Handle window resize.
     pub fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 {

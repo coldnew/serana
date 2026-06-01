@@ -1,6 +1,6 @@
 use std::cell::Cell;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -198,7 +198,7 @@ impl Evaluator {
         self.call_stack.clear();
     }
 
-     pub fn eval(&mut self, form: &Value) -> Result<Value, EvalError> {
+    pub fn eval(&mut self, form: &Value) -> Result<Value, EvalError> {
         let env = Env::new();
         self.eval_in(env, form)
     }
@@ -282,20 +282,30 @@ impl Evaluator {
 
             match op {
                 Op::PushConst(idx) => {
-                    let val = compiled.constants.get(idx as usize).cloned().unwrap_or(Value::Nil);
+                    let val = compiled
+                        .constants
+                        .get(idx as usize)
+                        .cloned()
+                        .unwrap_or(Value::Nil);
                     stack.push(val);
                 }
                 Op::PushNil => stack.push(Value::Nil),
                 Op::PushTrue => stack.push(Value::Bool(true)),
                 Op::PushFalse => stack.push(Value::Bool(false)),
-                Op::Pop => { stack.pop(); }
+                Op::Pop => {
+                    stack.pop();
+                }
                 Op::Dup => {
                     if let Some(top) = stack.last().cloned() {
                         stack.push(top);
                     }
                 }
                 Op::ResolveSymbol(idx) => {
-                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    let name = compiled
+                        .strings
+                        .get(idx as usize)
+                        .cloned()
+                        .unwrap_or_default();
                     if let Some(slash_pos) = name.find('/') {
                         let ns_name = &name[..slash_pos];
                         let var_name = &name[slash_pos + 1..];
@@ -303,7 +313,9 @@ impl Evaluator {
                             ns: Some(Arc::new(ns_name.to_string())),
                             name: Arc::new(var_name.to_string()),
                         };
-                        let val = self.ns.resolve_symbol(&sym)
+                        let val = self
+                            .ns
+                            .resolve_symbol(&sym)
                             .ok_or_else(|| EvalError::Undefined(name.clone()))?;
                         stack.push(val);
                     } else {
@@ -311,17 +323,26 @@ impl Evaluator {
                             ns: None,
                             name: Arc::new(name.clone()),
                         };
-                        let val = self.ns.resolve_symbol(&sym)
+                        let val = self
+                            .ns
+                            .resolve_symbol(&sym)
                             .ok_or_else(|| EvalError::Undefined(name))?;
                         stack.push(val);
                     }
                 }
                 Op::DefineSymbol(idx) => {
-                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    let name = compiled
+                        .strings
+                        .get(idx as usize)
+                        .cloned()
+                        .unwrap_or_default();
                     let val = stack.pop().unwrap_or(Value::Nil);
                     let current_ns = self.ns.current_name();
                     let (ns_name, var_name) = if let Some(slash_pos) = name.find('/') {
-                        (name[..slash_pos].to_string(), name[slash_pos + 1..].to_string())
+                        (
+                            name[..slash_pos].to_string(),
+                            name[slash_pos + 1..].to_string(),
+                        )
                     } else {
                         (current_ns, name)
                     };
@@ -329,20 +350,31 @@ impl Evaluator {
                     ns.lock().intern(&var_name, val);
                 }
                 Op::PushNs(idx) => {
-                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    let name = compiled
+                        .strings
+                        .get(idx as usize)
+                        .cloned()
+                        .unwrap_or_default();
                     self.ns.find_or_create(&name);
-                    self.ns.set_current(&name)
+                    self.ns
+                        .set_current(&name)
                         .map_err(|e| EvalError::SpecialForm(e))?;
                     if !self.ns.is_loaded(&name) {
-                        self.ns.refer_all("mora.core", &name)
+                        self.ns
+                            .refer_all("mora.core", &name)
                             .map_err(|e| EvalError::SpecialForm(e))?;
                         self.ns.mark_loaded(&name);
                     }
                 }
                 Op::RequireNs(idx) => {
-                    let name = compiled.strings.get(idx as usize).cloned().unwrap_or_default();
+                    let name = compiled
+                        .strings
+                        .get(idx as usize)
+                        .cloned()
+                        .unwrap_or_default();
                     let _alias = stack.pop();
-                    self.ns.require(&name, None)
+                    self.ns
+                        .require(&name, None)
                         .map_err(|e| EvalError::SpecialForm(e))?;
                 }
                 Op::GetLocal(idx) => {
@@ -379,11 +411,15 @@ impl Evaluator {
                         Value::Nil
                     };
                     let call_args: Vec<Value> = stack.drain(args_start..).collect();
-                    if args_start > 0 { stack.pop(); }
+                    if args_start > 0 {
+                        stack.pop();
+                    }
                     let result = match callee {
                         Value::Native(f) => f(&call_args).map_err(EvalError::Custom)?,
                         Value::Fn(f) => self.call_fn(f, call_args)?,
-                        other => return Err(EvalError::NotAFunction(other.type_name().to_string())),
+                        other => {
+                            return Err(EvalError::NotAFunction(other.type_name().to_string()))
+                        }
                     };
                     stack.push(result);
                 }
@@ -397,11 +433,15 @@ impl Evaluator {
                         Value::Nil
                     };
                     let call_args: Vec<Value> = stack.drain(args_start..).collect();
-                    if args_start > 0 { stack.pop(); }
+                    if args_start > 0 {
+                        stack.pop();
+                    }
                     let result = match callee {
                         Value::Native(f) => f(&call_args).map_err(EvalError::Custom)?,
                         Value::Fn(f) => self.call_fn(f, call_args)?,
-                        other => return Err(EvalError::NotAFunction(other.type_name().to_string())),
+                        other => {
+                            return Err(EvalError::NotAFunction(other.type_name().to_string()))
+                        }
                     };
                     stack.push(result);
                 }
@@ -459,8 +499,13 @@ impl Evaluator {
                     }
                 }
                 Op::InvokeNative(native_idx) => {
-                    let f = compiled.native_fns.get(native_idx as usize).copied()
-                        .ok_or_else(|| EvalError::Custom(format!("unknown native fn index: {}", native_idx)))?;
+                    let f = compiled
+                        .native_fns
+                        .get(native_idx as usize)
+                        .copied()
+                        .ok_or_else(|| {
+                            EvalError::Custom(format!("unknown native fn index: {}", native_idx))
+                        })?;
                     let result = f(&stack).map_err(EvalError::Custom)?;
                     stack.clear();
                     stack.push(result);
@@ -562,6 +607,7 @@ impl Evaluator {
                 "swap!" => return self.eval_swap(env, &list[1..]),
                 "reset!" => return self.eval_reset(env, &list[1..]),
                 "future" => return self.eval_future(env, &list[1..]),
+                "async" => return self.eval_async(env, &list[1..]),
                 "agent" => return self.eval_agent(env, &list[1..]),
                 "send" => return self.eval_send(env, &list[1..]),
                 "send-off" => return self.eval_send_off(env, &list[1..]),
@@ -639,7 +685,10 @@ impl Evaluator {
     }
 
     pub fn call_fn(&mut self, func: FnValue, args: Vec<Value>) -> Result<Value, EvalError> {
-        let fn_name = func.name.clone().unwrap_or_else(|| "<anonymous>".to_string());
+        let fn_name = func
+            .name
+            .clone()
+            .unwrap_or_else(|| "<anonymous>".to_string());
 
         // Check for compiled bytecode dispatch
         if func.name.is_some() {
@@ -946,7 +995,8 @@ impl Evaluator {
             Value::List(list) if !list.is_empty() => {
                 // ^:interactive expands to (with-meta sym :interactive)
                 if let Value::Symbol(meta_sym) = &list[0] {
-                    if meta_sym.ns.is_none() && meta_sym.name.as_str() == "with-meta"
+                    if meta_sym.ns.is_none()
+                        && meta_sym.name.as_str() == "with-meta"
                         && list.len() == 3
                     {
                         if let Value::Symbol(actual_sym) = &list[1] {
@@ -1882,6 +1932,42 @@ impl Evaluator {
         Ok(future)
     }
 
+    /// (async body...) — Like future, but captures the current environment
+    /// so the body can reference local variables and closures.
+    /// Returns a future that resolves to the body's result.
+    fn eval_async(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+        if args.is_empty() {
+            return Err(EvalError::SpecialForm(
+                "async requires at least 1 argument".to_string(),
+            ));
+        }
+        let body: Vec<Value> = args.to_vec();
+        let captured_env = env.clone();
+        let ns_registry = self.ns.clone();
+        let future = Value::future();
+        if let Value::Future(ref f) = future {
+            let f_clone = f.clone();
+            self.thread_pool.spawn(move || {
+                let mut eval = Evaluator::new();
+                eval.ns = ns_registry;
+                let mut result = Value::Nil;
+                for form in &body {
+                    match eval.eval_in(captured_env.clone(), form) {
+                        Ok(val) => result = val,
+                        Err(e) => {
+                            *f_clone.result.lock() = Some(Err(e));
+                            f_clone.done.store(true, std::sync::atomic::Ordering::SeqCst);
+                            return;
+                        }
+                    }
+                }
+                *f_clone.result.lock() = Some(Ok(result));
+                f_clone.done.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+        Ok(future)
+    }
+
     fn eval_agent(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
             return Err(EvalError::SpecialForm(
@@ -1929,16 +2015,38 @@ impl Evaluator {
         self.eval_send(env, args)
     }
 
+    /// (await expr) — Blocks until the async value (future, promise, or agent)
+    /// resolves and returns the result.
     fn eval_await(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() != 1 {
             return Err(EvalError::SpecialForm(
                 "await requires exactly 1 argument".to_string(),
             ));
         }
-        let agent = self.eval_in(env.clone(), &args[0])?;
-        match agent {
+        let val = self.eval_in(env.clone(), &args[0])?;
+        match val {
+            Value::Future(f) => {
+                while !f.done.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
+                let result = f.result.lock();
+                match result.as_ref() {
+                    Some(Ok(v)) => Ok(v.clone()),
+                    Some(Err(e)) => Err(EvalError::Custom(format!("async error: {}", e))),
+                    None => Ok(Value::Nil),
+                }
+            }
+            Value::Promise(p) => {
+                while !p.done.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
+                let result = p.result.lock();
+                Ok(result.clone().unwrap_or(Value::Nil))
+            }
             Value::Agent(a) => Ok(a.state.lock().clone()),
-            _ => Err(EvalError::Type("await arg must be an agent".to_string())),
+            _ => Err(EvalError::Type(
+                "await requires a future, promise, or agent".to_string(),
+            )),
         }
     }
 

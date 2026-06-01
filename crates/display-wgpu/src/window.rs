@@ -101,6 +101,8 @@ pub struct RenderCtx {
     pub grid_rows: u16,
     pub pixel_width: u32,
     pub pixel_height: u32,
+    pub cell_width: f32,
+    pub cell_height: f32,
 }
 
 // ── Internal winit application ──
@@ -203,11 +205,14 @@ impl WgpuApp {
             None => return,
         };
 
+        let (cw, ch) = renderer.cell_size();
         let ctx = RenderCtx {
             grid_cols: renderer.grid_size().0,
             grid_rows: renderer.grid_size().1,
             pixel_width: renderer.pixel_width,
             pixel_height: renderer.pixel_height,
+            cell_width: cw,
+            cell_height: ch,
         };
 
         // Drain pending events and pass to user callback.

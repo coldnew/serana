@@ -166,6 +166,7 @@ impl Namespace {
 }
 
 /// Global namespace registry
+#[derive(Clone)]
 pub struct NamespaceRegistry {
     namespaces: HashMap<String, Arc<Mutex<Namespace>>>,
     current: Arc<Mutex<Namespace>>,

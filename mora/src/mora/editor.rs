@@ -98,6 +98,8 @@ pub struct MoraEditor {
     pub snippet_engine: super::snippet::SnippetEngine,
     pub active_snippet: Option<super::snippet::SnippetExpansion>,
     pub show_menu_bar: bool,
+    /// Currently selected menu bar item index (0=File, 1=Edit, 2=Options, 3=Buffers, 4=Tools, 5=Help).
+    pub menu_bar_selection: Option<usize>,
 }
 
 impl MoraEditor {
@@ -176,6 +178,7 @@ impl MoraEditor {
             },
             active_snippet: None,
             show_menu_bar: true,
+            menu_bar_selection: None,
         };
         editor.wasm_host.discover();
         if editor.wasm_host.count() > 0 {

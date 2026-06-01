@@ -211,6 +211,8 @@ fn run_editor_wgpu(file: Option<String>) -> anyhow::Result<()> {
 
     WgpuWindow::new(config, DEFAULT_FONT)
         .run(move |events, ctx| {
+            // Sync cell dimensions for mouse coordinate conversion.
+            core.set_cell_size(ctx.cell_width, ctx.cell_height);
             // Resize core if grid dimensions changed.
             let (cols, rows) = (ctx.grid_cols, ctx.grid_rows);
             if cols != core.width() || rows != core.height() {

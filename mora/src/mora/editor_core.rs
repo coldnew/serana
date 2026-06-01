@@ -4,7 +4,8 @@ use crate::mora::editor::MoraEditor;
 use crate::mora::ui_node;
 use display_protocol::{
     collect_render_commands, render_commands_to_buffer, Cell, Color, CursorState, CursorStyle,
-    DisplayCmd, FrameUpdate, Grid, InputEvent as ProtoInputEvent, KeyCode, KeyEvent, Style, UiNode,
+    DisplayCmd, FrameUpdate, Grid, InputEvent as ProtoInputEvent, KeyCode, KeyEvent,
+    MouseEventKind, Style, UiNode,
 };
 use std::path::Path;
 
@@ -15,6 +16,8 @@ pub struct MoraCore {
     pub show_menu_bar: bool,
     width: u16,
     height: u16,
+    cell_width: f32,
+    cell_height: f32,
 }
 
 impl MoraCore {
@@ -27,6 +30,8 @@ impl MoraCore {
             show_menu_bar: true,
             width,
             height,
+            cell_width: 8.0,
+            cell_height: 16.0,
         }
     }
 
@@ -39,6 +44,8 @@ impl MoraCore {
             show_menu_bar: true,
             width,
             height,
+            cell_width: 8.0,
+            cell_height: 16.0,
         })
     }
 
@@ -54,6 +61,11 @@ impl MoraCore {
     }
     pub fn height(&self) -> u16 {
         self.height
+    }
+
+    pub fn set_cell_size(&mut self, cell_width: f32, cell_height: f32) {
+        self.cell_width = cell_width;
+        self.cell_height = cell_height;
     }
 
     /// Render editor state using the declarative UiNode pipeline.
@@ -121,8 +133,12 @@ impl MoraCore {
             ProtoInputEvent::Resize { width, height } => {
                 self.resize(width, height);
             }
-            ProtoInputEvent::Mouse { .. } => {
-                // TODO: mouse support
+            ProtoInputEvent::Mouse { x, y, kind, .. } => {
+                if kind == MouseEventKind::Press {
+                    let grid_x = (x as f32 / self.cell_width) as u16;
+                    let grid_y = (y as f32 / self.cell_height) as u16;
+                    self.handle_mouse_press(grid_x, grid_y);
+                }
             }
             ProtoInputEvent::FocusGained | ProtoInputEvent::FocusLost => {}
             ProtoInputEvent::Paste(text) => {
@@ -151,6 +167,33 @@ impl MoraCore {
             _ => {}
         }
         self.editor.quit_requested()
+    }
+
+    /// Handle a mouse press at grid coordinates.
+    fn handle_mouse_press(&mut self, grid_x: u16, grid_y: u16) {
+        // Menu bar occupies row 0 when enabled.
+        if self.show_menu_bar && grid_y == 0 {
+            // Menu item column ranges: (name, start_col, end_col) inclusive.
+            const ITEMS: &[(&str, u16, u16)] = &[
+                ("File", 1, 4),
+                ("Edit", 7, 10),
+                ("Options", 13, 19),
+                ("Buffers", 22, 28),
+                ("Tools", 31, 35),
+                ("Help", 38, 41),
+            ];
+            for (i, &(_name, start, end)) in ITEMS.iter().enumerate() {
+                if grid_x >= start && grid_x <= end {
+                    self.editor.menu_bar_selection = Some(i);
+                    return;
+                }
+            }
+            // Clicked on menu bar but not on an item — deselect.
+            self.editor.menu_bar_selection = None;
+            return;
+        }
+        // Click outside menu bar clears selection.
+        self.editor.menu_bar_selection = None;
     }
 
     pub fn quit_requested(&self) -> bool {
@@ -218,13 +261,13 @@ mod tests {
         let gui_frame = gui_core.render_ui_frame();
         assert_eq!(
             grid_row_text(&gui_frame.grid, 0),
-            "File Edit Options Buffers Tools Help"
+            " File  Edit  Options  Buffers  Tools  Help"
         );
 
         let mut tui_core = MoraCore::open(path, 80, 24).expect("open editor");
         tui_core.show_menu_bar = false;
         let tui_frame = tui_core.render_ui_frame();
         let row0 = grid_row_text(&tui_frame.grid, 0);
-        assert_ne!(row0, "File Edit Options Buffers Tools Help");
+        assert_ne!(row0, " File  Edit  Options  Buffers  Tools  Help");
     }
 }
