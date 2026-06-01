@@ -87,10 +87,6 @@ impl MoraCore {
             }
         }
 
-        if !self.show_menu_bar && self.grid_has_menu_bar(&grid) {
-            self.strip_top_row(&mut grid);
-        }
-
         let cursor_visible = true;
         let cursor_style = match self.editor.mode() {
             crate::mora::keymap::EditorMode::Insert => CursorStyle::Bar,
@@ -109,36 +105,6 @@ impl MoraCore {
             command_line: None,
             help_bar: None,
             full_redraw: true,
-        }
-    }
-
-    fn grid_has_menu_bar(&self, grid: &Grid) -> bool {
-        let mut first_row = String::new();
-        for x in 0..grid.width {
-            let ch = grid.get(x, 0).ch;
-            if ch == '\0' {
-                break;
-            }
-            first_row.push(ch);
-        }
-        first_row.trim_end() == "File Edit Options Buffers Tools Help"
-    }
-
-    fn strip_top_row(&self, grid: &mut Grid) {
-        if grid.height == 0 {
-            return;
-        }
-        let width = grid.width as usize;
-        let height = grid.height as usize;
-        for y in 1..height {
-            for x in 0..width {
-                let cell = grid.cells[y * width + x];
-                grid.cells[(y - 1) * width + x] = cell;
-            }
-        }
-        let last_row = (height - 1) * width;
-        for x in 0..width {
-            grid.cells[last_row + x] = Cell::default();
         }
     }
 
@@ -224,4 +190,41 @@ fn proto_key_to_mora(key: KeyEvent) -> MoraKeyEvent {
         super_key: key.modifiers.super_key,
     };
     MoraKeyEvent::new(code, modifiers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn grid_row_text(grid: &Grid, row: u16) -> String {
+        let mut out = String::new();
+        for x in 0..grid.width {
+            let ch = grid.get(x, row).ch;
+            if ch == '\0' {
+                break;
+            }
+            out.push(ch);
+        }
+        out.trim_end().to_string()
+    }
+
+    #[test]
+    fn menu_bar_is_rendered_only_when_enabled() {
+        let path = Path::new("mora/src/mora/editor.rs");
+
+        let mut gui_core = MoraCore::open(path, 80, 24).expect("open editor");
+        gui_core.show_menu_bar = true;
+        let gui_frame = gui_core.render_ui_frame();
+        assert_eq!(
+            grid_row_text(&gui_frame.grid, 0),
+            "File Edit Options Buffers Tools Help"
+        );
+
+        let mut tui_core = MoraCore::open(path, 80, 24).expect("open editor");
+        tui_core.show_menu_bar = false;
+        let tui_frame = tui_core.render_ui_frame();
+        let row0 = grid_row_text(&tui_frame.grid, 0);
+        assert_ne!(row0, "File Edit Options Buffers Tools Help");
+    }
 }

@@ -80,3 +80,4 @@
 - Math markdown also needs the pulldown option enabled; render formulas visibly as text so equations do not disappear in transcript views.
 - Definition lists need both the pulldown option and explicit tag handling; otherwise terms and definitions lose their relationship in rendered transcripts.
 - Mora's default Emacs-like frame should be driven from startup policy, not the renderer: scratch mode, menu labels, and whether line numbers are shown need to be set before UI composition so the default frame stays consistent.
+- GUI/TUI parity should be controlled in the shared UI tree, not by stripping rows in the TUI renderer. That keeps `--nw` and WGPU frames from drifting apart when the menu bar changes.
