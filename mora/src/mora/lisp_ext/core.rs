@@ -967,10 +967,12 @@ mod tests {
         set_editor_state(EditorState::new());
         let mut bridge = MoraLispBridge::new();
 
-        assert!(bridge.has_command("find-file"));
-        assert!(bridge.has_command("mora.files/find-file"));
-        assert!(bridge.has_command("save-buffer"));
+        assert!(bridge.has_command("mora-version"));
+        assert!(bridge.has_command("list-buffers"));
+        assert!(bridge.has_command("buffer-file-name"));
         assert!(bridge.has_command("execute-extended-command"));
+        assert!(!bridge.has_command("find-file"));
+        assert!(!bridge.has_command("save-buffer"));
 
         bridge.execute_command("mora-version").unwrap();
         with_editor_state(|state| {

@@ -5,17 +5,6 @@
 (require [mora.editor :as editor])
 (require [mora.minibuffer :as minibuffer])
 
-(defcommand switch-buffer
-  "Switch to another buffer."
-  []
-  (let [name (minibuffer/completing-read "Switch to buffer: " (buffer/buffer-list) (buffer/name))]
-    (editor/message (str "switch-buffer requires Rust buffer primitive: " name))))
-
-(defcommand kill-buffer
-  "Kill the current buffer."
-  []
-  (editor/message (str "kill-buffer requires Rust buffer primitive: " (buffer/name))))
-
 (defcommand list-buffers
   "List buffers in the echo area."
   []

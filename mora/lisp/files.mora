@@ -5,25 +5,9 @@
 (require [mora.editor :as editor])
 (require [mora.minibuffer :as minibuffer])
 
-(defcommand find-file
-  "Visit a file by path."
-  []
-  (let [path (minibuffer/read-string "Find file: ")]
-    (if (= path "")
-      (editor/message "Find file: no path provided")
-      (editor/message (str "find-file requires Rust file primitive: " path)))))
-
-(defcommand save-buffer
-  "Save the current buffer."
+(defcommand buffer-file-name
+  "Show the current buffer file name."
   []
   (if (buffer/file-path)
-    (editor/message (str "Save buffer requested: " (buffer/file-path)))
+    (editor/message (buffer/file-path))
     (editor/message "Buffer has no file path")))
-
-(defcommand write-file
-  "Write the current buffer to a file."
-  []
-  (let [path (minibuffer/read-string "Write file: ")]
-    (if (= path "")
-      (editor/message "Write file: no path provided")
-      (editor/message (str "write-file requires Rust file primitive: " path)))))
