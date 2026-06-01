@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use super::MoraEditor;
 use crate::mora::display::event::{MoraKeyCode as KeyCode, MoraKeyEvent as KeyEvent};
 use crate::mora::keymap::{self, EditorMode, KeyAction};
-use crate::mora::minibuffer::{CompletionResult, Minibuffer};
+use crate::mora::minibuffer::{CompletionItem, CompletionResult, Minibuffer};
 use crate::mora::rectangle::{self, RectRegion};
 use crate::mora::register::RegisterValue;
 
@@ -1635,22 +1635,11 @@ impl MoraEditor {
                 return;
             }
             _ => {
-                // Unknown M-x command — try evaluating as lisp
-                self.push_lisp_state();
-                let lisp_code = format!("({})", trimmed);
-                let result = self.lisp_bridge.eval(&lisp_code);
-                self.pull_lisp_state();
-                match result {
-                    Ok(val) => {
-                        let s = format!("{}", val);
-                        if s != "nil" {
-                            self.status_message = s;
-                        }
-                    }
-                    Err(e) => {
-                        self.status_message = format!("{}: {}", trimmed, e);
-                    }
-                }
+                self.status_message = if trimmed.is_empty() {
+                    "M-x: no command".to_string()
+                } else {
+                    format!("Unknown command: {}", trimmed)
+                };
                 self.mode = EditorMode::Emacs;
                 self.clear_minibuffer();
                 return;
@@ -1771,6 +1760,13 @@ impl MoraEditor {
         commands
     }
 
+    pub(super) fn command_completion_items(&self) -> Vec<CompletionItem> {
+        self.command_candidates()
+            .into_iter()
+            .map(|name| CompletionItem::command(name).with_detail("Command"))
+            .collect()
+    }
+
     pub(super) fn mx_complete(&mut self) {
         let input = self.command_input().trim();
         if input.is_empty() {
@@ -1778,8 +1774,8 @@ impl MoraEditor {
         }
 
         if self.minibuffer.is_active() {
-            let candidates = self.command_candidates();
-            self.minibuffer.set_completions(candidates);
+            let candidates = self.command_completion_items();
+            self.minibuffer.set_completion_items(candidates);
             match self.minibuffer.complete_prefix() {
                 CompletionResult::Completed => {
                     self.command_input = self.minibuffer.input().to_string();
@@ -1795,7 +1791,7 @@ impl MoraEditor {
         let mut minibuffer = Minibuffer::default();
         minibuffer.activate("M-x ");
         minibuffer.set_input(self.command_input.clone());
-        minibuffer.set_completions(self.command_candidates());
+        minibuffer.set_completion_items(self.command_completion_items());
         match minibuffer.complete_prefix() {
             CompletionResult::Completed => self.command_input = minibuffer.input().to_string(),
             CompletionResult::Matches(matches) => self.status_message = matches.join("  "),

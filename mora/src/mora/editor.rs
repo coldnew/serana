@@ -288,8 +288,8 @@ impl MoraEditor {
         self.command_input.clear();
         self.minibuffer.activate(prompt);
         if mode == EditorMode::Command {
-            let candidates = self.command_candidates();
-            self.minibuffer.set_completions(candidates);
+            let candidates = self.command_completion_items();
+            self.minibuffer.set_completion_items(candidates);
         }
     }
 
@@ -580,6 +580,19 @@ mod tests {
 
         assert_eq!(editor.minibuffer_prompt(), "M-x ");
         assert_eq!(editor.command_input(), "save-");
+    }
+
+    #[test]
+    fn unknown_mx_command_reports_status_without_eval() {
+        let mut editor = MoraEditor::new(20);
+
+        editor.activate_minibuffer_with_prompt(EditorMode::Command, "M-x ");
+        editor.set_minibuffer_input("not-a-command");
+        editor.execute_command();
+
+        assert!(!editor.minibuffer_active());
+        assert_eq!(editor.mode, EditorMode::Emacs);
+        assert_eq!(editor.status_message(), "Unknown command: not-a-command");
     }
 
     #[test]
