@@ -18,9 +18,11 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
         return lisp_ui;
     }
 
+    let menu_height = 1u16;
     let modeline_height = 1u16;
     let echo_height = 1u16;
-    let editor_height = height.saturating_sub(modeline_height + echo_height);
+    let editor_height = height.saturating_sub(menu_height + modeline_height + echo_height);
+    let menu = build_menu_bar(editor, width);
 
     if editor.mshell.is_active() {
         let shell_area = build_mshell_area(editor, width, editor_height);
@@ -29,6 +31,7 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 
         jsx! {
             <Column>
+                {menu}
                 {shell_area}
                 {modeline}
                 {echo}
@@ -41,11 +44,44 @@ pub fn build_ui(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 
         jsx! {
             <Column>
+                {menu}
                 {editor_area}
                 {modeline}
                 {echo}
             </Column>
         }
+    }
+}
+
+fn jsx_column(children: Vec<UiNode>, width: u16, height: u16) -> UiNode {
+    jsx! {
+        <Column width={width} height={height}>
+            <For children={children} />
+        </Column>
+    }
+}
+
+fn jsx_row(children: Vec<UiNode>, width: u16) -> UiNode {
+    jsx! {
+        <Row width={width}>
+            <For children={children} />
+        </Row>
+    }
+}
+
+/// Emacs-style menu bar. It is intentionally declarative and compact so Lisp
+/// or future UI extensions can replace/augment the same top-level slot.
+fn build_menu_bar(editor: &MoraEditor, width: u16) -> UiNode {
+    let t = &editor.theme;
+    let fg = Color::new(t.modeline_fg.r, t.modeline_fg.g, t.modeline_fg.b);
+    let bg = Color::new(t.modeline_bg.r, t.modeline_bg.g, t.modeline_bg.b);
+    let menus = " File  Edit  Options  Buffers  Tools  Lisp  Help ";
+    let content = pad_to_width(menus, width as usize);
+
+    jsx! {
+        <Row width={width}>
+            <Text color={fg} bg={bg}>{content}</Text>
+        </Row>
     }
 }
 
@@ -66,7 +102,6 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     let modified_flag = if buf.modified { "**" } else { "--" };
 
     let line = buf.cursor.row + 1;
-    let col = buf.cursor.col + 1;
     let total_lines = buf.line_count().max(1);
     let pct = if total_lines <= 1 {
         100
@@ -75,7 +110,11 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
     };
 
     // Buffer name: *scratch* for scratch buffer, or filename
-    let buf_name = if filename.is_empty() { "*scratch*" } else { filename };
+    let buf_name = if filename.is_empty() {
+        "*scratch*"
+    } else {
+        filename
+    };
 
     // Major mode name
     let major_mode = buf.major_mode.name();
@@ -118,12 +157,29 @@ fn build_modeline(editor: &MoraEditor, width: u16) -> UiNode {
 
     let modeline_str = format!("{}{}{}{}", left, mode_info, padding, right);
 
-    let fg = Color::new(editor.theme.modeline_fg.r, editor.theme.modeline_fg.g, editor.theme.modeline_fg.b);
-    let bg = Color::new(editor.theme.modeline_bg.r, editor.theme.modeline_bg.g, editor.theme.modeline_bg.b);
+    let fg = Color::new(
+        editor.theme.modeline_fg.r,
+        editor.theme.modeline_fg.g,
+        editor.theme.modeline_fg.b,
+    );
+    let bg = Color::new(
+        editor.theme.modeline_bg.r,
+        editor.theme.modeline_bg.g,
+        editor.theme.modeline_bg.b,
+    );
 
     jsx! {
         <Text color={fg} bg={bg} bold>{modeline_str}</Text>
     }
+}
+
+fn pad_to_width(input: &str, width: usize) -> String {
+    let mut output: String = input.chars().take(width).collect();
+    let used = output.chars().count();
+    if used < width {
+        output.push_str(&" ".repeat(width - used));
+    }
+    output
 }
 
 /// Echo area: shows minibuffer prompt+input when active,
@@ -359,24 +415,27 @@ fn build_editor_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
 
         if is_current {
             while display_col < text_width {
-                spans.push(UiNode::text(" ").bg(Color::new(t.current_line.r, t.current_line.g, t.current_line.b)));
+                spans.push(UiNode::text(" ").bg(Color::new(
+                    t.current_line.r,
+                    t.current_line.g,
+                    t.current_line.b,
+                )));
                 display_col += 1;
             }
         }
 
-        rows.push(UiNode::row(spans));
+        rows.push(jsx_row(spans, width));
         display_row += 1;
     }
 
     // Emacs: empty lines beyond buffer content are blank (no ~ marker).
     // The ~ prefix is a Vim convention, not Emacs.
     for _ in display_row..height {
-        rows.push(UiNode::row(vec![UiNode::text(" ")]));
+        rows.push(jsx_row(vec![UiNode::text(" ")], width));
     }
 
-    UiNode::column(rows).width(width)
+    jsx_column(rows, width, height)
 }
-
 
 /// Build mshell output area — shows shell output history.
 fn build_mshell_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
@@ -384,8 +443,6 @@ fn build_mshell_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
     let t = &editor.theme;
     let output_fg = Color::new(t.foreground.r, t.foreground.g, t.foreground.b);
     let prompt_fg = Color::new(t.echo_prompt.r, t.echo_prompt.g, t.echo_prompt.b);
-    let cursor_bg = Color::new(t.cursor.r, t.cursor.g, t.cursor.b);
-    let cursor_fg = Color::new(t.background.r, t.background.g, t.background.b);
 
     // Show the last `height` lines of output
     let start = if output.len() > height as usize {
@@ -400,21 +457,27 @@ fn build_mshell_area(editor: &MoraEditor, width: u16, height: u16) -> UiNode {
         let prompt = editor.mshell.prompt();
         if line.starts_with(&prompt) {
             let (p, rest) = line.split_at(prompt.len());
-            rows.push(UiNode::row(vec![
-                UiNode::text(p.to_string()).color(prompt_fg).bold(),
-                UiNode::text(rest.to_string()).color(output_fg),
-            ]));
+            rows.push(jsx_row(
+                vec![
+                    UiNode::text(p.to_string()).color(prompt_fg).bold(),
+                    UiNode::text(rest.to_string()).color(output_fg),
+                ],
+                width,
+            ));
         } else {
-            rows.push(UiNode::row(vec![UiNode::text(line.clone()).color(output_fg)]));
+            rows.push(jsx_row(
+                vec![UiNode::text(line.clone()).color(output_fg)],
+                width,
+            ));
         }
     }
 
     // Fill remaining rows with blank lines
     while rows.len() < height as usize {
-        rows.push(UiNode::row(vec![UiNode::text(" ")]));
+        rows.push(jsx_row(vec![UiNode::text(" ")], width));
     }
 
-    UiNode::column(rows).width(width)
+    jsx_column(rows, width, height)
 }
 
 /// Build mshell echo area — shows shell prompt + input with cursor.
