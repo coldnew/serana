@@ -1,0 +1,13 @@
+;;; grep.mora --- Grep package commands
+
+(ns mora.packages.grep)
+(require [mora.editor :as editor])
+(require [mora.minibuffer :as minibuffer])
+
+(defcommand grep
+  "Run a project grep."
+  []
+  (let [pattern (minibuffer/read-string "Grep: ")]
+    (if (= pattern "")
+      (editor/message "Grep: no pattern")
+      (editor/message (str "grep requires Rust search primitive: " pattern)))))

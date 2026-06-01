@@ -1,0 +1,9 @@
+;;; project.mora --- Project package commands
+
+(ns mora.packages.project)
+(require [mora.editor :as editor])
+
+(defcommand project-find-file
+  "Find a file in the current project."
+  []
+  (editor/message "project-find-file requires project file completion UI"))

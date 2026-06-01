@@ -1,0 +1,9 @@
+;;; rust.mora --- Rust mode defaults
+
+(ns mora.modes.rust)
+(require [mora.editor :as editor])
+
+(defcommand rust-mode
+  "Switch to Rust mode."
+  []
+  (editor/message "rust-mode requires Lisp mode registry migration"))

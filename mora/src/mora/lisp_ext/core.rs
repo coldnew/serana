@@ -17,7 +17,18 @@ impl MoraLispBridge {
         command::clear_command_registry();
         let mut evaluator = Evaluator::new();
         Self::register_editor_primitives(&mut evaluator);
+        Self::load_standard_library(&mut evaluator);
         Self { evaluator }
+    }
+
+    fn load_standard_library(eval: &mut Evaluator) {
+        for (path, code) in STANDARD_LIBRARY {
+            let forms = eval
+                .read_cached(code)
+                .unwrap_or_else(|err| panic!("failed to read Mora standard library {path}: {err}"));
+            crate::lisp::vm::compile_and_run(eval, &forms)
+                .unwrap_or_else(|err| panic!("failed to load Mora standard library {path}: {err}"));
+        }
     }
 
     fn register_editor_primitives(eval: &mut Evaluator) {
@@ -264,6 +275,62 @@ impl Default for MoraLispBridge {
         Self::new()
     }
 }
+
+const STANDARD_LIBRARY: &[(&str, &str)] = &[
+    (
+        "mora/lisp/core.mora",
+        include_str!("../../../lisp/core.mora"),
+    ),
+    (
+        "mora/lisp/files.mora",
+        include_str!("../../../lisp/files.mora"),
+    ),
+    (
+        "mora/lisp/buffers.mora",
+        include_str!("../../../lisp/buffers.mora"),
+    ),
+    (
+        "mora/lisp/windows.mora",
+        include_str!("../../../lisp/windows.mora"),
+    ),
+    (
+        "mora/lisp/minibuffer.mora",
+        include_str!("../../../lisp/minibuffer.mora"),
+    ),
+    (
+        "mora/lisp/keymap.mora",
+        include_str!("../../../lisp/keymap.mora"),
+    ),
+    ("mora/lisp/ui.mora", include_str!("../../../lisp/ui.mora")),
+    (
+        "mora/lisp/modes/fundamental.mora",
+        include_str!("../../../lisp/modes/fundamental.mora"),
+    ),
+    (
+        "mora/lisp/modes/text.mora",
+        include_str!("../../../lisp/modes/text.mora"),
+    ),
+    (
+        "mora/lisp/modes/lisp.mora",
+        include_str!("../../../lisp/modes/lisp.mora"),
+    ),
+    (
+        "mora/lisp/modes/rust.mora",
+        include_str!("../../../lisp/modes/rust.mora"),
+    ),
+    (
+        "mora/lisp/packages/grep.mora",
+        include_str!("../../../lisp/packages/grep.mora"),
+    ),
+    (
+        "mora/lisp/packages/project.mora",
+        include_str!("../../../lisp/packages/project.mora"),
+    ),
+    (
+        "mora/lisp/packages/vc.mora",
+        include_str!("../../../lisp/packages/vc.mora"),
+    ),
+];
 
 // ── Editor primitives (simple, stay in core) ─────────────────
 
@@ -891,6 +958,23 @@ mod tests {
 
         with_editor_state(|state| {
             assert_eq!(state.status_message, "legacy");
+        });
+        take_editor_state();
+    }
+
+    #[test]
+    fn standard_library_loads_interactive_commands() {
+        set_editor_state(EditorState::new());
+        let mut bridge = MoraLispBridge::new();
+
+        assert!(bridge.has_command("find-file"));
+        assert!(bridge.has_command("mora.files/find-file"));
+        assert!(bridge.has_command("save-buffer"));
+        assert!(bridge.has_command("execute-extended-command"));
+
+        bridge.execute_command("mora-version").unwrap();
+        with_editor_state(|state| {
+            assert!(state.status_message.starts_with("Mora version: "));
         });
         take_editor_state();
     }

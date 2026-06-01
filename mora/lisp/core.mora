@@ -1,0 +1,24 @@
+;;; core.mora --- Mora Lisp standard library core commands
+
+(ns mora.core)
+(require [mora.editor :as editor])
+
+(defcommand mora-version
+  "Show the Mora version."
+  []
+  (editor/message (str "Mora version: " editor/*mora-version*)))
+
+(defcommand describe-mode
+  "Describe the current Mora editing mode."
+  []
+  (editor/message (str "Current mode: " (editor/status))))
+
+(defcommand view-echo-area-messages
+  "Show the echo-area message buffer."
+  []
+  (editor/message "Use *Messages* support from the Rust message log."))
+
+(defcommand view-messages
+  "Show the message buffer."
+  []
+  (view-echo-area-messages))

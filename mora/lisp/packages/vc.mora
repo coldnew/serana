@@ -1,0 +1,9 @@
+;;; vc.mora --- Version-control package commands
+
+(ns mora.packages.vc)
+(require [mora.editor :as editor])
+
+(defcommand vc-status
+  "Show version-control status."
+  []
+  (editor/message "vc-status requires Rust process/project primitives"))

@@ -1,0 +1,9 @@
+;;; text.mora --- Text mode defaults
+
+(ns mora.modes.text)
+(require [mora.editor :as editor])
+
+(defcommand text-mode
+  "Switch to Text mode."
+  []
+  (editor/message "text-mode requires Lisp mode registry migration"))

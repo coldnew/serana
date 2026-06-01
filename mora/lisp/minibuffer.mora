@@ -1,0 +1,14 @@
+;;; minibuffer.mora --- Mora Lisp minibuffer commands
+
+(ns mora.minibuffer-commands)
+(require [mora.command :as command])
+(require [mora.editor :as editor])
+(require [mora.minibuffer :as minibuffer])
+
+(defcommand execute-extended-command
+  "Read and execute a command by name."
+  []
+  (let [name (minibuffer/completing-read "M-x " (command/names) "")]
+    (if (= name "")
+      (editor/message "M-x: no command")
+      (command/execute! name))))

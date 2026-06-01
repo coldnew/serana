@@ -1,0 +1,9 @@
+;;; keymap.mora --- Mora Lisp default keymap policy
+
+(ns mora.keymap-defaults)
+(require [mora.editor :as editor])
+
+(defcommand describe-bindings
+  "Describe active key bindings."
+  []
+  (editor/message "describe-bindings requires Lisp keymap registry migration"))

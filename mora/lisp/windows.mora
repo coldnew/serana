@@ -1,0 +1,20 @@
+;;; windows.mora --- Mora Lisp window commands
+
+(ns mora.windows)
+(require [mora.editor :as editor])
+(require [mora.window :as window])
+
+(defcommand delete-other-windows
+  "Delete all windows except the selected one."
+  []
+  (editor/message (str "delete-other-windows requires Rust window primitive; windows: " (window/count))))
+
+(defcommand split-window-below
+  "Split the selected window below."
+  []
+  (editor/message "split-window-below requires Rust window primitive"))
+
+(defcommand split-window-right
+  "Split the selected window right."
+  []
+  (editor/message "split-window-right requires Rust window primitive"))

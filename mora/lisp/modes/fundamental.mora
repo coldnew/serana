@@ -1,0 +1,9 @@
+;;; fundamental.mora --- Fundamental mode defaults
+
+(ns mora.modes.fundamental)
+(require [mora.editor :as editor])
+
+(defcommand fundamental-mode
+  "Switch to Fundamental mode."
+  []
+  (editor/message "fundamental-mode requires Lisp mode registry migration"))

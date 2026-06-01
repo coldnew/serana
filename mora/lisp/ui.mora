@@ -1,0 +1,10 @@
+;;; ui.mora --- Mora Lisp default UI policy hooks
+
+(ns mora.ui-defaults)
+(require [mora.editor :as editor])
+(require [mora.ui :as ui])
+
+(defcommand redraw-display
+  "Request a display redraw."
+  []
+  (editor/message "Display redraw requested"))

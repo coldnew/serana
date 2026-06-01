@@ -1,0 +1,9 @@
+;;; lisp.mora --- Mora Lisp mode defaults
+
+(ns mora.modes.lisp)
+(require [mora.editor :as editor])
+
+(defcommand lisp-mode
+  "Switch to Lisp mode."
+  []
+  (editor/message "lisp-mode requires Lisp mode registry migration"))
