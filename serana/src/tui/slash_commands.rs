@@ -19,6 +19,8 @@ pub enum SlashResult {
     Display(String),
     /// Switch the active model.
     SetModel(String),
+    /// Start an authentication flow for a provider.
+    Login(String),
     /// Force context compaction.
     Compact,
     /// Clear the conversation.
@@ -113,6 +115,19 @@ impl SlashCommandRegistry {
                     SlashResult::Display("Usage: /model <provider/model>".to_string())
                 } else {
                     SlashResult::SetModel(model.to_string())
+                }
+            }),
+        });
+
+        self.register(SlashCommand {
+            name: "login",
+            description: "Authenticate with a provider. Usage: /login codex",
+            handler: Box::new(|args| {
+                let provider = args.trim();
+                if provider.is_empty() {
+                    SlashResult::Display("Usage: /login codex".to_string())
+                } else {
+                    SlashResult::Login(provider.to_string())
                 }
             }),
         });
@@ -421,6 +436,11 @@ mod tests {
             _ => panic!("Expected Compact"),
         }
 
+        match registry.dispatch("/login codex") {
+            Some(SlashResult::Login(provider)) => assert_eq!(provider, "codex"),
+            _ => panic!("Expected Login"),
+        }
+
         match registry.dispatch("/clear") {
             Some(SlashResult::Clear) => {}
             _ => panic!("Expected Clear"),
@@ -454,8 +474,18 @@ mod tests {
         let registry = SlashCommandRegistry::new();
         let help = registry.help_text();
         assert!(help.contains("/model"));
+        assert!(help.contains("/login"));
         assert!(help.contains("/compact"));
         assert!(help.contains("/help"));
+    }
+
+    #[test]
+    fn login_requires_provider() {
+        let registry = SlashCommandRegistry::new();
+        match registry.dispatch("/login") {
+            Some(SlashResult::Display(message)) => assert_eq!(message, "Usage: /login codex"),
+            _ => panic!("Expected Display"),
+        }
     }
 
     #[test]

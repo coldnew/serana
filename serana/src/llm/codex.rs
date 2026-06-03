@@ -5,6 +5,31 @@ use tokio::process::Command;
 
 use crate::core::{LlmClient, Message, Result, ToolDefinition};
 
+pub fn login_device_auth() -> anyhow::Result<()> {
+    let mut child = std::process::Command::new("codex")
+        .args(["login", "--device-auth"])
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .spawn()
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                anyhow::anyhow!(
+                    "Codex CLI was not found in PATH. Install it, then run `serana login codex` again."
+                )
+            } else {
+                anyhow::anyhow!("failed to start Codex CLI: {}", error)
+            }
+        })?;
+
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("Codex device sign-in exited with {}", status);
+    }
+
+    Ok(())
+}
+
 pub struct CodexClient {
     model: String,
     workspace: Option<PathBuf>,

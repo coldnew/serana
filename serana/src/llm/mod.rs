@@ -10,7 +10,7 @@ pub mod streaming;
 
 pub use anthropic::AnthropicClient;
 pub use auxiliary::{AuxiliaryBuilder, AuxiliaryClient, AuxiliaryConfig, AuxiliaryTask};
-pub use codex::CodexClient;
+pub use codex::{login_device_auth, CodexClient};
 pub use credential::{CredentialProvider, EnvCredential, RefreshableClient, StaticCredential};
 pub use fallback::{FallbackChain, FallbackConfig, ProviderEntry, ProviderStatus};
 pub use openai::OpenAiClient;

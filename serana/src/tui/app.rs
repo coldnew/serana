@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use crate::core::Result;
+use crate::llm::login_device_auth;
 
 use super::slash_commands::SlashCommandRegistry;
 use super::symbols::{self, Symbols};
@@ -50,6 +52,17 @@ fn parse_model_selection(selection: &str, current_provider: &str) -> (String, St
             (provider.to_string(), model.to_string())
         }
         _ => (current_provider.to_string(), selection.to_string()),
+    }
+}
+
+fn run_codex_device_login() -> String {
+    let _ = disable_raw_mode();
+    let result = login_device_auth();
+    let _ = enable_raw_mode();
+
+    match result {
+        Ok(()) => "Codex device sign-in completed.".to_string(),
+        Err(error) => format!("Failed to sign in with Codex: {}", error),
     }
 }
 
@@ -669,6 +682,15 @@ impl App {
                     thinking: None,
                 });
             }
+            SlashResult::Login(provider) => {
+                let content = self.login_provider(&provider);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content,
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
             SlashResult::Compact => {
                 // Keep system prompt and last few messages, summarize the rest
                 let keep_last = 4.min(self.messages.len());
@@ -1073,6 +1095,16 @@ impl App {
                     thinking: None,
                 });
             }
+        }
+    }
+
+    fn login_provider(&self, provider: &str) -> String {
+        match provider {
+            "codex" => run_codex_device_login(),
+            _ => format!(
+                "Unsupported login provider '{}'. Use: /login codex",
+                provider
+            ),
         }
     }
 
@@ -1506,5 +1538,17 @@ mod tests {
 
         assert_eq!(app.provider, "codex");
         assert_eq!(app.model, "gpt-5.5");
+    }
+
+    #[test]
+    fn unsupported_login_provider_shows_usage() {
+        let app = App::new(PathBuf::from("."));
+
+        let message = app.login_provider("anthropic");
+
+        assert_eq!(
+            message,
+            "Unsupported login provider 'anthropic'. Use: /login codex"
+        );
     }
 }

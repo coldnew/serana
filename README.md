@@ -17,7 +17,8 @@ Codex device sign-in:
 cargo run -p serana -- login codex
 ```
 
-This delegates to `codex login --device-auth`; install the Codex CLI first.
+In the TUI, `/login codex` starts the same sign-in flow. Both forms delegate to
+`codex login --device-auth`; install the Codex CLI first.
 
 After signing in, select a Codex-backed model in the Serana TUI with `/model codex/gpt-5.5`.
 Codex-backed Serana calls use `codex exec` in read-only, non-streaming mode.

@@ -2,9 +2,8 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use serana::agent::HermesAgent;
 use serana::core::{Agent, Config, LlmClient};
-use serana::llm::OpenAiClient;
+use serana::llm::{login_device_auth, OpenAiClient};
 use std::io::IsTerminal;
-use std::process::Stdio;
 
 #[derive(Parser)]
 #[command(name = "serana")]
@@ -90,29 +89,7 @@ async fn main() -> anyhow::Result<()> {
 fn login_codex_device_auth() -> anyhow::Result<()> {
     println!("Starting Codex device sign-in...");
     println!("Delegating to: codex login --device-auth");
-
-    let mut child = std::process::Command::new("codex")
-        .args(["login", "--device-auth"])
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                anyhow::anyhow!(
-                    "Codex CLI was not found in PATH. Install it, then run `serana login codex` again."
-                )
-            } else {
-                anyhow::anyhow!("failed to start Codex CLI: {}", error)
-            }
-        })?;
-
-    let status = child.wait()?;
-    if !status.success() {
-        anyhow::bail!("Codex device sign-in exited with {}", status);
-    }
-
-    Ok(())
+    login_device_auth()
 }
 
 async fn run_once(config: Config, instruction: &str) -> anyhow::Result<()> {
