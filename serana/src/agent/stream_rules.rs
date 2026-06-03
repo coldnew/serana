@@ -120,10 +120,7 @@ pub enum StreamRuleMatch {
         context: ContextMode,
     },
     /// A rule matched with "never" interrupt — defer injection.
-    Deferred {
-        name: String,
-        injection: String,
-    },
+    Deferred { name: String, injection: String },
 }
 
 /// TTSR engine that monitors streaming output against rules.
@@ -210,9 +207,7 @@ impl StreamRuleEngine {
     /// Check if a rule should trigger based on its repeat policy.
     fn should_trigger(&self, rule: &StreamRule) -> bool {
         match &rule.repeat {
-            RepeatPolicy::Once => {
-                !self.triggered.iter().any(|(name, _)| name == &rule.name)
-            }
+            RepeatPolicy::Once => !self.triggered.iter().any(|(name, _)| name == &rule.name),
             RepeatPolicy::AfterGap(gap) => {
                 match self.triggered.iter().find(|(name, _)| name == &rule.name) {
                     Some((_, last_turn)) => self.turn_count - last_turn >= *gap,
@@ -359,9 +354,15 @@ mod tests {
 
         // Not enough gap yet
         engine.advance_turn();
-        assert!(matches!(engine.check("bar.unwrap()"), StreamRuleMatch::None));
+        assert!(matches!(
+            engine.check("bar.unwrap()"),
+            StreamRuleMatch::None
+        ));
         engine.advance_turn();
-        assert!(matches!(engine.check("baz.unwrap()"), StreamRuleMatch::None));
+        assert!(matches!(
+            engine.check("baz.unwrap()"),
+            StreamRuleMatch::None
+        ));
 
         // After 3 turns, can trigger again
         engine.advance_turn();

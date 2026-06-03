@@ -33,9 +33,7 @@ static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 pub fn redact_secrets(text: &str) -> String {
     let mut result = text.to_string();
     for pattern in SECRET_PATTERNS.iter() {
-        result = pattern
-            .replace_all(&result, "[REDACTED]")
-            .into_owned();
+        result = pattern.replace_all(&result, "[REDACTED]").into_owned();
     }
     result
 }

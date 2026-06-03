@@ -489,6 +489,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "code-tree-sitter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-go",
+ "tree-sitter-javascript",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2185,6 +2200,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "clap",
+ "code-tree-sitter",
  "cosmic-text 0.12.1",
  "crossterm",
  "dirs",
@@ -2201,7 +2217,6 @@ dependencies = [
  "ratatui",
  "rayon",
  "regex",
- "serana-tree-sitter",
  "serde",
  "serde_json",
  "tempfile",
@@ -2219,7 +2234,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "dirs",
- "serana-core",
+ "serana",
  "serde",
  "serde_json",
  "tempfile",
@@ -3467,6 +3482,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "code-tree-sitter",
  "crossterm",
  "dirs",
  "display-protocol",
@@ -3477,14 +3493,12 @@ dependencies = [
  "ignore",
  "mora-bin",
  "parking_lot",
+ "pin-project-lite",
  "pulldown-cmark",
  "ratatui",
  "regex",
  "reqwest",
  "rusqlite",
- "serana-core",
- "serana-llm",
- "serana-tree-sitter",
  "serde",
  "serde_json",
  "strip-ansi-escapes",
@@ -3498,57 +3512,6 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "uuid",
-]
-
-[[package]]
-name = "serana-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "dirs",
- "futures",
- "pin-project-lite",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "serana-llm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-stream",
- "async-trait",
- "bytes",
- "futures",
- "parking_lot",
- "reqwest",
- "serana-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "serana-tree-sitter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "tree-sitter",
- "tree-sitter-bash",
- "tree-sitter-c",
- "tree-sitter-go",
- "tree-sitter-javascript",
- "tree-sitter-python",
- "tree-sitter-rust",
 ]
 
 [[package]]

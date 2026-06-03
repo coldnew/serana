@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Tool that exports conversation data to files.
 pub struct ExportTool;
@@ -76,13 +76,11 @@ impl Tool for ExportTool {
             .unwrap_or_default();
 
         let content = match format {
-            "json" => {
-                serde_json::to_string_pretty(&json!({
-                    "title": title,
-                    "exported_at": chrono::Utc::now().to_rfc3339(),
-                    "messages": messages,
-                }))?
-            }
+            "json" => serde_json::to_string_pretty(&json!({
+                "title": title,
+                "exported_at": chrono::Utc::now().to_rfc3339(),
+                "messages": messages,
+            }))?,
             "markdown" | _ => {
                 let mut md = String::new();
                 md.push_str(&format!("# {}\n\n", title));
@@ -91,7 +89,10 @@ impl Tool for ExportTool {
                     chrono::Utc::now().format("%Y-%m-%d %H:%M UTC")
                 ));
                 for msg in &messages {
-                    let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let role = msg
+                        .get("role")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
                     let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
                     let icon = match role {
                         "user" => "**You**",

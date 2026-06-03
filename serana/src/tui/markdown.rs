@@ -1,5 +1,5 @@
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use display_protocol::{Color, Style, StyledLine, StyledSpan};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use super::syntax::SyntaxHighlighter;
 use super::theme;
@@ -17,21 +17,14 @@ pub struct MarkdownTheme {
     pub hr: Style,
 }
 
-
 impl Default for MarkdownTheme {
     fn default() -> Self {
         Self {
-            heading: Style::new()
-                .fg(theme::CORAL)
-                .bold(),
-            link: Style::new()
-                .fg(theme::AQUAMARINE)
-                .underline(),
+            heading: Style::new().fg(theme::CORAL).bold(),
+            link: Style::new().fg(theme::AQUAMARINE).underline(),
             code: Style::new().fg(theme::CODE_PURPLE),
             code_block: Style::new().fg(theme::SEAFOAM_GREEN),
-            quote: Style::new()
-                .fg(theme::MUTED_TEAL)
-                .italic(),
+            quote: Style::new().fg(theme::MUTED_TEAL).italic(),
             list_bullet: Style::new().fg(theme::CORAL),
             bold: Style::new().bold(),
             italic: Style::new().italic(),
@@ -168,8 +161,10 @@ impl<'a> MarkdownRenderer<'a> {
             Event::Rule => {
                 let n = self.width.min(80);
                 self.flush_line();
-                self.lines
-                    .push(StyledLine::new(vec![StyledSpan::new("─".repeat(n), self.theme.hr)]));
+                self.lines.push(StyledLine::new(vec![StyledSpan::new(
+                    "─".repeat(n),
+                    self.theme.hr,
+                )]));
             }
             Event::TaskListMarker(checked) => {
                 let marker = if checked { "[x] " } else { "[ ] " };
@@ -184,14 +179,18 @@ impl<'a> MarkdownRenderer<'a> {
                     .push(StyledSpan::new(format!("[^{}]", label), self.theme.link));
             }
             Event::InlineMath(math) => {
-                self.current_spans
-                    .push(StyledSpan::new(format!("${}$", math.replace('\n', " ")), self.theme.code));
+                self.current_spans.push(StyledSpan::new(
+                    format!("${}$", math.replace('\n', " ")),
+                    self.theme.code,
+                ));
             }
             Event::DisplayMath(math) => {
                 self.flush_line();
                 let single_line: String = math.chars().filter(|&c| c != '\n').collect();
-                self.current_spans
-                    .push(StyledSpan::new(format!("$${}$$", single_line), self.theme.code_block));
+                self.current_spans.push(StyledSpan::new(
+                    format!("$${}$$", single_line),
+                    self.theme.code_block,
+                ));
                 self.flush_line();
             }
         }
@@ -224,8 +223,10 @@ impl<'a> MarkdownRenderer<'a> {
                 } else {
                     format!("```{}", self.code_block_lang)
                 };
-                self.lines
-                    .push(StyledLine::new(vec![StyledSpan::new(fence, self.theme.code_block)]));
+                self.lines.push(StyledLine::new(vec![StyledSpan::new(
+                    fence,
+                    self.theme.code_block,
+                )]));
             }
             Tag::List(ordered) => {
                 if self.in_list {
@@ -358,8 +359,10 @@ impl<'a> MarkdownRenderer<'a> {
                 }
                 self.code_block_lines.clear();
                 self.code_block_lang.clear();
-                self.lines
-                    .push(StyledLine::new(vec![StyledSpan::new("```", self.theme.code_block)]));
+                self.lines.push(StyledLine::new(vec![StyledSpan::new(
+                    "```",
+                    self.theme.code_block,
+                )]));
                 self.lines.push(StyledLine::plain(""));
             }
             TagEnd::List(_) => {
@@ -790,8 +793,7 @@ mod tests {
         assert!(lines
             .iter()
             .flat_map(|line| line.spans.iter())
-            .any(|span| span.text == "removed"
-                && span.style.strikethrough));
+            .any(|span| span.text == "removed" && span.style.strikethrough));
     }
 
     #[test]
@@ -824,8 +826,7 @@ mod tests {
         assert!(lines
             .iter()
             .flat_map(|line| line.spans.iter())
-            .any(|span| span.text == "example"
-                && span.style.underline));
+            .any(|span| span.text == "example" && span.style.underline));
     }
 
     #[test]
@@ -997,8 +998,7 @@ mod tests {
         assert!(lines
             .iter()
             .flat_map(|line| line.spans.iter())
-            .any(|span| span.text == "Term"
-                && span.style.bold));
+            .any(|span| span.text == "Term" && span.style.bold));
     }
 
     #[test]

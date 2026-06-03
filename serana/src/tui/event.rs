@@ -26,7 +26,7 @@ impl EventHandler {
 
     /// Get next event using display-tui input polling
     #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> serana_core::Result<Event> {
+    pub fn next(&mut self) -> crate::core::Result<Event> {
         match display_tui::poll_input(16) {
             Some(event) => Ok(Event::Input(event)),
             None => Ok(Event::Tick),

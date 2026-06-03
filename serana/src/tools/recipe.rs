@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Detect and run a task from the project's task runner.
 pub struct RecipeTool;

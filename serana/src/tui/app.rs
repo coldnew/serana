@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use serana_core::Result;
+use crate::core::Result;
 
 use super::slash_commands::SlashCommandRegistry;
 use super::symbols::{self, Symbols};
@@ -627,10 +627,7 @@ impl App {
                 rt.block_on(self.slash_commands.load_custom_commands());
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: format!(
-                        "Reloaded: {} skill(s), custom commands refreshed.",
-                        count
-                    ),
+                    content: format!("Reloaded: {} skill(s), custom commands refreshed.", count),
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
@@ -941,7 +938,10 @@ impl App {
                                 let label = s.title.as_deref().unwrap_or(&s.id);
                                 let date = s.updated_at.format("%Y-%m-%d %H:%M").to_string();
                                 super::dialog::DialogItem {
-                                    label: format!("{} — {} msgs, {}", label, s.message_count, date),
+                                    label: format!(
+                                        "{} — {} msgs, {}",
+                                        label, s.message_count, date
+                                    ),
                                     description: s.id.clone(),
                                     value: s.id.clone(),
                                 }

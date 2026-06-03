@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Code review tool - sends a diff to the LLM for structured review.
 pub struct CodeReviewTool;

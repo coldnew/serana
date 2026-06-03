@@ -10,7 +10,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 static CDP_PORT: u16 = 9222;
 static BROWSER_STATE: Mutex<Option<BrowserState>> = Mutex::const_new(None);

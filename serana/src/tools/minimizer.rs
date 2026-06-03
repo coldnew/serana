@@ -337,10 +337,7 @@ fn truncate_lines(text: &str, max_chars: usize) -> String {
 
 /// Strip lines matching any of the given patterns.
 fn strip_lines_matching(text: &str, patterns: &[&str]) -> String {
-    let regexes: Vec<Regex> = patterns
-        .iter()
-        .filter_map(|p| Regex::new(p).ok())
-        .collect();
+    let regexes: Vec<Regex> = patterns.iter().filter_map(|p| Regex::new(p).ok()).collect();
 
     text.lines()
         .filter(|line| !regexes.iter().any(|re| re.is_match(line)))
@@ -487,7 +484,12 @@ fn condense_log(output: &str) -> String {
                 .unwrap_or("?");
             let subject = lines
                 .iter()
-                .find(|l| !l.starts_with("commit") && !l.starts_with("Author") && !l.starts_with("Date") && !l.trim().is_empty())
+                .find(|l| {
+                    !l.starts_with("commit")
+                        && !l.starts_with("Author")
+                        && !l.starts_with("Date")
+                        && !l.trim().is_empty()
+                })
                 .map_or("(no subject)", |v| v);
             format!("{} {}", hash, subject)
         })
@@ -534,7 +536,10 @@ fn condense_git_status(output: &str) -> String {
             untracked += 1;
         } else if trimmed.starts_with(" D") || trimmed.starts_with("D ") {
             deleted += 1;
-        } else if !trimmed.is_empty() && !trimmed.starts_with("On branch") && !trimmed.starts_with("Your branch") {
+        } else if !trimmed.is_empty()
+            && !trimmed.starts_with("On branch")
+            && !trimmed.starts_with("Your branch")
+        {
             other += 1;
         }
     }
@@ -607,9 +612,7 @@ fn condense_build(output: &str) -> String {
 fn condense_test(output: &str, exit_code: i32) -> String {
     if exit_code == 0 {
         // On success, summarize test results
-        let result_line = output
-            .lines()
-            .find(|l| l.starts_with("test result:"));
+        let result_line = output.lines().find(|l| l.starts_with("test result:"));
 
         if let Some(line) = result_line {
             return format!("cargo test: {}", line);
@@ -682,10 +685,7 @@ fn minimize_listing(output: &str) -> String {
 
 /// Keep only lines matching at least one pattern.
 fn strip_lines_matching_keep(text: &str, patterns: &[&str]) -> String {
-    let regexes: Vec<Regex> = patterns
-        .iter()
-        .filter_map(|p| Regex::new(p).ok())
-        .collect();
+    let regexes: Vec<Regex> = patterns.iter().filter_map(|p| Regex::new(p).ok()).collect();
 
     text.lines()
         .filter(|line| regexes.iter().any(|re| re.is_match(line)))
@@ -778,7 +778,12 @@ mod tests {
     #[test]
     fn test_minimize_git_log() {
         let output = (0..50)
-            .map(|i| format!("commit abcdef{:02}\nAuthor: Test\nDate: Today\n\n    Commit {}\n", i, i))
+            .map(|i| {
+                format!(
+                    "commit abcdef{:02}\nAuthor: Test\nDate: Today\n\n    Commit {}\n",
+                    i, i
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
         let result = minimize("git log", &output, 0);

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Show git working tree status.
 pub struct GitStatusTool;

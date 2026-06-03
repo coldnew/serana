@@ -16,10 +16,18 @@ fn dp_style(s: display_protocol::Style) -> Style {
     if let Some(c) = s.bg {
         out = out.bg(ratatui::style::Color::Rgb(c.r, c.g, c.b));
     }
-    if s.bold { out = out.add_modifier(Modifier::BOLD); }
-    if s.italic { out = out.add_modifier(Modifier::ITALIC); }
-    if s.underline { out = out.add_modifier(Modifier::UNDERLINED); }
-    if s.strikethrough { out = out.add_modifier(Modifier::CROSSED_OUT); }
+    if s.bold {
+        out = out.add_modifier(Modifier::BOLD);
+    }
+    if s.italic {
+        out = out.add_modifier(Modifier::ITALIC);
+    }
+    if s.underline {
+        out = out.add_modifier(Modifier::UNDERLINED);
+    }
+    if s.strikethrough {
+        out = out.add_modifier(Modifier::CROSSED_OUT);
+    }
     out
 }
 
@@ -160,7 +168,10 @@ pub fn render_diff(diff_text: &str, _width: usize) -> Vec<Line<'static>> {
         let line = diff_lines[i];
 
         if line.starts_with("@@") {
-            lines.push(Line::from(Span::styled(line.to_string(), dp_style(theme.info))));
+            lines.push(Line::from(Span::styled(
+                line.to_string(),
+                dp_style(theme.info),
+            )));
             i += 1;
             continue;
         }

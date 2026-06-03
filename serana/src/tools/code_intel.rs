@@ -4,9 +4,9 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::Mutex;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 use crate::lsp::{types::Position, LspManager};
-use serana_tree_sitter::ParserManager;
+use code_tree_sitter::ParserManager;
 
 pub struct AstOutlineTool;
 pub struct AstFunctionsTool;
@@ -302,18 +302,28 @@ impl Tool for LspCodeActionTool {
         })
     }
     async fn execute(&self, input: Value) -> Result<Value> {
-        let path = input.get("path").and_then(|v| v.as_str())
+        let path = input
+            .get("path")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
         let start_line = input.get("start_line").and_then(Value::as_u64).unwrap_or(0) as u32;
         let start_char = input.get("start_char").and_then(Value::as_u64).unwrap_or(0) as u32;
         let end_line = input.get("end_line").and_then(Value::as_u64).unwrap_or(0) as u32;
         let end_char = input.get("end_char").and_then(Value::as_u64).unwrap_or(0) as u32;
         let mut mgr = self.manager.lock().await;
-        let actions = mgr.code_action(
-            std::path::Path::new(path),
-            Position { line: start_line, character: start_char },
-            Position { line: end_line, character: end_char },
-        ).await?;
+        let actions = mgr
+            .code_action(
+                std::path::Path::new(path),
+                Position {
+                    line: start_line,
+                    character: start_char,
+                },
+                Position {
+                    line: end_line,
+                    character: end_char,
+                },
+            )
+            .await?;
         Ok(json!({ "actions": actions }))
     }
 }
@@ -340,10 +350,14 @@ impl Tool for LspRenameTool {
     }
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
-        let new_name = input.get("new_name").and_then(|v| v.as_str())
+        let new_name = input
+            .get("new_name")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'new_name' field"))?;
         let mut mgr = self.manager.lock().await;
-        let edit = mgr.rename(request.path.as_ref(), request.position, new_name).await?;
+        let edit = mgr
+            .rename(request.path.as_ref(), request.position, new_name)
+            .await?;
         Ok(json!({ "edit": edit }))
     }
 }
@@ -366,7 +380,9 @@ impl Tool for LspFormatTool {
         })
     }
     async fn execute(&self, input: Value) -> Result<Value> {
-        let path = input.get("path").and_then(|v| v.as_str())
+        let path = input
+            .get("path")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
         let mut mgr = self.manager.lock().await;
         let edits = mgr.formatting(std::path::Path::new(path)).await?;
@@ -392,7 +408,9 @@ impl Tool for LspDocumentSymbolsTool {
         })
     }
     async fn execute(&self, input: Value) -> Result<Value> {
-        let path = input.get("path").and_then(|v| v.as_str())
+        let path = input
+            .get("path")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path' field"))?;
         let mut mgr = self.manager.lock().await;
         let symbols = mgr.document_symbols(std::path::Path::new(path)).await?;
@@ -418,7 +436,9 @@ impl Tool for LspWorkspaceSymbolsTool {
         })
     }
     async fn execute(&self, input: Value) -> Result<Value> {
-        let query = input.get("query").and_then(|v| v.as_str())
+        let query = input
+            .get("query")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'query' field"))?;
         let mut mgr = self.manager.lock().await;
         let symbols = mgr.workspace_symbols(query).await?;
@@ -448,7 +468,9 @@ impl Tool for LspCompletionTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut mgr = self.manager.lock().await;
-        let completions = mgr.completion(request.path.as_ref(), request.position).await?;
+        let completions = mgr
+            .completion(request.path.as_ref(), request.position)
+            .await?;
         Ok(json!({ "completions": completions }))
     }
 }
@@ -475,7 +497,9 @@ impl Tool for LspSignatureHelpTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut mgr = self.manager.lock().await;
-        let sig = mgr.signature_help(request.path.as_ref(), request.position).await?;
+        let sig = mgr
+            .signature_help(request.path.as_ref(), request.position)
+            .await?;
         Ok(json!({ "signature": sig }))
     }
 }
@@ -502,7 +526,9 @@ impl Tool for LspImplementationTool {
     async fn execute(&self, input: Value) -> Result<Value> {
         let request = LspToolRequest::from_input(&input)?;
         let mut mgr = self.manager.lock().await;
-        let locations = mgr.implementation(request.path.as_ref(), request.position).await?;
+        let locations = mgr
+            .implementation(request.path.as_ref(), request.position)
+            .await?;
         Ok(json!({ "locations": locations }))
     }
 }

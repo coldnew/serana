@@ -9,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 const TIMEOUT_SECS: u64 = 30;
 
@@ -140,8 +140,7 @@ rl.on('close', () => process.exit(0));
         self.writer.flush().await?;
 
         // Read until sentinel
-        let deadline =
-            tokio::time::Instant::now() + tokio::time::Duration::from_secs(TIMEOUT_SECS);
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(TIMEOUT_SECS);
         let stdout = self
             .child
             .stdout

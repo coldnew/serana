@@ -1,15 +1,13 @@
 use super::display::style::{MoraColor, MoraStyle};
 
-use serana_tree_sitter::highlight::highlight_document;
-pub use serana_tree_sitter::highlight::{HighlightKind, HighlightToken};
-use serana_tree_sitter::LanguageId;
+use code_tree_sitter::highlight::highlight_document;
+pub use code_tree_sitter::highlight::{HighlightKind, HighlightToken};
+use code_tree_sitter::LanguageId;
 
 pub fn style_for_kind(kind: HighlightKind) -> MoraStyle {
     match kind {
         HighlightKind::Normal => MoraStyle::new().fg(MoraColor::new(232, 236, 244)),
-        HighlightKind::Keyword => MoraStyle::new()
-            .fg(MoraColor::new(255, 100, 150))
-            .bold(),
+        HighlightKind::Keyword => MoraStyle::new().fg(MoraColor::new(255, 100, 150)).bold(),
         HighlightKind::String => MoraStyle::new().fg(MoraColor::new(150, 220, 100)),
         HighlightKind::Comment => MoraStyle::new().fg(MoraColor::new(107, 114, 128)),
         HighlightKind::Number => MoraStyle::new().fg(MoraColor::new(255, 179, 71)),
@@ -20,15 +18,9 @@ pub fn style_for_kind(kind: HighlightKind) -> MoraStyle {
         HighlightKind::Property => MoraStyle::new().fg(MoraColor::new(232, 180, 100)),
         HighlightKind::Variable => MoraStyle::new().fg(MoraColor::new(232, 236, 244)),
         HighlightKind::Constant => MoraStyle::new().fg(MoraColor::new(255, 179, 71)),
-        HighlightKind::Heading => MoraStyle::new()
-            .fg(MoraColor::new(255, 200, 50))
-            .bold(),
-        HighlightKind::Bold => MoraStyle::new()
-            .fg(MoraColor::new(232, 236, 244))
-            .bold(),
-        HighlightKind::Italic => MoraStyle::new()
-            .fg(MoraColor::new(232, 236, 244))
-            .italic(),
+        HighlightKind::Heading => MoraStyle::new().fg(MoraColor::new(255, 200, 50)).bold(),
+        HighlightKind::Bold => MoraStyle::new().fg(MoraColor::new(232, 236, 244)).bold(),
+        HighlightKind::Italic => MoraStyle::new().fg(MoraColor::new(232, 236, 244)).italic(),
         HighlightKind::Link => MoraStyle::new()
             .fg(MoraColor::new(100, 200, 255))
             .underline(),
@@ -36,9 +28,7 @@ pub fn style_for_kind(kind: HighlightKind) -> MoraStyle {
             .fg(MoraColor::new(150, 220, 100))
             .bg(MoraColor::new(40, 44, 52)),
         HighlightKind::ListMarker => MoraStyle::new().fg(MoraColor::new(255, 100, 150)),
-        HighlightKind::Blockquote => MoraStyle::new()
-            .fg(MoraColor::new(107, 114, 128))
-            .italic(),
+        HighlightKind::Blockquote => MoraStyle::new().fg(MoraColor::new(107, 114, 128)).italic(),
         HighlightKind::HorizontalRule => MoraStyle::new().fg(MoraColor::new(107, 114, 128)),
         HighlightKind::Tag => MoraStyle::new().fg(MoraColor::new(255, 100, 150)),
         HighlightKind::Attribute => MoraStyle::new().fg(MoraColor::new(255, 179, 71)),

@@ -1,4 +1,4 @@
-use serana_core::{Context, Result};
+use crate::core::{Context, Result};
 use std::path::PathBuf;
 
 pub struct ContextCompactor;

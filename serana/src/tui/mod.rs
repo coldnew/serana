@@ -19,13 +19,13 @@ use std::time::Duration;
 
 use crate::agent::SessionStore;
 use crate::agent::{AgentFactory, AgentRuntimeConfig, HermesAgent};
-use serana_core::Agent;
-use serana_core::AgentCallbacks;
-use serana_core::CancelToken;
-use serana_core::Config;
-use serana_core::LlmClient;
-use serana_core::Result;
-use serana_llm::OpenAiClient;
+use crate::core::Agent;
+use crate::core::AgentCallbacks;
+use crate::core::CancelToken;
+use crate::core::Config;
+use crate::core::LlmClient;
+use crate::core::Result;
+use crate::llm::OpenAiClient;
 use tokio::sync::mpsc;
 
 use app::App;
@@ -106,7 +106,7 @@ fn run_app(
     response_tx: mpsc::UnboundedSender<AgentResponse>,
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
     stream_rx: &mut mpsc::UnboundedReceiver<String>,
-    cancel_token: serana_core::CancelToken,
+    cancel_token: crate::core::CancelToken,
 ) -> Result<()> {
     let mut pending_request: Option<tokio::task::JoinHandle<()>> = None;
     let mut streaming_content = String::new();

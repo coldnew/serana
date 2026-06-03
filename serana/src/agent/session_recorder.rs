@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use serana_core::{Result, ToolCall};
-use serana_llm::AuxiliaryClient;
+use crate::core::{Result, ToolCall};
+use crate::llm::AuxiliaryClient;
 
 use super::SessionStore;
 

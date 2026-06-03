@@ -2,13 +2,13 @@ use super::{
     AgentEngine, AgentEngineParts, AgentPromptConfig, AgentRuntimeConfig, CheckpointManager,
     ContextCompressor, PromptBuilder, SessionRecorder, SessionStore, StreamRuleEngine,
 };
-use async_trait::async_trait;
-use serana_core::{
+use crate::core::{
     Agent, AgentCallbacks, AgentOutput, CancelToken, IterationBudget, LlmClient, Message,
     MetaCognition, Result,
 };
-use serana_llm::AuxiliaryClient;
+use crate::llm::AuxiliaryClient;
 use crate::tools::ToolRegistry;
+use async_trait::async_trait;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -167,7 +167,7 @@ impl Agent for HermesAgent {
 mod tests {
     use super::*;
     use crate::agent::test_support::tempdir;
-    use serana_core::{CompressionConfig, CompressionThresholds, ToolDefinition};
+    use crate::core::{CompressionConfig, CompressionThresholds, ToolDefinition};
 
     struct MockLlm;
 

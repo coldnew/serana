@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
 
-use serana_core::{Result, Tool};
-use serana_tree_sitter::{LanguageId, ParserManager, SyntaxTree};
+use crate::core::{Result, Tool};
+use code_tree_sitter::{LanguageId, ParserManager, SyntaxTree};
 use tree_sitter::{Query, QueryCursor};
 
 pub struct AstEditTool;
@@ -115,7 +115,7 @@ impl Tool for AstEditTool {
         let manager = ParserManager::new();
         let tree = manager.parse_source(lang_id, &content)?;
 
-        let language = serana_tree_sitter::language_for_id(lang_id);
+        let language = code_tree_sitter::language_for_id(lang_id);
         let query = Query::new(&language, query_src)
             .map_err(|e| anyhow::anyhow!("Invalid query: {}", e))?;
 
@@ -174,7 +174,11 @@ fn find_edits(
 ) -> Result<Vec<Edit>> {
     let mut cursor = QueryCursor::new();
     let root = tree.tree().root_node();
-    let capture_names: Vec<String> = query.capture_names().iter().map(|s| s.to_string()).collect();
+    let capture_names: Vec<String> = query
+        .capture_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     let selector_idx = if let Some(sel) = selector {
         capture_names
@@ -195,11 +199,7 @@ fn find_edits(
 
         for capture in m.captures {
             let name = &capture_names[capture.index as usize];
-            let text = capture
-                .node
-                .utf8_text(bytes)
-                .unwrap_or("")
-                .to_string();
+            let text = capture.node.utf8_text(bytes).unwrap_or("").to_string();
             if capture.index as usize == selector_idx {
                 target_node = Some(capture.node);
             }
@@ -220,9 +220,7 @@ fn find_edits(
         let full_match = captures
             .get("0")
             .cloned()
-            .unwrap_or_else(|| {
-                target.utf8_text(bytes).unwrap_or("").to_string()
-            });
+            .unwrap_or_else(|| target.utf8_text(bytes).unwrap_or("").to_string());
 
         let mut result = replacement_tpl.to_string();
 
@@ -443,9 +441,7 @@ fn other() { old_name(); }
     async fn ast_edit_rejects_overlapping() {
         let dir = tempdir().unwrap();
         let file = dir.path().join("main.rs");
-        fs::write(&file, "fn test() {}\n")
-            .await
-            .unwrap();
+        fs::write(&file, "fn test() {}\n").await.unwrap();
 
         // This query captures both the function and its name - but since
         // selector picks one specific capture, no overlap should occur.

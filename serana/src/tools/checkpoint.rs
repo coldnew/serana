@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Mark a checkpoint in the conversation for later rewind.
 /// This is a marker tool — the actual checkpoint state is managed by the agent.

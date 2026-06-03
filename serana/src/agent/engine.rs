@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use serana_core::{
+use crate::core::{
     AgentCallbacks, AgentOutput, AgentStatus, CancelToken, IterationBudget, LlmClient, Message,
     MetaCognition, Result,
 };
-use serana_llm::AuxiliaryClient;
+use crate::llm::AuxiliaryClient;
 use crate::tools::ToolRegistry;
 
 use super::stream_rules::ContextMode;
 use super::{
-    handle_tool_turn, validate_message_alternation, AgentLifecycle, AgentRunState, CheckpointManager,
-    CompressionGate, CompressionGateOutcome, ContextCompressor, PromptBuilder, SessionRecorder,
-    StreamRuleEngine, ToolCallValidator, TurnRunner,
+    handle_tool_turn, validate_message_alternation, AgentLifecycle, AgentRunState,
+    CheckpointManager, CompressionGate, CompressionGateOutcome, ContextCompressor, PromptBuilder,
+    SessionRecorder, StreamRuleEngine, ToolCallValidator, TurnRunner,
 };
 
 pub struct AgentEngineParts<'a> {
@@ -113,19 +113,17 @@ impl<'a> AgentEngine<'a> {
                             ContextMode::Discard => {
                                 // Inject reminder and retry the turn
                                 state.push_system_message(&injection);
-                                self.parts.callbacks.fire_stream_delta(&format!(
-                                    "\n[TTSR: {} — retrying]\n",
-                                    name
-                                ));
+                                self.parts
+                                    .callbacks
+                                    .fire_stream_delta(&format!("\n[TTSR: {} — retrying]\n", name));
                                 continue;
                             }
                             ContextMode::Keep => {
                                 // Keep partial output, queue injection for next turn
                                 deferred_injections.push(injection);
-                                self.parts.callbacks.fire_stream_delta(&format!(
-                                    "\n[TTSR: {} — deferred]\n",
-                                    name
-                                ));
+                                self.parts
+                                    .callbacks
+                                    .fire_stream_delta(&format!("\n[TTSR: {} — deferred]\n", name));
                                 // Treat as a text response with partial content
                                 Message::assistant(partial_content)
                             }

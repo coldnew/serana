@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Tool that prompts the user for input via the TUI.
 ///
@@ -52,10 +52,12 @@ impl Tool for AskTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'prompt' field"))?;
 
-        let options: Option<Vec<String>> = input
-            .get("options")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+        let options: Option<Vec<String>> =
+            input.get("options").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            });
 
         let default = input
             .get("default")

@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::fs;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// A rule that triggers when the LLM output matches a regex.
 #[derive(Debug, Clone, Serialize, Deserialize)]

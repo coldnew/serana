@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 pub struct WebSearchTool;
 
@@ -65,9 +65,8 @@ impl Tool for WebSearchTool {
 }
 
 async fn search_brave(query: &str) -> Result<Value> {
-    let api_key = std::env::var("BRAVE_API_KEY").map_err(|_| {
-        anyhow::anyhow!("BRAVE_API_KEY environment variable not set.")
-    })?;
+    let api_key = std::env::var("BRAVE_API_KEY")
+        .map_err(|_| anyhow::anyhow!("BRAVE_API_KEY environment variable not set."))?;
 
     let client = reqwest::Client::new();
     let resp = client
@@ -198,12 +197,10 @@ fn strip_html_tags(html: &str) -> String {
 }
 
 async fn search_google(query: &str) -> Result<Value> {
-    let api_key = std::env::var("GOOGLE_API_KEY").map_err(|_| {
-        anyhow::anyhow!("GOOGLE_API_KEY environment variable not set.")
-    })?;
-    let cx = std::env::var("GOOGLE_CX").map_err(|_| {
-        anyhow::anyhow!("GOOGLE_CX environment variable not set.")
-    })?;
+    let api_key = std::env::var("GOOGLE_API_KEY")
+        .map_err(|_| anyhow::anyhow!("GOOGLE_API_KEY environment variable not set."))?;
+    let cx = std::env::var("GOOGLE_CX")
+        .map_err(|_| anyhow::anyhow!("GOOGLE_CX environment variable not set."))?;
 
     let client = reqwest::Client::new();
     let resp = client

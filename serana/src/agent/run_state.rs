@@ -1,4 +1,4 @@
-use serana_core::{AgentOutput, Message, ToolCall};
+use crate::core::{AgentOutput, Message, ToolCall};
 
 use super::ToolTurnOutput;
 
@@ -27,7 +27,7 @@ impl AgentRunState {
         &mut self,
         role: String,
         content: Option<String>,
-        tool_calls: Vec<serana_core::ToolCallData>,
+        tool_calls: Vec<crate::core::ToolCallData>,
     ) {
         self.messages.push(Message::ToolCall {
             role,

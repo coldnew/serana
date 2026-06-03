@@ -1,8 +1,8 @@
 use super::{AgentFactory, AgentRuntimeConfig};
-use async_trait::async_trait;
-use serana_core::{
+use crate::core::{
     Agent, AgentCallbacks, AgentOutput, IterationBudget, LlmClient, Message, Result,
 };
+use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -62,7 +62,7 @@ impl LlmClient for SubagentLlm {
     async fn chat_with_tools(
         &self,
         messages: &[Message],
-        tools: &[serana_core::ToolDefinition],
+        tools: &[crate::core::ToolDefinition],
     ) -> Result<Message> {
         self.inner.chat_with_tools(messages, tools).await
     }
@@ -177,7 +177,7 @@ mod tests {
         async fn chat_with_tools(
             &self,
             _messages: &[Message],
-            _tools: &[serana_core::ToolDefinition],
+            _tools: &[crate::core::ToolDefinition],
         ) -> Result<Message> {
             Ok(Message::assistant("Mock response".to_string()))
         }
@@ -232,7 +232,7 @@ mod tests {
         async fn chat_with_tools(
             &self,
             messages: &[Message],
-            _tools: &[serana_core::ToolDefinition],
+            _tools: &[crate::core::ToolDefinition],
         ) -> Result<Message> {
             let has_skill = messages.iter().any(|message| match message {
                 Message::Text { role, content } if role == "system" => {

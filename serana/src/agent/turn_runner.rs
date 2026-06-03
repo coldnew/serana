@@ -1,5 +1,5 @@
+use crate::core::{AgentCallbacks, LlmClient, Message, Result, ToolDefinition};
 use futures::StreamExt;
-use serana_core::{AgentCallbacks, LlmClient, Message, Result, ToolDefinition};
 
 use super::stream_rules::{ContextMode, StreamRuleEngine, StreamRuleMatch};
 

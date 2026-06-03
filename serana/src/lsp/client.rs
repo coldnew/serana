@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use super::types::{Location, Position};
-use serana_core::Result;
+use crate::core::Result;
 
 /// Document version tracking for didChange notifications.
 #[derive(Debug, Clone)]
@@ -203,11 +203,7 @@ impl LspManager {
         anyhow::bail!("No LSP server available for workspace symbol search")
     }
 
-    pub async fn completion(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Value> {
+    pub async fn completion(&mut self, path: &Path, position: Position) -> Result<Value> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -217,11 +213,7 @@ impl LspManager {
             .await
     }
 
-    pub async fn signature_help(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Value> {
+    pub async fn signature_help(&mut self, path: &Path, position: Position) -> Result<Value> {
         let lang = language_for_path(path)?;
         self.ensure_server(lang).await?;
         self.servers
@@ -473,11 +465,7 @@ impl LspClient {
         Ok(result)
     }
 
-    pub async fn completion(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Value> {
+    pub async fn completion(&mut self, path: &Path, position: Position) -> Result<Value> {
         let result = self
             .request(
                 "textDocument/completion",
@@ -490,11 +478,7 @@ impl LspClient {
         Ok(result)
     }
 
-    pub async fn signature_help(
-        &mut self,
-        path: &Path,
-        position: Position,
-    ) -> Result<Value> {
+    pub async fn signature_help(&mut self, path: &Path, position: Position) -> Result<Value> {
         let result = self
             .request(
                 "textDocument/signatureHelp",

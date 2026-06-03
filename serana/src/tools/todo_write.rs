@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 pub struct TodoWriteTool;
 
@@ -46,8 +46,14 @@ impl Tool for TodoWriteTool {
         let mut output = String::new();
         for todo in todos {
             let content = todo.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            let status = todo.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
-            let priority = todo.get("priority").and_then(|v| v.as_str()).unwrap_or("medium");
+            let status = todo
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("pending");
+            let priority = todo
+                .get("priority")
+                .and_then(|v| v.as_str())
+                .unwrap_or("medium");
 
             let checkbox = match status {
                 "completed" => "[x]",

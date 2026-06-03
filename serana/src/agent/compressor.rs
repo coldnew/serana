@@ -1,5 +1,5 @@
-use serana_core::{CompressionConfig, CompressionDecision, LlmClient, Message, Result};
-use serana_llm::AuxiliaryClient;
+use crate::core::{CompressionConfig, CompressionDecision, LlmClient, Message, Result};
+use crate::llm::AuxiliaryClient;
 
 #[derive(Clone)]
 pub struct ContextCompressor {
@@ -138,8 +138,8 @@ impl ContextCompressor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::CompressionThresholds;
     use async_trait::async_trait;
-    use serana_core::CompressionThresholds;
     use std::sync::Arc;
 
     struct MockLlm;
@@ -153,7 +153,7 @@ mod tests {
         async fn chat_with_tools(
             &self,
             _messages: &[Message],
-            _tools: &[serana_core::ToolDefinition],
+            _tools: &[crate::core::ToolDefinition],
         ) -> Result<Message> {
             unimplemented!()
         }

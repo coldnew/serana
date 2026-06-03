@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Tool that inspects image files and extracts metadata.
 pub struct InspectImageTool;
@@ -87,7 +87,11 @@ fn detect_image_info(data: &[u8]) -> Result<(String, u64, u64)> {
     // BMP: starts with "BM"
     if data.starts_with(b"BM") && data.len() >= 26 {
         let w = u32::from_le_bytes([data[18], data[19], data[20], data[21]]) as u64;
-        let h = u32::from_le_bytes([data[22], data[23], data[24], data[25]].try_into().unwrap_or([0; 4])) as u64;
+        let h = u32::from_le_bytes(
+            [data[22], data[23], data[24], data[25]]
+                .try_into()
+                .unwrap_or([0; 4]),
+        ) as u64;
         // BMP height can be negative (top-down), take absolute
         let h = if h > 0x7FFFFFFF { !h + 1 } else { h };
         return Ok(("BMP".into(), w, h));

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use serana_core::{CompressionDecision, LlmClient, Message, Result};
-use serana_llm::AuxiliaryClient;
+use crate::core::{CompressionDecision, LlmClient, Message, Result};
+use crate::llm::AuxiliaryClient;
 
 use super::ContextCompressor;
 
@@ -56,8 +56,8 @@ impl<'a> CompressionGate<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{CompressionConfig, CompressionThresholds, ToolDefinition};
     use async_trait::async_trait;
-    use serana_core::{CompressionConfig, CompressionThresholds, ToolDefinition};
 
     struct MockLlm;
 

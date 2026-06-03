@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tokio::fs;
 
-use serana_core::{
+use crate::core::{
     MetaCognition, ModificationKind, ModificationRecord, Result, Tool, VerificationResult,
     VerificationSystem,
 };

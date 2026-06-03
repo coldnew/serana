@@ -1,4 +1,4 @@
-use serana_core::{AgentCallbacks, AgentStatus, CancelToken, IterationBudget, Result};
+use crate::core::{AgentCallbacks, AgentStatus, CancelToken, IterationBudget, Result};
 
 pub struct AgentLifecycle<'a> {
     budget: &'a IterationBudget,

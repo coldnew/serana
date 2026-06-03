@@ -49,7 +49,11 @@ impl RgbColor {
     }
 
     pub fn from_color(c: Color) -> Option<Self> {
-        Some(Self { r: c.r, g: c.g, b: c.b })
+        Some(Self {
+            r: c.r,
+            g: c.g,
+            b: c.b,
+        })
     }
 }
 
@@ -341,26 +345,16 @@ impl Theme {
     /// Build a Theme from a ThemeConfig.
     pub fn from_config(config: &ThemeConfig) -> Self {
         Self {
-            accent: Style::new()
-                .fg(config.accent.to_color())
-                .bold(),
-            success: Style::new()
-                .fg(config.success.to_color())
-                .bold(),
-            warning: Style::new()
-                .fg(config.warning.to_color())
-                .bold(),
-            error: Style::new()
-                .fg(config.error.to_color())
-                .bold(),
+            accent: Style::new().fg(config.accent.to_color()).bold(),
+            success: Style::new().fg(config.success.to_color()).bold(),
+            warning: Style::new().fg(config.warning.to_color()).bold(),
+            error: Style::new().fg(config.error.to_color()).bold(),
             dim: Style::new().fg(config.text_dim.to_color()),
             muted: Style::new().fg(config.text_muted.to_color()),
             info: Style::new().fg(config.info.to_color()),
             user_fg: Style::new().fg(config.user_fg.to_color()),
             agent_fg: Style::new().fg(config.agent_fg.to_color()),
-            thinking: Style::new()
-                .fg(config.thinking_fg.to_color())
-                .italic(),
+            thinking: Style::new().fg(config.thinking_fg.to_color()).italic(),
             border: Style::new().fg(config.border.to_color()),
         }
     }

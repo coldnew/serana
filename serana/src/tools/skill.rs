@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// A loaded skill.
 #[derive(Debug, Clone)]

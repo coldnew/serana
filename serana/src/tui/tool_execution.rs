@@ -2,8 +2,8 @@ use display_protocol::{Style, StyledLine, StyledSpan};
 
 use super::app::{ToolCall, ToolCallStatus};
 use super::diff;
-use crate::tui::symbols::Symbols;
 use super::theme::{self, Theme};
+use crate::tui::symbols::Symbols;
 
 fn span_to_styled_span(span: ratatui::text::Span<'static>) -> StyledSpan {
     use ratatui::style::{Color as RtColor, Modifier};
@@ -15,10 +15,18 @@ fn span_to_styled_span(span: ratatui::text::Span<'static>) -> StyledSpan {
     if let Some(RtColor::Rgb(r, g, b)) = s.bg {
         dp_style = dp_style.bg(display_protocol::Color::new(r, g, b));
     }
-    if s.add_modifier.contains(Modifier::BOLD) { dp_style = dp_style.bold(); }
-    if s.add_modifier.contains(Modifier::ITALIC) { dp_style = dp_style.italic(); }
-    if s.add_modifier.contains(Modifier::UNDERLINED) { dp_style = dp_style.underline(); }
-    if s.add_modifier.contains(Modifier::CROSSED_OUT) { dp_style = dp_style.strikethrough(); }
+    if s.add_modifier.contains(Modifier::BOLD) {
+        dp_style = dp_style.bold();
+    }
+    if s.add_modifier.contains(Modifier::ITALIC) {
+        dp_style = dp_style.italic();
+    }
+    if s.add_modifier.contains(Modifier::UNDERLINED) {
+        dp_style = dp_style.underline();
+    }
+    if s.add_modifier.contains(Modifier::CROSSED_OUT) {
+        dp_style = dp_style.strikethrough();
+    }
     StyledSpan::new(span.content.into_owned(), dp_style)
 }
 
@@ -373,7 +381,10 @@ fn render_lsp(tool: &ToolCall, header: StyledLine, symbols: &Symbols) -> Vec<Sty
                 }
             }
             _ => {
-                lines.push(StyledLine::new(vec![StyledSpan::new(format!("  {}", val), theme.dim)]));
+                lines.push(StyledLine::new(vec![StyledSpan::new(
+                    format!("  {}", val),
+                    theme.dim,
+                )]));
             }
         }
     } else {
@@ -407,9 +418,7 @@ fn render_ast(tool: &ToolCall, header: StyledLine, symbols: &Symbols) -> Vec<Sty
                     let label = label[..1].to_uppercase() + &label[1..];
                     lines.push(StyledLine::new(vec![StyledSpan::new(
                         format!("  {}", label),
-                        Style::new()
-                            .fg(theme::DIM_TEAL)
-                            .bold(),
+                        Style::new().fg(theme::DIM_TEAL).bold(),
                     )]));
                     if let serde_json::Value::Array(items) = v {
                         for item in items {
@@ -428,7 +437,10 @@ fn render_ast(tool: &ToolCall, header: StyledLine, symbols: &Symbols) -> Vec<Sty
                 }
             }
             _ => {
-                lines.push(StyledLine::new(vec![StyledSpan::new(format!("  {}", val), theme.dim)]));
+                lines.push(StyledLine::new(vec![StyledSpan::new(
+                    format!("  {}", val),
+                    theme.dim,
+                )]));
             }
         }
     } else {

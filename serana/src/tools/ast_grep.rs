@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::fs;
 
-use serana_core::{Result, Tool};
-use serana_tree_sitter::{ParserManager, SyntaxTree};
+use crate::core::{Result, Tool};
+use code_tree_sitter::{ParserManager, SyntaxTree};
 use tree_sitter::Node;
 
 pub struct AstGrepTool;
@@ -224,7 +224,11 @@ mod tests {
             .unwrap();
 
         let matches = result["matches"].as_array().unwrap();
-        assert!(matches.len() >= 2, "Expected at least 2 matches, got {}", matches.len());
+        assert!(
+            matches.len() >= 2,
+            "Expected at least 2 matches, got {}",
+            matches.len()
+        );
     }
 
     #[tokio::test]

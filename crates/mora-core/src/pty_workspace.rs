@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
-use serana_core::{Result, Tool};
+use serana::core::{Result, Tool};
 
 pub struct PtyTool;
 
@@ -82,7 +82,7 @@ pub mod workspace_isolation {
     use std::path::{Path, PathBuf};
     use tokio::fs;
 
-    use serana_core::Result;
+    use serana::core::Result;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum IsolationStrategy {

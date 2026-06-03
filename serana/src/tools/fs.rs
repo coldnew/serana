@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::fs;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Resolve internal URLs (skill://, memory://, agent://) or return None for regular paths.
 async fn resolve_internal_url(url: &str) -> Option<Result<Value>> {
@@ -132,14 +132,15 @@ async fn resolve_agent_url(resource: &str) -> Result<Value> {
                 "resource": resource,
             }))
         }
-        "session" => {
-            Ok(json!({
-                "content": "Session info not yet wired to agent layer.",
-                "scheme": "agent",
-                "resource": resource,
-            }))
-        }
-        _ => anyhow::bail!("Unknown agent resource: '{}'. Use 'context' or 'session'", resource),
+        "session" => Ok(json!({
+            "content": "Session info not yet wired to agent layer.",
+            "scheme": "agent",
+            "resource": resource,
+        })),
+        _ => anyhow::bail!(
+            "Unknown agent resource: '{}'. Use 'context' or 'session'",
+            resource
+        ),
     }
 }
 
@@ -192,11 +193,8 @@ impl Tool for ReadFileTool {
         let content = fs::read_to_string(path).await?;
 
         // Check for git merge conflict markers
-        let has_conflicts = content.contains("<<<<<<< HEAD")
-            || content.contains("=======");
-        let conflict_warning = if has_conflicts
-            && content.contains(">>>>>>> ")
-        {
+        let has_conflicts = content.contains("<<<<<<< HEAD") || content.contains("=======");
+        let conflict_warning = if has_conflicts && content.contains(">>>>>>> ") {
             Some("Warning: This file contains unresolved merge conflicts.")
         } else {
             None

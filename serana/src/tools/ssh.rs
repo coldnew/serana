@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Run a command on a remote host via SSH.
 pub struct SshTool;

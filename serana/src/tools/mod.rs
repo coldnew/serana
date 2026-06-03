@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serana_core::{FunctionDefinition, Tool, ToolDefinition};
+use crate::core::{FunctionDefinition, Tool, ToolDefinition};
 
 pub mod ask;
 pub mod ast_edit;
@@ -21,6 +21,7 @@ pub mod hashline;
 pub mod inspect_image;
 pub mod mcp;
 pub mod memory;
+pub mod minimizer;
 pub mod recipe;
 pub mod render_mermaid;
 pub mod review;
@@ -30,7 +31,6 @@ pub mod secrets;
 pub mod self_evolve;
 pub mod shell;
 pub mod skill;
-pub mod minimizer;
 pub mod ssh;
 pub mod stats;
 pub mod todo_write;

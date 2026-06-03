@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use serana_core::{Agent, Result};
+use serana::core::{Agent, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcRequest {

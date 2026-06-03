@@ -446,7 +446,7 @@ impl MoraEditor {
                     KeyAction::None
                 }
                 KeyCode::Char('c') => {
-                    self.status_message = "AI chat (serana-llm)".to_string();
+                    self.status_message = "AI chat (serana)".to_string();
                     KeyAction::None
                 }
                 _ => KeyAction::None,

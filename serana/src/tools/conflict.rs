@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::fs;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Resolve git merge conflicts in files.
 pub struct ConflictResolveTool;

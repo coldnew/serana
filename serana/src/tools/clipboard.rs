@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::process::Command;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Copy text to the system clipboard.
 pub struct ClipboardCopyTool;

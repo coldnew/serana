@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::process::Command;
 
-use serana_core::{Result, Tool};
+use serana::core::{Result, Tool};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginDef {

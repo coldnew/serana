@@ -5,7 +5,8 @@
 A personal Hermes agent in Rust that understands codebases (via LSP + tree-sitter), edits files, runs commands, searches the web, debugs programs, persists memory, and answers code questions — all from a terminal UI.
 
 **User**: Single developer (coldnew) for personal productivity.
-**Architecture**: 7-crate workspace with one-directional dependency flow.
+**Architecture**: Serana-owned modules in the `serana` crate, with neutral
+workspace crates only for infrastructure shared by multiple products.
 
 ## Tech Stack
 
@@ -23,30 +24,26 @@ A personal Hermes agent in Rust that understands codebases (via LSP + tree-sitte
 | Web Search | Brave Search API |
 | Debugger | DAP protocol stdio client |
 
-## Crate Architecture
+## Module Architecture
 
 ```
-serana (binary)
+serana
+  ├── core   — Agent, Tool, LlmClient traits, Config, Message, callbacks,
+  │            cancellation, budgets, compression, MetaCognition, TokenCounter,
+  │            ToolApproval, Verification
+  ├── llm    — LlmClient impls: OpenAI, OpenRouter, Anthropic, streaming SSE,
+  │            credential refresh, fallback chains, role-based routing,
+  │            auxiliary tasks
+  ├── lsp    — LSP client: spawn servers, JSON-RPC 2.0, go-to-def, refs, hover
+  ├── tools  — Tool impls: fs, shell, search, git, GitHub, SSH, eval, debug,
+  │            browser, MCP, memory, skills, code review, checkpoint, AST, etc.
+  ├── agent  — Agent orchestration: HermesAgent, session persistence, subagent
+  │            spawning, context compression, stream rules, message validation
+  └── tui    — TUI: ratatui rendering, event loop, markdown, syntax highlight,
+               editor, dialogs, slash commands
 
-  ├── serana-core    — Foundational: Agent, Tool, LlmClient traits, Config, Message,
-  │                    Callbacks, Cancellation, Budgets, Compression, MetaCognition,
-  │                    TokenCounter, ToolApproval, Verification
-  │
-  ├── serana-llm     — LlmClient impls: OpenAI, Anthropic, streaming SSE, credential
-  │                    refresh, fallback chains, role-based routing, auxiliary tasks
-  │
-  ├── serana-lsp     — LSP client: spawn servers, JSON-RPC 2.0, go-to-def, refs, hover
-  │
-  ├── serana-tree-sitter — AST parsing: functions, types, imports via tree-sitter queries
-  │
-  ├── serana-tools   — 24 Tool impls: fs, shell, search, git, GitHub, SSH, eval, debug,
-  │                    browser, MCP, memory, skills, code review, checkpoint, etc.
-  │
-  ├── serana-agent   — Agent orchestration: HermesAgent, session persistence, subagent
-  │                    spawning, context compression, stream rules, message validation
-  │
-  └── serana-tui     — TUI: ratatui rendering, event loop, markdown, syntax highlight,
-                       editor, dialogs, slash commands
+crates/code-tree-sitter
+  └── Shared AST parsing/highlighting for Serana tools and Mora syntax display
 ```
 
 ## Key Traits
@@ -135,7 +132,8 @@ cargo run -- config --sample   # Show sample config.toml
 ## Coding Rules
 
 - `unsafe_code = "deny"` across entire workspace (enforced in workspace Cargo.toml)
-- Use `thiserror` for public error types (currently serana-core uses `anyhow` as Result; consuming crates add domain errors as needed)
+- Use `thiserror` for public error types where useful; `serana::core::Result`
+  is currently an `anyhow::Error` result alias used by Serana contracts.
 - No `.unwrap()` in library code (tolerated in tests and CLI main)
 - All tests must pass before commit
 

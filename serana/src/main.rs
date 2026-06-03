@@ -1,8 +1,8 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use serana::agent::HermesAgent;
-use serana_core::{Agent, Config, LlmClient};
-use serana_llm::OpenAiClient;
+use serana::core::{Agent, Config, LlmClient};
+use serana::llm::OpenAiClient;
 use std::io::IsTerminal;
 
 #[derive(Parser)]
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Commands::Config { sample }) => {
             if sample {
-                println!("{}", serana_core::config::generate_sample_config());
+                println!("{}", serana::core::config::generate_sample_config());
             } else {
                 println!("Config path: {:?}", Config::config_path());
                 println!("\nResolved configuration:");
@@ -118,11 +118,11 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     use crossterm::{
         event::{self, Event, KeyCode, KeyModifiers},
         execute,
-        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     };
     use mora_bin::mora::MoraEditor;
-    use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
+    use ratatui::Terminal;
     use std::io;
     use std::path::Path;
     use std::time::Duration;

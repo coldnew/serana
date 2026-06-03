@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, Mutex};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// A DAP session managing a debug adapter subprocess.
 pub struct DapSession {

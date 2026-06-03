@@ -10,7 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 use super::minimizer;
 

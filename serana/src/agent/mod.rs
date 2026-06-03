@@ -1,8 +1,8 @@
+pub mod checkpoint;
 #[deprecated(
     note = "Use the hermes module and HermesAgent; coding is only a compatibility module."
 )]
 pub mod coding;
-pub mod checkpoint;
 pub mod compactor;
 pub mod compression_gate;
 pub mod compressor;
@@ -24,9 +24,9 @@ pub mod tool_executor;
 pub mod tool_turn;
 pub mod turn_runner;
 
+pub use checkpoint::CheckpointManager;
 #[allow(deprecated)]
 pub use coding::CodingAgent;
-pub use checkpoint::CheckpointManager;
 pub use compactor::ContextCompactor;
 pub use compression_gate::{CompressionGate, CompressionGateOutcome};
 pub use compressor::ContextCompressor;

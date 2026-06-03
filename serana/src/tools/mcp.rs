@@ -9,7 +9,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{oneshot, Mutex};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {

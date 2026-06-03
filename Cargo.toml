@@ -13,9 +13,7 @@ members = [
     "mora",
     "serana",
     "vivi",
-    "crates/serana-core",
-    "crates/serana-llm",
-    "crates/serana-tree-sitter",
+    "crates/code-tree-sitter",
 ]
 
 [workspace.package]

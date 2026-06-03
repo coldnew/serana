@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use serana_core::{AgentCallbacks, Result, ToolCall, ToolCallData, ToolApproval, ApprovalDecision};
+use crate::core::{AgentCallbacks, ApprovalDecision, Result, ToolApproval, ToolCall, ToolCallData};
 use crate::tools::ToolRegistry;
 
 pub async fn execute_tools_concurrent(
@@ -112,10 +112,10 @@ mod tests {
         let registry = ToolRegistry::core();
         let callbacks = AgentCallbacks::new();
 
-        let tool_calls = vec![serana_core::ToolCallData {
+        let tool_calls = vec![crate::core::ToolCallData {
             id: "call_1".to_string(),
             r#type: "function".to_string(),
-            function: serana_core::FunctionCall {
+            function: crate::core::FunctionCall {
                 name: "read_file".to_string(),
                 arguments: r#"{"path": "test.txt"}"#.to_string(),
             },

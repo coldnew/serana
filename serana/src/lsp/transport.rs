@@ -3,7 +3,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::process::{ChildStdin, ChildStdout};
 
-use serana_core::Result;
+use crate::core::Result;
 
 /// LSP transport for stdio communication
 pub struct LspTransport {

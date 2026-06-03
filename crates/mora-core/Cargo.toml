@@ -9,7 +9,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-serana-core = { path = "../serana-core" }
+serana = { path = "../../serana" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -19,7 +19,7 @@ dirs.workspace = true
 parking_lot.workspace = true
 tracing.workspace = true
 regex.workspace = true
-serana-tree-sitter = { path = "../crates/serana-tree-sitter" }
+code-tree-sitter = { path = "../crates/code-tree-sitter" }
 mishell-parser = { path = "../crates/mishell-parser" }
 display-protocol = { path = "../crates/display-protocol" }
 display-tui = { path = "../crates/display-tui" }

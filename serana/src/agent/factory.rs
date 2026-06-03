@@ -1,4 +1,4 @@
-use serana_core::LlmClient;
+use crate::core::LlmClient;
 use crate::tools::{ToolProfile, ToolRegistry};
 
 use super::{AgentRuntimeConfig, HermesAgent};

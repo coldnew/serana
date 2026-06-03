@@ -225,9 +225,7 @@ fn styled_line_to_row(line: &StyledLine, prefix: &str, base_style: &Style) -> Ui
         style: *base_style,
     }];
     for span in &line.spans {
-        let merged = Style::default()
-            .merge(base_style)
-            .merge(&span.style);
+        let merged = Style::default().merge(base_style).merge(&span.style);
         spans.push(SpanNode {
             content: span.text.clone(),
             style: merged,
@@ -318,7 +316,9 @@ fn build_processing_indicator(app: &App, width: u16, theme: &Theme) -> UiNode {
 
     // Streaming content preview
     if !app.pending_messages.is_empty() {
-        let preview: String = app.pending_messages.iter()
+        let preview: String = app
+            .pending_messages
+            .iter()
             .flat_map(|m| m.lines())
             .rev()
             .take(3)
@@ -441,7 +441,9 @@ fn build_autocomplete(
     height: u16,
     _theme: &Theme,
 ) -> UiNode {
-    let popup_h = (ac.items.len() as u16 + 2).min(8).min(height.saturating_sub(6));
+    let popup_h = (ac.items.len() as u16 + 2)
+        .min(8)
+        .min(height.saturating_sub(6));
     let popup_w = 40u16;
 
     let mut children = Vec::new();
@@ -515,22 +517,22 @@ fn build_help_overlay(width: u16, height: u16, theme: &Theme) -> UiNode {
 
     let shortcuts: &[(&str, &str)] = &[
         ("General", ""),
-        ("  ?",           "Show this help"),
-        ("  Ctrl+Q/D",    "Quit"),
-        ("  Esc",          "Cancel / back to Normal"),
+        ("  ?", "Show this help"),
+        ("  Ctrl+Q/D", "Quit"),
+        ("  Esc", "Cancel / back to Normal"),
         ("", ""),
         ("Input", ""),
-        ("  Enter",        "Send message"),
-        ("  Shift+Enter",  "New line"),
-        ("  Tab",          "Autocomplete"),
-        ("  Up/Down",      "Autocomplete navigation"),
+        ("  Enter", "Send message"),
+        ("  Shift+Enter", "New line"),
+        ("  Tab", "Autocomplete"),
+        ("  Up/Down", "Autocomplete navigation"),
         ("", ""),
         ("Dialogs", ""),
-        ("  Ctrl+M",       "Model selector"),
-        ("  Ctrl+T",       "Theme selector"),
+        ("  Ctrl+M", "Model selector"),
+        ("  Ctrl+T", "Theme selector"),
         ("", ""),
         ("Processing", ""),
-        ("  Esc",          "Interrupt agent"),
+        ("  Esc", "Interrupt agent"),
     ];
 
     let mut children = Vec::new();

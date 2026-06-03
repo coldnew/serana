@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use serana_core::{Result, Tool};
+use crate::core::{Result, Tool};
 
 /// Tool that renders Mermaid diagrams.
 ///
@@ -57,9 +57,7 @@ impl Tool for RenderMermaidTool {
             .and_then(|v| v.as_str())
             .unwrap_or("svg");
 
-        let output_path = input
-            .get("output")
-            .and_then(|v| v.as_str());
+        let output_path = input.get("output").and_then(|v| v.as_str());
 
         // Check if mmdc (mermaid-cli) is available
         let mmdc_available = tokio::process::Command::new("which")
@@ -80,7 +78,9 @@ impl Tool for RenderMermaidTool {
             if let Some(path) = output_path {
                 // Write the mermaid source to a .mmd file
                 let mmd_path = if path.ends_with(".svg") || path.ends_with(".png") {
-                    path.rsplit_once('.').map(|(base, _)| format!("{}.mmd", base)).unwrap_or_else(|| format!("{}.mmd", path))
+                    path.rsplit_once('.')
+                        .map(|(base, _)| format!("{}.mmd", base))
+                        .unwrap_or_else(|| format!("{}.mmd", path))
                 } else {
                     format!("{}.mmd", path)
                 };
@@ -92,20 +92,20 @@ impl Tool for RenderMermaidTool {
 
         // Render with mmdc
         let temp_input = format!("/tmp/serana-mermaid-{}.mmd", uuid::Uuid::new_v4());
-        let temp_output = format!(
-            "/tmp/serana-mermaid-{}.{}",
-            uuid::Uuid::new_v4(),
-            format
-        );
+        let temp_output = format!("/tmp/serana-mermaid-{}.{}", uuid::Uuid::new_v4(), format);
 
         tokio::fs::write(&temp_input, code).await?;
 
         let status = tokio::process::Command::new("mmdc")
             .args([
-                "-i", &temp_input,
-                "-o", &temp_output,
-                "-t", "dark",
-                "-b", "transparent",
+                "-i",
+                &temp_input,
+                "-o",
+                &temp_output,
+                "-t",
+                "dark",
+                "-b",
+                "transparent",
             ])
             .status()
             .await?;
@@ -115,7 +115,10 @@ impl Tool for RenderMermaidTool {
 
         if !status.success() {
             let _ = tokio::fs::remove_file(&temp_output).await;
-            return Err(anyhow::anyhow!("mmdc rendering failed (exit code: {:?})", status.code()));
+            return Err(anyhow::anyhow!(
+                "mmdc rendering failed (exit code: {:?})",
+                status.code()
+            ));
         }
 
         // Read rendered output

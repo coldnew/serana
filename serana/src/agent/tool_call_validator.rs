@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use serana_core::{Result, ToolCallData, ToolDefinition};
+use crate::core::{Result, ToolCallData, ToolDefinition};
 
 pub struct ToolCallValidator<'a> {
     tool_names: HashSet<&'a str>,
@@ -50,7 +50,7 @@ impl<'a> ToolCallValidator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serana_core::{FunctionCall, FunctionDefinition, ToolCallData};
+    use crate::core::{FunctionCall, FunctionDefinition, ToolCallData};
 
     fn tool_definition(name: &str) -> ToolDefinition {
         ToolDefinition {

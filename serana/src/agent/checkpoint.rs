@@ -102,10 +102,16 @@ mod tests {
     #[test]
     fn test_checkpoint_signal_detection() {
         let result = json!({"checkpoint": true, "label": "test"});
-        assert_eq!(CheckpointManager::is_checkpoint_signal(&result), Some("test"));
+        assert_eq!(
+            CheckpointManager::is_checkpoint_signal(&result),
+            Some("test")
+        );
 
         let not_checkpoint = json!({"rewind": true});
-        assert_eq!(CheckpointManager::is_checkpoint_signal(&not_checkpoint), None);
+        assert_eq!(
+            CheckpointManager::is_checkpoint_signal(&not_checkpoint),
+            None
+        );
     }
 
     #[test]
@@ -117,10 +123,7 @@ mod tests {
         );
 
         let no_label = json!({"rewind": true});
-        assert_eq!(
-            CheckpointManager::is_rewind_signal(&no_label),
-            Some(None)
-        );
+        assert_eq!(CheckpointManager::is_rewind_signal(&no_label), Some(None));
 
         let not_rewind = json!({"checkpoint": true});
         assert_eq!(CheckpointManager::is_rewind_signal(&not_rewind), None);

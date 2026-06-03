@@ -65,7 +65,7 @@ impl SessionStore {
         Self::new(dir.join("sessions.db"))
     }
 
-    pub fn init(&self) -> serana_core::Result<()> {
+    pub fn init(&self) -> crate::core::Result<()> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         conn.execute_batch(
             r#"
@@ -122,7 +122,7 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn create_session(&self) -> serana_core::Result<Session> {
+    pub fn create_session(&self) -> crate::core::Result<Session> {
         let now = Utc::now();
         let id = format!("sess_{}", uuid::Uuid::new_v4());
         let conn = rusqlite::Connection::open(&self.db_path)?;
@@ -147,7 +147,7 @@ impl SessionStore {
         })
     }
 
-    pub fn create_compressed_session(&self, compressed_from: &str) -> serana_core::Result<Session> {
+    pub fn create_compressed_session(&self, compressed_from: &str) -> crate::core::Result<Session> {
         let mut session = self.create_session()?;
         let count = self
             .load_session(compressed_from)?
@@ -164,7 +164,7 @@ impl SessionStore {
         Ok(session)
     }
 
-    pub fn update_session_title(&self, session_id: &str, title: &str) -> serana_core::Result<()> {
+    pub fn update_session_title(&self, session_id: &str, title: &str) -> crate::core::Result<()> {
         let now = Utc::now().to_rfc3339();
         let conn = rusqlite::Connection::open(&self.db_path)?;
         conn.execute(
@@ -174,7 +174,7 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn load_session(&self, id: &str) -> serana_core::Result<Option<Session>> {
+    pub fn load_session(&self, id: &str) -> crate::core::Result<Option<Session>> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let meta = match conn.query_row(
             "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title FROM sessions WHERE id = ?1",
@@ -227,7 +227,7 @@ impl SessionStore {
         session_id: &str,
         role: &str,
         content: &str,
-    ) -> serana_core::Result<()> {
+    ) -> crate::core::Result<()> {
         let now = Utc::now().to_rfc3339();
         let conn = rusqlite::Connection::open(&self.db_path)?;
         conn.execute(
@@ -247,7 +247,7 @@ impl SessionStore {
         name: &str,
         arguments: &serde_json::Value,
         result: Option<&serde_json::Value>,
-    ) -> serana_core::Result<()> {
+    ) -> crate::core::Result<()> {
         let now = Utc::now().to_rfc3339();
         let conn = rusqlite::Connection::open(&self.db_path)?;
         conn.execute(
@@ -271,7 +271,7 @@ impl SessionStore {
         &self,
         query: &str,
         limit: usize,
-    ) -> serana_core::Result<Vec<SearchResult>> {
+    ) -> crate::core::Result<Vec<SearchResult>> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT m.session_id, m.role, m.content, m.timestamp FROM messages_fts f JOIN messages m ON m.id = f.rowid WHERE messages_fts MATCH ?1 ORDER BY m.id DESC LIMIT ?2",
@@ -289,7 +289,7 @@ impl SessionStore {
         Ok(results)
     }
 
-    pub fn list_recent_sessions(&self, limit: usize) -> serana_core::Result<Vec<SessionMeta>> {
+    pub fn list_recent_sessions(&self, limit: usize) -> crate::core::Result<Vec<SessionMeta>> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
             "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title FROM sessions ORDER BY updated_at DESC LIMIT ?1",

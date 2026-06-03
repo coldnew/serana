@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serana_core::{
+use crate::core::{
     AgentCallbacks, AgentStatus, Message, MetaCognition, ModificationKind, ModificationRecord,
-    ToolCall, ToolCallData, ToolApproval,
+    ToolApproval, ToolCall, ToolCallData,
 };
 use crate::tools::ToolRegistry;
 

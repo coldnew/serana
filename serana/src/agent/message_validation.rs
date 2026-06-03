@@ -1,4 +1,4 @@
-use serana_core::Message;
+use crate::core::Message;
 
 pub fn validate_message_alternation(messages: &[Message]) -> Result<(), String> {
     if messages.is_empty() {
