@@ -117,6 +117,7 @@ impl Config {
     /// Falls back to defaults if file doesn't exist.
     pub fn load() -> anyhow::Result<Self> {
         let config_path = Self::config_path();
+        Self::ensure_config_dir_for_path(&config_path)?;
         tracing::info!("Looking for config at {:?}", config_path);
 
         if config_path.exists() {
@@ -180,6 +181,14 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".serana")
             .join("config.toml")
+    }
+
+    fn ensure_config_dir_for_path(config_path: &Path) -> anyhow::Result<()> {
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create config directory {:?}", parent))?;
+        }
+        Ok(())
     }
 
     /// Apply environment variable overrides
@@ -272,5 +281,15 @@ mod tests {
     fn config_path_lives_under_dot_serana() {
         let path = Config::config_path();
         assert!(path.ends_with(".serana/config.toml"));
+    }
+
+    #[test]
+    fn creates_missing_config_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join(".serana").join("config.toml");
+
+        Config::ensure_config_dir_for_path(&config_path).unwrap();
+
+        assert!(config_path.parent().unwrap().is_dir());
     }
 }
