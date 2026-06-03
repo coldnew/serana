@@ -775,6 +775,9 @@ impl App {
             SlashResult::SessionLoad(id) => {
                 self.load_session_by_id(&id);
             }
+            SlashResult::SetSessionName(name) => {
+                self.set_session_name(&name);
+            }
             SlashResult::Stats => {
                 let elapsed = self.session_elapsed();
                 let cost = self.cost_estimate();
@@ -1119,6 +1122,53 @@ impl App {
                 "Unsupported login provider '{}'. Use: /login codex",
                 provider
             ),
+        }
+    }
+
+    fn set_session_name(&mut self, name: &str) {
+        let store = match self.session_store.as_ref() {
+            Some(store) => store,
+            None => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "No session store available.".to_string(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+                return;
+            }
+        };
+        let session_id = match self.current_session_id.as_deref() {
+            Some(id) => id,
+            None => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "No active session to name.".to_string(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+                return;
+            }
+        };
+
+        match store.update_session_title(session_id, name) {
+            Ok(()) => {
+                self.load_recent_sessions();
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Session name set to: {}", name),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            Err(error) => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("Failed to set session name: {}", error),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
         }
     }
 
@@ -1574,5 +1624,17 @@ mod tests {
 
         assert_eq!(app.messages.len(), 1);
         assert_eq!(app.messages[0].content, "No assistant response to copy.");
+    }
+
+    #[test]
+    fn slash_name_without_store_shows_message() {
+        let mut app = App::new(PathBuf::from("."));
+
+        app.handle_slash_result(crate::tui::slash_commands::SlashResult::SetSessionName(
+            "demo".to_string(),
+        ));
+
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].content, "No session store available.");
     }
 }

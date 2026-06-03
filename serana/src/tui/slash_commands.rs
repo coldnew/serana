@@ -33,6 +33,8 @@ pub enum SlashResult {
     SessionSave,
     /// Load a session by id.
     SessionLoad(String),
+    /// Set current session display name.
+    SetSessionName(String),
     /// Show stats.
     Stats,
     /// Reload rules and skills.
@@ -161,6 +163,19 @@ impl SlashCommandRegistry {
                         }
                     }
                     _ => SlashResult::Display("Usage: /session list|save|load <id>".to_string()),
+                }
+            }),
+        });
+
+        self.register(SlashCommand {
+            name: "name",
+            description: "Set current session display name. Usage: /name <name>",
+            handler: Box::new(|args| {
+                let name = args.trim();
+                if name.is_empty() {
+                    SlashResult::Display("Usage: /name <name>".to_string())
+                } else {
+                    SlashResult::SetSessionName(name.to_string())
                 }
             }),
         });
@@ -541,6 +556,20 @@ mod tests {
         match registry.dispatch("/session load sess_123") {
             Some(SlashResult::SessionLoad(id)) => assert_eq!(id, "sess_123"),
             _ => panic!("Expected SessionLoad"),
+        }
+    }
+
+    #[test]
+    fn name_command_sets_session_name() {
+        let registry = SlashCommandRegistry::new();
+        match registry.dispatch("/name refactor pi parity") {
+            Some(SlashResult::SetSessionName(name)) => assert_eq!(name, "refactor pi parity"),
+            _ => panic!("Expected SetSessionName"),
+        }
+
+        match registry.dispatch("/name") {
+            Some(SlashResult::Display(message)) => assert_eq!(message, "Usage: /name <name>"),
+            _ => panic!("Expected Display"),
         }
     }
 }
