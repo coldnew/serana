@@ -184,6 +184,12 @@ impl SlashCommandRegistry {
         });
 
         self.register(SlashCommand {
+            name: "hotkeys",
+            description: "Show keyboard shortcuts",
+            handler: Box::new(|_| SlashResult::Display(hotkeys_text())),
+        });
+
+        self.register(SlashCommand {
             name: "quit",
             description: "Exit the application",
             handler: Box::new(|_| SlashResult::Quit),
@@ -412,6 +418,23 @@ impl SlashCommandRegistry {
     }
 }
 
+fn hotkeys_text() -> String {
+    [
+        "Keyboard shortcuts:",
+        "  ? - Show help overlay",
+        "  Ctrl+M - Open model selector",
+        "  Ctrl+T - Open theme selector",
+        "  Ctrl+D / Ctrl+Q - Quit",
+        "  Enter - Submit message",
+        "  Shift+Enter - Insert newline",
+        "  Tab - Complete slash command, model, or path",
+        "  Esc - Cancel autocomplete, clear input, or return to normal mode",
+        "  Up / Down - Move through autocomplete items or editor lines",
+        "  Ctrl+Z - Undo editor change",
+    ]
+    .join("\n")
+}
+
 impl Default for SlashCommandRegistry {
     fn default() -> Self {
         Self::new()
@@ -476,6 +499,7 @@ mod tests {
         assert!(help.contains("/model"));
         assert!(help.contains("/login"));
         assert!(help.contains("/compact"));
+        assert!(help.contains("/hotkeys"));
         assert!(help.contains("/help"));
     }
 
@@ -484,6 +508,18 @@ mod tests {
         let registry = SlashCommandRegistry::new();
         match registry.dispatch("/login") {
             Some(SlashResult::Display(message)) => assert_eq!(message, "Usage: /login codex"),
+            _ => panic!("Expected Display"),
+        }
+    }
+
+    #[test]
+    fn hotkeys_command_shows_shortcuts() {
+        let registry = SlashCommandRegistry::new();
+        match registry.dispatch("/hotkeys") {
+            Some(SlashResult::Display(message)) => {
+                assert!(message.contains("Ctrl+M"));
+                assert!(message.contains("Shift+Enter"));
+            }
             _ => panic!("Expected Display"),
         }
     }
