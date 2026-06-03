@@ -9,6 +9,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use crate::core::Result;
 use crate::llm::login_device_auth;
+use crate::tools::clipboard::copy_text;
 
 use super::slash_commands::SlashCommandRegistry;
 use super::symbols::{self, Symbols};
@@ -984,17 +985,30 @@ impl App {
                     .rev()
                     .find(|m| m.role == MessageRole::Agent);
                 match last_assistant {
-                    Some(msg) => {
-                        self.messages.push(ChatMessage {
-                            role: MessageRole::System,
-                            content: format!(
-                                "📋 Last response ({} chars) — clipboard copy not yet wired",
-                                msg.content.len()
-                            ),
-                            tool_calls: Vec::new(),
-                            thinking: None,
-                        });
-                    }
+                    Some(msg) => match copy_text(&msg.content) {
+                        Ok(copied) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!(
+                                    "Copied last assistant response ({} chars).",
+                                    copied
+                                ),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                        Err(error) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!(
+                                    "Failed to copy last assistant response: {}",
+                                    error
+                                ),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                    },
                     None => {
                         self.messages.push(ChatMessage {
                             role: MessageRole::System,
@@ -1550,5 +1564,15 @@ mod tests {
             message,
             "Unsupported login provider 'anthropic'. Use: /login codex"
         );
+    }
+
+    #[test]
+    fn slash_copy_without_assistant_message_shows_message() {
+        let mut app = App::new(PathBuf::from("."));
+
+        app.handle_slash_result(crate::tui::slash_commands::SlashResult::Copy);
+
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].content, "No assistant response to copy.");
     }
 }

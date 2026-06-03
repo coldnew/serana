@@ -6,6 +6,43 @@ use std::process::Command;
 
 use crate::core::{Result, Tool};
 
+pub fn copy_text(text: &str) -> Result<usize> {
+    // Try xclip (Linux), then pbcopy (macOS).
+    let result = Command::new("xclip")
+        .args(["-selection", "clipboard"])
+        .stdin(std::process::Stdio::piped())
+        .spawn();
+
+    if let Ok(mut child) = result {
+        use std::io::Write;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes())?;
+        }
+        let status = child.wait()?;
+        if status.success() {
+            return Ok(text.len());
+        }
+    }
+
+    let result = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn();
+    if let Ok(mut child) = result {
+        use std::io::Write;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes())?;
+        }
+        let status = child.wait()?;
+        if status.success() {
+            return Ok(text.len());
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "No clipboard tool found (tried xclip, pbcopy)"
+    ))
+}
+
 /// Copy text to the system clipboard.
 pub struct ClipboardCopyTool;
 
@@ -38,41 +75,8 @@ impl Tool for ClipboardCopyTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'text' field"))?;
 
-        // Try xclip (Linux), pbcopy (macOS), clip.exe (WSL/Windows)
-        let result = Command::new("xclip")
-            .args(["-selection", "clipboard"])
-            .stdin(std::process::Stdio::piped())
-            .spawn();
-
-        match result {
-            Ok(mut child) => {
-                use std::io::Write;
-                if let Some(mut stdin) = child.stdin.take() {
-                    stdin.write_all(text.as_bytes())?;
-                }
-                child.wait()?;
-                return Ok(json!({ "success": true, "copied": text.len() }));
-            }
-            Err(_) => {}
-        }
-
-        // Fallback to pbcopy
-        let result = Command::new("pbcopy").spawn();
-        match result {
-            Ok(mut child) => {
-                use std::io::Write;
-                if let Some(mut stdin) = child.stdin.take() {
-                    stdin.write_all(text.as_bytes())?;
-                }
-                child.wait()?;
-                return Ok(json!({ "success": true, "copied": text.len() }));
-            }
-            Err(_) => {}
-        }
-
-        Err(anyhow::anyhow!(
-            "No clipboard tool found (tried xclip, pbcopy)"
-        ))
+        let copied = copy_text(text)?;
+        Ok(json!({ "success": true, "copied": copied }))
     }
 }
 
