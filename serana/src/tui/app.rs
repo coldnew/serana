@@ -29,6 +29,17 @@ pub struct AutocompleteState {
     pub prefix: String,
 }
 
+fn model_catalog() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("gpt-4o", "OpenAI flagship"),
+        ("gpt-4o-mini", "OpenAI fast"),
+        ("claude-3.5-sonnet", "Anthropic"),
+        ("claude-3-haiku", "Anthropic fast"),
+        ("deepseek-coder", "DeepSeek"),
+        ("codellama-70b", "Meta"),
+    ]
+}
+
 /// Check if query is a subsequence of target (fuzzy match).
 fn fuzzy_match(query: &str, target: &str) -> bool {
     if query.is_empty() {
@@ -416,9 +427,8 @@ impl App {
 
         let lower_query = query.to_lowercase();
 
-        // Check if we're past command name (has a space) — no autocomplete for args yet
         if query.contains(' ') {
-            self.autocomplete = None;
+            self.try_update_argument_autocomplete(prefix, query);
             return;
         }
 
@@ -472,6 +482,74 @@ impl App {
         }
     }
 
+    fn try_update_argument_autocomplete(&mut self, prefix: &str, query: &str) {
+        let mut parts = query.splitn(2, char::is_whitespace);
+        let command = parts.next().unwrap_or("");
+        let arg_query = parts.next().unwrap_or("").trim_start();
+
+        match command {
+            "model" => {
+                let items = Self::model_autocomplete_items(arg_query);
+                self.set_autocomplete(prefix, items);
+            }
+            _ => {
+                self.autocomplete = None;
+            }
+        }
+    }
+
+    fn model_autocomplete_items(query: &str) -> Vec<AutocompleteItem> {
+        let lower_query = query.to_lowercase();
+        let mut scored: Vec<(AutocompleteItem, i32)> = model_catalog()
+            .into_iter()
+            .filter_map(|(name, desc)| {
+                let lower_name = name.to_lowercase();
+                let lower_desc = desc.to_lowercase();
+                if !fuzzy_match(&lower_query, &lower_name)
+                    && !fuzzy_match(&lower_query, &lower_desc)
+                {
+                    return None;
+                }
+                let name_score = if fuzzy_match(&lower_query, &lower_name) {
+                    fuzzy_score(&lower_query, &lower_name)
+                } else {
+                    0
+                };
+                let desc_score = if fuzzy_match(&lower_query, &lower_desc) {
+                    fuzzy_score(&lower_query, &lower_desc) / 2
+                } else {
+                    0
+                };
+                Some((
+                    AutocompleteItem {
+                        value: name.to_string(),
+                        description: desc.to_string(),
+                    },
+                    name_score.max(desc_score),
+                ))
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.into_iter().map(|(item, _)| item).collect()
+    }
+
+    fn set_autocomplete(&mut self, prefix: &str, items: Vec<AutocompleteItem>) {
+        if items.is_empty() {
+            self.autocomplete = None;
+        } else {
+            let selected = match &self.autocomplete {
+                Some(ac) if ac.selected < items.len() => ac.selected,
+                _ => 0,
+            };
+            self.autocomplete = Some(AutocompleteState {
+                items,
+                selected,
+                prefix: prefix.to_string(),
+            });
+        }
+    }
+
     /// Apply the currently selected autocomplete item.
     /// If `also_submit` is true, also submit the message after applying.
     fn apply_autocomplete_selection(&mut self, also_submit: bool) {
@@ -483,10 +561,19 @@ impl App {
             Some(item) => item,
             None => return,
         };
+        let prefix = self
+            .autocomplete
+            .as_ref()
+            .map(|ac| ac.prefix.clone())
+            .unwrap_or_default();
         self.autocomplete = None;
 
-        // Replace editor content with "/command " (with trailing space)
-        self.editor.set_content(&format!("/{} ", item.value));
+        if prefix.starts_with("/model ") {
+            self.editor.set_content(&format!("/model {}", item.value));
+        } else {
+            // Replace editor content with "/command " (with trailing space)
+            self.editor.set_content(&format!("/{} ", item.value));
+        }
 
         if also_submit {
             self.submit_message();
@@ -1031,14 +1118,10 @@ impl App {
 
     /// Open the model selector dialog.
     pub fn open_model_dialog(&mut self) {
-        let models = vec![
-            ("gpt-4o".into(), "OpenAI flagship".into()),
-            ("gpt-4o-mini".into(), "OpenAI fast".into()),
-            ("claude-3.5-sonnet".into(), "Anthropic".into()),
-            ("claude-3-haiku".into(), "Anthropic fast".into()),
-            ("deepseek-coder".into(), "DeepSeek".into()),
-            ("codellama-70b".into(), "Meta".into()),
-        ];
+        let models = model_catalog()
+            .into_iter()
+            .map(|(name, desc)| (name.to_string(), desc.to_string()))
+            .collect();
         self.active_dialog = Some(super::dialog::Dialog::new_model_selector(models));
     }
 
@@ -1324,4 +1407,46 @@ pub enum MessageRole {
     User,
     Agent,
     System,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_command_shows_argument_completions() {
+        let mut app = App::new(PathBuf::from("."));
+        app.editor.set_content("/model ");
+
+        app.try_update_autocomplete();
+
+        let autocomplete = app.autocomplete.expect("model completions");
+        assert!(autocomplete.items.iter().any(|item| item.value == "gpt-4o"));
+        assert!(autocomplete
+            .items
+            .iter()
+            .any(|item| item.value == "gpt-4o-mini"));
+    }
+
+    #[test]
+    fn model_command_filters_argument_completions() {
+        let mut app = App::new(PathBuf::from("."));
+        app.editor.set_content("/model mini");
+
+        app.try_update_autocomplete();
+
+        let autocomplete = app.autocomplete.expect("filtered model completions");
+        assert_eq!(autocomplete.items[0].value, "gpt-4o-mini");
+    }
+
+    #[test]
+    fn applying_model_completion_preserves_model_command() {
+        let mut app = App::new(PathBuf::from("."));
+        app.editor.set_content("/model mini");
+        app.try_update_autocomplete();
+
+        app.apply_autocomplete_selection(false);
+
+        assert_eq!(app.editor.content(), "/model gpt-4o-mini");
+    }
 }
