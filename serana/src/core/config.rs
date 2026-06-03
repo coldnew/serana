@@ -174,18 +174,11 @@ impl Config {
     }
 
     /// Get the configuration file path.
-    /// Prioritizes ~/.serana/config.toml for compatibility with Serana's documented config.
+    /// Always uses ~/.serana/config.toml.
     pub fn config_path() -> PathBuf {
-        let legacy = dirs::home_dir()
+        dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".serana")
-            .join("config.toml");
-        if legacy.exists() {
-            return legacy;
-        }
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("serana")
             .join("config.toml")
     }
 
@@ -269,4 +262,15 @@ pub fn generate_sample_config() -> String {
     };
 
     toml::to_string_pretty(&config).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_path_lives_under_dot_serana() {
+        let path = Config::config_path();
+        assert!(path.ends_with(".serana/config.toml"));
+    }
 }
