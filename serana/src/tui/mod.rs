@@ -14,7 +14,7 @@ pub mod theme;
 pub mod tool_execution;
 pub mod tui;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use crate::agent::SessionStore;
@@ -24,13 +24,87 @@ use crate::core::AgentCallbacks;
 use crate::core::CancelToken;
 use crate::core::Config;
 use crate::core::LlmClient;
+use crate::core::Message;
 use crate::core::Result;
-use crate::llm::OpenAiClient;
+use crate::core::ToolDefinition;
+use crate::llm::{CodexClient, OpenAiClient};
+use async_trait::async_trait;
+use futures::{Stream, StreamExt};
+use std::pin::Pin;
 use tokio::sync::mpsc;
 
 use app::App;
 use event::Event;
 use tui::Tui;
+
+struct ActiveLlmClient {
+    config: Arc<RwLock<Config>>,
+}
+
+impl ActiveLlmClient {
+    fn new(config: Arc<RwLock<Config>>) -> Self {
+        Self { config }
+    }
+
+    fn client(&self) -> Box<dyn LlmClient> {
+        let config = self
+            .config
+            .read()
+            .expect("active LLM config poisoned")
+            .clone();
+        match config.provider.name.as_str() {
+            "codex" => Box::new(
+                CodexClient::new(config.model().to_string()).with_workspace(config.workspace),
+            ),
+            _ => Box::new(OpenAiClient::new(config)),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmClient for ActiveLlmClient {
+    async fn chat(&self, messages: &[Message]) -> Result<String> {
+        self.client().chat(messages).await
+    }
+
+    async fn chat_with_tools(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<Message> {
+        self.client().chat_with_tools(messages, tools).await
+    }
+
+    fn chat_stream<'a>(
+        &'a self,
+        messages: &'a [Message],
+    ) -> Pin<Box<dyn Stream<Item = Result<String>> + Send + 'a>> {
+        let client = self.client();
+        let messages = messages.to_vec();
+        Box::pin(async_stream::try_stream! {
+            let mut stream = client.chat_stream(&messages);
+            while let Some(chunk) = stream.next().await {
+                yield chunk?;
+            }
+        })
+    }
+
+    fn chat_with_tools_stream<'a>(
+        &'a self,
+        messages: &'a [Message],
+        tools: &'a [ToolDefinition],
+    ) -> Pin<Box<dyn Stream<Item = Result<Message>> + Send + 'a>> {
+        let client = self.client();
+        let messages = messages.to_vec();
+        let tools = tools.to_vec();
+        Box::pin(async_stream::try_stream! {
+            let mut stream = client.chat_with_tools_stream(&messages, &tools);
+            while let Some(chunk) = stream.next().await {
+                yield chunk?;
+            }
+        })
+    }
+}
 
 pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) -> Result<()> {
     let mut tui = Tui::new()?;
@@ -39,7 +113,8 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
 
     let (response_tx, mut response_rx) = mpsc::unbounded_channel::<AgentResponse>();
     let (stream_tx, mut stream_rx) = mpsc::unbounded_channel::<String>();
-    let llm: Box<dyn LlmClient> = Box::new(OpenAiClient::new(config));
+    let active_config = Arc::new(RwLock::new(config));
+    let llm: Box<dyn LlmClient> = Box::new(ActiveLlmClient::new(active_config.clone()));
     // Skill system — discover skills, register creation tool
     let skill_store = crate::tools::skill::SkillStore::discover(&workspace_for_agent);
 
@@ -87,6 +162,7 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
         &mut response_rx,
         &mut stream_rx,
         cancel_token,
+        active_config,
     );
 
     tui.restore()?;
@@ -98,6 +174,12 @@ struct AgentResponse {
     content: String,
 }
 
+fn sync_active_config(active_config: &Arc<RwLock<Config>>, app: &App) {
+    let mut config = active_config.write().expect("active LLM config poisoned");
+    config.provider.name = app.provider.clone();
+    config.llm.model = app.model.clone();
+}
+
 fn run_app(
     tui: &mut Tui,
     app: &mut App,
@@ -107,6 +189,7 @@ fn run_app(
     response_rx: &mut mpsc::UnboundedReceiver<AgentResponse>,
     stream_rx: &mut mpsc::UnboundedReceiver<String>,
     cancel_token: crate::core::CancelToken,
+    active_config: Arc<RwLock<Config>>,
 ) -> Result<()> {
     let mut pending_request: Option<tokio::task::JoinHandle<()>> = None;
     let mut streaming_content = String::new();
@@ -168,6 +251,7 @@ fn run_app(
                 if !app.handle_key_event(crossterm_key)? || app.should_quit {
                     return Ok(());
                 }
+                sync_active_config(&active_config, app);
 
                 // Cancel agent if Esc was pressed during Processing
                 if was_processing && app.mode != app::AppMode::Processing {

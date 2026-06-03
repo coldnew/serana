@@ -33,11 +33,24 @@ fn model_catalog() -> Vec<(&'static str, &'static str)> {
     vec![
         ("gpt-4o", "OpenAI flagship"),
         ("gpt-4o-mini", "OpenAI fast"),
+        ("openai/gpt-4o", "OpenAI flagship"),
+        ("openai/gpt-4o-mini", "OpenAI fast"),
+        ("codex/gpt-5.5", "Codex CLI"),
+        ("codex/gpt-5.4-mini", "Codex CLI fast"),
         ("claude-3.5-sonnet", "Anthropic"),
         ("claude-3-haiku", "Anthropic fast"),
         ("deepseek-coder", "DeepSeek"),
         ("codellama-70b", "Meta"),
     ]
+}
+
+fn parse_model_selection(selection: &str, current_provider: &str) -> (String, String) {
+    match selection.split_once('/') {
+        Some((provider, model)) if !provider.is_empty() && !model.is_empty() => {
+            (provider.to_string(), model.to_string())
+        }
+        _ => (current_provider.to_string(), selection.to_string()),
+    }
 }
 
 /// Check if query is a subsequence of target (fuzzy match).
@@ -256,6 +269,16 @@ impl App {
         app.model = model;
         app.provider = provider;
         app
+    }
+
+    fn select_model(&mut self, selection: &str) {
+        let (provider, model) = parse_model_selection(selection, &self.provider);
+        self.provider = provider;
+        self.model = model;
+    }
+
+    fn model_status(&self) -> String {
+        format!("{}/{}", self.provider, self.model)
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<bool> {
@@ -638,10 +661,10 @@ impl App {
                 self.should_quit = true;
             }
             SlashResult::SetModel(model) => {
-                self.model = model.clone();
+                self.select_model(&model);
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: format!("Model switched to: {}", model),
+                    content: format!("Model switched to: {}", self.model_status()),
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
@@ -1067,10 +1090,10 @@ impl App {
                     self.active_dialog = None;
                     match kind {
                         super::dialog::DialogKind::ModelSelector => {
-                            self.model = value;
+                            self.select_model(&value);
                             self.messages.push(ChatMessage {
                                 role: MessageRole::System,
-                                content: format!("Model switched to: {}", self.model),
+                                content: format!("Model switched to: {}", self.model_status()),
                                 tool_calls: Vec::new(),
                                 thinking: None,
                             });
@@ -1426,6 +1449,10 @@ mod tests {
             .items
             .iter()
             .any(|item| item.value == "gpt-4o-mini"));
+        assert!(autocomplete
+            .items
+            .iter()
+            .any(|item| item.value == "codex/gpt-5.5"));
     }
 
     #[test]
@@ -1436,7 +1463,10 @@ mod tests {
         app.try_update_autocomplete();
 
         let autocomplete = app.autocomplete.expect("filtered model completions");
-        assert_eq!(autocomplete.items[0].value, "gpt-4o-mini");
+        assert!(autocomplete
+            .items
+            .iter()
+            .any(|item| item.value == "gpt-4o-mini"));
     }
 
     #[test]
@@ -1448,5 +1478,33 @@ mod tests {
         app.apply_autocomplete_selection(false);
 
         assert_eq!(app.editor.content(), "/model gpt-4o-mini");
+    }
+
+    #[test]
+    fn parses_provider_qualified_model_selection() {
+        let (provider, model) = parse_model_selection("codex/gpt-5.5", "openai");
+
+        assert_eq!(provider, "codex");
+        assert_eq!(model, "gpt-5.5");
+    }
+
+    #[test]
+    fn bare_model_selection_keeps_current_provider() {
+        let (provider, model) = parse_model_selection("gpt-4o-mini", "openai");
+
+        assert_eq!(provider, "openai");
+        assert_eq!(model, "gpt-4o-mini");
+    }
+
+    #[test]
+    fn slash_model_updates_provider_and_model() {
+        let mut app = App::new(PathBuf::from("."));
+
+        app.handle_slash_result(crate::tui::slash_commands::SlashResult::SetModel(
+            "codex/gpt-5.5".to_string(),
+        ));
+
+        assert_eq!(app.provider, "codex");
+        assert_eq!(app.model, "gpt-5.5");
     }
 }

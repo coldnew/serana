@@ -94,3 +94,64 @@ serana/src/<owning-module>/new_feature.rs
 If the feature is shared infrastructure, choose a neutral crate name that does
 not imply Serana ownership, then update `.trellis/config.yaml`, `Cargo.toml`,
 and docs in the same change.
+
+## Scenario: Codex CLI LLM Provider
+
+### 1. Scope / Trigger
+
+Trigger: adding or changing a Serana LLM provider that delegates to the
+installed Codex CLI and its ChatGPT login state.
+
+### 2. Signatures
+
+* TUI command: `/model codex/<model>`.
+* Rust provider: `CodexClient::new(model).with_workspace(workspace)`.
+* External command:
+  `codex exec --model <model> --sandbox read-only --skip-git-repo-check --ephemeral --output-last-message <tempfile> --color never -`.
+
+### 3. Contracts
+
+* Provider-qualified model strings split once on `/`.
+* `provider` becomes the prefix (`codex`); `llm.model` becomes the suffix.
+* Prompt text is written to Codex stdin.
+* Serana reads the final assistant response from `--output-last-message`, not
+  from Codex's transcript output.
+
+### 4. Validation & Error Matrix
+
+* `codex` missing from `PATH` -> surface an installation/login hint.
+* Codex exits non-zero -> surface exit status plus stderr.
+* Last-message file missing or empty -> fall back to trimmed stdout/stderr.
+* Unsupported Codex model -> let Codex's API error propagate to the user.
+
+### 5. Good/Base/Bad Cases
+
+* Good: `/model codex/gpt-5.5` sets `provider=codex`, `model=gpt-5.5`, and
+  subsequent requests run through Codex CLI.
+* Base: `/model gpt-4o-mini` keeps the current provider and changes only the
+  model.
+* Bad: `/model codex/unsupported` should not silently fall back to OpenAI.
+
+### 6. Tests Required
+
+* Unit test provider-qualified parsing.
+* Unit test bare model parsing keeps current provider.
+* Unit test `/model` completion includes supported Codex model entries.
+* Unit test Codex exec arguments include model, read-only sandbox, ephemeral
+  mode, and output-last-message capture.
+* Smoke test live Codex CLI with a supported model when auth behavior changes.
+
+### 7. Wrong vs Correct
+
+Wrong:
+
+```text
+/model codex/gpt-5.5 only updates app.model display text
+```
+
+Correct:
+
+```text
+/model codex/gpt-5.5 updates app.provider and app.model, then the active LLM
+client routes future calls through CodexClient.
+```

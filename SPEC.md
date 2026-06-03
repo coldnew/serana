@@ -130,6 +130,9 @@ cargo run -- config --sample   # Show sample config.toml
 cargo run -- login codex       # Start Codex CLI device-auth sign-in
 ```
 
+In the TUI, `/model codex/gpt-5.5` selects the Codex CLI provider. Codex-backed
+responses run through `codex exec` in read-only, non-streaming mode.
+
 ## Coding Rules
 
 - `unsafe_code = "deny"` across entire workspace (enforced in workspace Cargo.toml)
