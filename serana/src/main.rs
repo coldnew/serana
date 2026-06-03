@@ -4,6 +4,7 @@ use serana::agent::HermesAgent;
 use serana::core::{Agent, Config, LlmClient};
 use serana::llm::OpenAiClient;
 use std::io::IsTerminal;
+use std::process::Stdio;
 
 #[derive(Parser)]
 #[command(name = "serana")]
@@ -25,9 +26,19 @@ enum Commands {
         #[arg(short, long)]
         sample: bool,
     },
+    Login {
+        #[command(subcommand)]
+        provider: LoginProvider,
+    },
     Mora {
         file: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum LoginProvider {
+    /// Start Codex CLI's device-auth sign-in flow.
+    Codex,
 }
 
 #[tokio::main]
@@ -58,6 +69,9 @@ async fn main() -> anyhow::Result<()> {
                 println!("{:#?}", config);
             }
         }
+        Some(Commands::Login { provider }) => match provider {
+            LoginProvider::Codex => login_codex_device_auth()?,
+        },
         Some(Commands::Mora { file }) => {
             run_mora(file)?;
         }
@@ -68,6 +82,34 @@ async fn main() -> anyhow::Result<()> {
                 run_interactive(config).await?;
             }
         }
+    }
+
+    Ok(())
+}
+
+fn login_codex_device_auth() -> anyhow::Result<()> {
+    println!("Starting Codex device sign-in...");
+    println!("Delegating to: codex login --device-auth");
+
+    let mut child = std::process::Command::new("codex")
+        .args(["login", "--device-auth"])
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                anyhow::anyhow!(
+                    "Codex CLI was not found in PATH. Install it, then run `serana login codex` again."
+                )
+            } else {
+                anyhow::anyhow!("failed to start Codex CLI: {}", error)
+            }
+        })?;
+
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("Codex device sign-in exited with {}", status);
     }
 
     Ok(())
@@ -201,4 +243,22 @@ fn run_mora(file: Option<String>) -> anyhow::Result<()> {
     terminal.show_cursor()?;
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_accepts_codex_login_command() {
+        Cli::command().debug_assert();
+        let cli = Cli::parse_from(["serana", "login", "codex"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Login {
+                provider: LoginProvider::Codex
+            })
+        ));
+    }
 }

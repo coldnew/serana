@@ -10,3 +10,11 @@ Serana docs:
 
 - `docs/architecture.md`: current module layout and dependency graph
 - `docs/serana-refactor-tutorial.md`: where to add or change Serana features
+
+Codex device sign-in:
+
+```bash
+cargo run -p serana -- login codex
+```
+
+This delegates to `codex login --device-auth`; install the Codex CLI first.

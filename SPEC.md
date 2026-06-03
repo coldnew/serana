@@ -127,6 +127,7 @@ cargo run -- "instruction"     # Non-interactive mode
 cargo run -- interactive       # Force interactive REPL
 cargo run -- config            # Show resolved config
 cargo run -- config --sample   # Show sample config.toml
+cargo run -- login codex       # Start Codex CLI device-auth sign-in
 ```
 
 ## Coding Rules
