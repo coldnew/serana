@@ -7,3 +7,6 @@ authors.workspace = true
 
 [dependencies]
 display-protocol = { path = "../display-protocol" }
+
+[dev-dependencies]
+display-tui = { path = "../display-tui" }
