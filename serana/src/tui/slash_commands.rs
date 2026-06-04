@@ -99,6 +99,27 @@ pub struct CustomCommand {
     pub prompt: String,
 }
 
+/// Substitute {{1}}, {{2}}, ..., {{N}} placeholders in a template with
+/// whitespace-delimited arguments. {{0}} is the full args string.
+/// Unmatched placeholders are left as-is.
+fn substitute_template_args(template: &str, args: &str) -> String {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    let mut result = template.to_string();
+
+    if result.contains("{{0}}") {
+        result = result.replace("{{0}}", args);
+    }
+
+    for (i, part) in parts.iter().enumerate() {
+        let placeholder = format!("{{{{{}}}}}", i + 1);
+        if result.contains(&placeholder) {
+            result = result.replace(&placeholder, part);
+        }
+    }
+
+    result
+}
+
 impl SlashCommandRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
@@ -360,18 +381,20 @@ impl SlashCommandRegistry {
             return Some((cmd.handler)(args));
         }
 
-        // Check custom commands
+        // Check custom commands with {{N}} argument substitution.
         if let Some(custom) = self.custom_commands.iter().find(|c| c.name == cmd_name) {
+            let expanded = substitute_template_args(&custom.prompt, args);
             return Some(SlashResult::Display(format!(
                 "[Custom: {}]\n{}",
-                custom.name, custom.prompt
+                custom.name, expanded
             )));
         }
 
         Some(SlashResult::Unknown(cmd_name.to_string()))
     }
 
-    /// Load custom commands from ~/.serana/commands/*.md and .serana/commands/*.md.
+    /// Load custom commands from ~/.serana/commands/*.md and .serana/commands/*.md,
+    /// and prompt templates from ~/.serana/prompts/*.md and .serana/prompts/*.md.
     pub async fn load_custom_commands(&mut self) {
         let home_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -391,6 +414,44 @@ impl SlashCommandRegistry {
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("unknown")
                                 .to_string();
+                            let description = content
+                                .lines()
+                                .next()
+                                .unwrap_or("")
+                                .trim_start_matches('#')
+                                .trim()
+                                .to_string();
+                            self.custom_commands.push(CustomCommand {
+                                name,
+                                description,
+                                prompt: content,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        let home_prompts = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".serana")
+            .join("prompts");
+        let project_prompts = PathBuf::from(".serana").join("prompts");
+
+        for dir in &[home_prompts, project_prompts] {
+            if let Ok(mut entries) = tokio::fs::read_dir(dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                        let name = path
+                            .file_stem()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        if self.custom_commands.iter().any(|c| c.name == name) {
+                            continue;
+                        }
+                        if let Ok(content) = tokio::fs::read_to_string(&path).await {
                             let description = content
                                 .lines()
                                 .next()
@@ -600,5 +661,23 @@ mod tests {
             Some(SlashResult::Export(Some(path))) => assert_eq!(path, "out/session.html"),
             _ => panic!("Expected Export(Some)"),
         }
+    }
+
+    #[test]
+    fn template_arg_substitution() {
+        assert_eq!(
+            substitute_template_args("Hello {{1}} and {{2}}", "world friend"),
+            "Hello world and friend"
+        );
+        assert_eq!(
+            substitute_template_args("Echo: {{0}}", "all of this"),
+            "Echo: all of this"
+        );
+        assert_eq!(
+            substitute_template_args("Need {{1}} and {{5}}", "one"),
+            "Need one and {{5}}"
+        );
+        assert_eq!(substitute_template_args("static text", ""), "static text");
+        assert_eq!(substitute_template_args("", "args"), "");
     }
 }
