@@ -637,6 +637,61 @@ impl App {
         Ok(true)
     }
 
+    fn expand_file_attachments(&self, input: &str) -> String {
+        let mut result = String::with_capacity(input.len());
+        let mut chars = input.char_indices().peekable();
+
+        while let Some((i, ch)) = chars.next() {
+            if ch == '@' {
+                let path_start = i + 1;
+                let mut path_end = path_start;
+                for (_, c) in chars.by_ref() {
+                    if c.is_whitespace() {
+                        break;
+                    }
+                    path_end += c.len_utf8();
+                }
+                let path_str = &input[path_start..path_end];
+                if path_str.is_empty() {
+                    result.push(ch);
+                    continue;
+                }
+
+                let path = if path_str.starts_with('~') {
+                    if let Some(home) = dirs::home_dir() {
+                        home.join(
+                            path_str
+                                .strip_prefix('~')
+                                .unwrap_or(path_str)
+                                .trim_start_matches('/'),
+                        )
+                    } else {
+                        PathBuf::from(path_str)
+                    }
+                } else if std::path::Path::new(path_str).is_absolute() {
+                    PathBuf::from(path_str)
+                } else {
+                    self.workspace.join(path_str)
+                };
+
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => {
+                        result.push_str(&format!(
+                            "<file path=\"{}\">\n{}\n</file>",
+                            path_str, content
+                        ));
+                    }
+                    Err(error) => {
+                        result.push_str(&format!("@{} (error: {})", path_str, error));
+                    }
+                }
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
     fn submit_message(&mut self) {
         let content = self.editor.content();
         self.editor.clear();
@@ -646,11 +701,13 @@ impl App {
             return;
         }
 
+        let expanded = self.expand_file_attachments(&content);
+
         self.show_welcome = false;
 
         self.messages.push(ChatMessage {
             role: MessageRole::User,
-            content,
+            content: expanded,
             tool_calls: Vec::new(),
             thinking: None,
         });
@@ -1730,5 +1787,17 @@ mod tests {
 
         assert!(html.contains("&lt;hello&gt;&amp;&quot;"));
         assert!(html.contains("codex/gpt-5.5"));
+    }
+
+    #[test]
+    fn expands_file_attachment_references() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("note.txt"), "hello").unwrap();
+        let app = App::new(dir.path().to_path_buf());
+
+        let expanded = app.expand_file_attachments("read @note.txt please");
+
+        assert!(expanded.contains("<file path=\"note.txt\">"));
+        assert!(expanded.contains("hello"));
     }
 }
