@@ -174,10 +174,12 @@ struct AgentResponse {
     content: String,
 }
 
-fn sync_active_config(active_config: &Arc<RwLock<Config>>, app: &App) {
+fn sync_active_config(active_config: &Arc<RwLock<Config>>, app: &App) -> bool {
     let mut config = active_config.write().expect("active LLM config poisoned");
+    let changed = config.provider.name != app.provider || config.llm.model != app.model;
     config.provider.name = app.provider.clone();
     config.llm.model = app.model.clone();
+    changed
 }
 
 fn run_app(
@@ -251,7 +253,29 @@ fn run_app(
                 if !app.handle_key_event(crossterm_key)? || app.should_quit {
                     return Ok(());
                 }
-                sync_active_config(&active_config, app);
+                if sync_active_config(&active_config, app) {
+                    let save_result = active_config
+                        .read()
+                        .expect("active LLM config poisoned")
+                        .save();
+                    match save_result {
+                        Ok(()) => app.messages.push(app::ChatMessage {
+                            role: app::MessageRole::System,
+                            content: format!(
+                                "Saved model preference: {}/{}",
+                                app.provider, app.model
+                            ),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        }),
+                        Err(error) => app.messages.push(app::ChatMessage {
+                            role: app::MessageRole::System,
+                            content: format!("Failed to save model preference: {}", error),
+                            tool_calls: Vec::new(),
+                            thinking: None,
+                        }),
+                    }
+                }
 
                 // Cancel agent if Esc was pressed during Processing
                 if was_processing && app.mode != app::AppMode::Processing {

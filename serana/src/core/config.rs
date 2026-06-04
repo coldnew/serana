@@ -174,6 +174,19 @@ impl Config {
         Ok(config)
     }
 
+    /// Save configuration to ~/.serana/config.toml.
+    pub fn save(&self) -> anyhow::Result<()> {
+        self.save_to_path(&Self::config_path())
+    }
+
+    /// Save configuration to a specific path.
+    pub fn save_to_path(&self, path: &Path) -> anyhow::Result<()> {
+        Self::ensure_config_dir_for_path(path)?;
+        let contents = toml::to_string_pretty(self).context("Failed to serialize config")?;
+        std::fs::write(path, contents)
+            .with_context(|| format!("Failed to write config to {:?}", path))
+    }
+
     /// Get the configuration file path.
     /// Always uses ~/.serana/config.toml.
     pub fn config_path() -> PathBuf {
@@ -291,5 +304,20 @@ mod tests {
         Config::ensure_config_dir_for_path(&config_path).unwrap();
 
         assert!(config_path.parent().unwrap().is_dir());
+    }
+
+    #[test]
+    fn saves_config_to_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join(".serana").join("config.toml");
+        let mut config = Config::default();
+        config.provider.name = "codex".to_string();
+        config.llm.model = "gpt-5.5".to_string();
+
+        config.save_to_path(&config_path).unwrap();
+        let loaded = Config::load_from_path(&config_path).unwrap();
+
+        assert_eq!(loaded.provider.name, "codex");
+        assert_eq!(loaded.llm.model, "gpt-5.5");
     }
 }
