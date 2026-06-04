@@ -1,5 +1,7 @@
 use crate::palette;
-use display_protocol::UiNode;
+use display_protocol::{UiNode, Wrap};
+
+const PRIMARY_COLUMN_WIDTH: usize = 32;
 
 #[derive(Debug, Clone)]
 pub struct SelectItem {
@@ -64,12 +66,14 @@ impl SelectList {
         let mut rows = Vec::new();
         for (index, item) in self.items[start..end].iter().enumerate() {
             let absolute = start + index;
-            let prefix = if absolute == selected { "> " } else { "  " };
-            let mut children = vec![UiNode::text(format!("{prefix}{}", item.label))];
-            if let Some(description) = &item.description {
-                children.push(UiNode::text(description).color(palette::MUTED));
-            }
-            let mut row = UiNode::row(children).gap(2);
+            let prefix = if absolute == selected { "→ " } else { "  " };
+            let line = match &item.description {
+                Some(description) => {
+                    format!("{prefix}{:<PRIMARY_COLUMN_WIDTH$}{description}", item.label)
+                }
+                None => format!("{prefix}{}", item.label),
+            };
+            let mut row = UiNode::text(line).wrap(Wrap::NoWrap);
             if absolute == selected {
                 row = row.bg(palette::Color::new(35, 45, 65));
             }

@@ -1,3 +1,5 @@
+mod common;
+
 use display_protocol::{Border, Padding, Style, UiNode};
 use display_protocol_widgets::*;
 
@@ -97,34 +99,6 @@ fn main() {
 
 fn section(title: &str, preview: &str, node: UiNode) {
     println!("\n=== {title} ===");
-    println!("Preview:\n{preview}");
-    println!("Node kind: {}", node_kind(&node));
-}
-
-fn node_kind(node: &UiNode) -> &'static str {
-    match node {
-        UiNode::None => "None",
-        UiNode::Text(_) => "Text",
-        UiNode::Span(_) => "Span",
-        UiNode::Box(_) => "Box",
-        UiNode::Row(_) => "Row",
-        UiNode::Column(_) => "Column",
-        UiNode::Divider(_) => "Divider",
-        UiNode::ProgressBar(_) => "ProgressBar",
-        UiNode::List(_) => "List",
-        UiNode::ListItem(_) => "ListItem",
-        UiNode::Show { .. } => "Show",
-        UiNode::For { .. } => "For",
-        UiNode::Keyed { .. } => "Keyed",
-        UiNode::Input(_) => "Input",
-        UiNode::TextArea(_) => "TextArea",
-        UiNode::TabBar(_) => "TabBar",
-        UiNode::TreeView(_) => "TreeView",
-        UiNode::SplitPane(_) => "SplitPane",
-        UiNode::Canvas(_) => "Canvas",
-        UiNode::Overlay(_) => "Overlay",
-        UiNode::ScrollView(_) => "ScrollView",
-        UiNode::StatusBar(_) => "StatusBar",
-        UiNode::Table(_) => "Table",
-    }
+    println!("Reference shape:\n{preview}");
+    common::print_node(&node, 80, 40);
 }

@@ -1,5 +1,7 @@
 use crate::palette;
-use display_protocol::{Align, Justify, UiNode};
+use display_protocol::{UiNode, Wrap};
+
+const LABEL_COLUMN_WIDTH: usize = 30;
 
 #[derive(Debug, Clone)]
 pub struct SettingItem {
@@ -43,30 +45,32 @@ impl SettingsList {
     }
 
     pub fn build(self) -> UiNode {
-        let rows = self
-            .items
-            .into_iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let selected = self.selected == Some(index);
-                let mut left = vec![UiNode::text(item.label).bold()];
-                if let Some(description) = item.description {
-                    left.push(UiNode::text(description).color(palette::MUTED));
-                }
-                let mut row = UiNode::row(vec![
-                    UiNode::column(left),
-                    UiNode::text(item.value).color(palette::PRIMARY),
-                ])
-                .justify(Justify::SpaceBetween)
-                .align(Align::Center);
-                if selected {
-                    row = row.bg(palette::Color::new(35, 45, 65));
-                }
-                row
-            })
-            .collect();
+        let mut rows = Vec::new();
+        for (index, item) in self.items.into_iter().enumerate() {
+            let selected = self.selected == Some(index);
+            let prefix = if selected { "→ " } else { "  " };
+            let mut row = UiNode::text(format!(
+                "{prefix}{:<LABEL_COLUMN_WIDTH$}  {}",
+                item.label, item.value
+            ))
+            .wrap(Wrap::NoWrap);
+            if selected {
+                row = row.bg(palette::Color::new(35, 45, 65));
+            }
+            rows.push(row);
 
-        UiNode::column(rows).gap(1)
+            if selected {
+                if let Some(description) = item.description {
+                    rows.push(
+                        UiNode::text(format!("  {description}"))
+                            .color(palette::MUTED)
+                            .wrap(Wrap::NoWrap),
+                    );
+                }
+            }
+        }
+
+        UiNode::column(rows)
     }
 }
 

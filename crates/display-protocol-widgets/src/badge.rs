@@ -1,5 +1,5 @@
-use display_protocol::{Border, Padding, Style, UiNode, BoxNode};
 use crate::palette;
+use display_protocol::{Border, BoxNode, Padding, Style, UiNode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadgeStyle {
@@ -15,14 +15,27 @@ pub enum BadgeStyle {
 pub struct Badge {
     label: String,
     style: BadgeStyle,
+    width: Option<u16>,
 }
 
 impl Badge {
     pub fn new(label: impl Into<String>) -> Self {
-        Self { label: label.into(), style: BadgeStyle::Default }
+        Self {
+            label: label.into(),
+            style: BadgeStyle::Default,
+            width: None,
+        }
     }
 
-    pub fn style(mut self, s: BadgeStyle) -> Self { self.style = s; self }
+    pub fn style(mut self, s: BadgeStyle) -> Self {
+        self.style = s;
+        self
+    }
+
+    pub fn width(mut self, width: u16) -> Self {
+        self.width = Some(width);
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let (fg, bg) = match self.style {
@@ -40,7 +53,7 @@ impl Badge {
             padding: Padding::new(0, 1, 0, 1),
             border: Border::NONE,
             title: None,
-            width: None,
+            width: self.width,
             height: None,
             min_width: None,
             min_height: None,
@@ -51,5 +64,7 @@ impl Badge {
 }
 
 impl From<Badge> for UiNode {
-    fn from(b: Badge) -> Self { b.build() }
+    fn from(b: Badge) -> Self {
+        b.build()
+    }
 }

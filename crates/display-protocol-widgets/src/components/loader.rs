@@ -1,5 +1,5 @@
 use crate::palette;
-use display_protocol::UiNode;
+use display_protocol::{UiNode, Wrap};
 
 #[derive(Debug, Clone)]
 pub struct Loader {
@@ -18,13 +18,15 @@ impl Loader {
     }
 
     pub fn build(self) -> UiNode {
-        let frames = ["|", "/", "-", "\\"];
-        let spinner = UiNode::text(frames[self.frame % frames.len()]).color(palette::PRIMARY);
+        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let spinner = frames[self.frame % frames.len()];
         match self.label {
-            Some(label) => {
-                UiNode::row(vec![spinner, UiNode::text(label).color(palette::MUTED)]).gap(1)
-            }
-            None => spinner,
+            Some(label) => UiNode::text(format!("{spinner} {label}"))
+                .color(palette::MUTED)
+                .wrap(Wrap::NoWrap),
+            None => UiNode::text(spinner)
+                .color(palette::PRIMARY)
+                .wrap(Wrap::NoWrap),
         }
     }
 }
@@ -57,11 +59,15 @@ impl CancellableLoader {
     }
 
     pub fn build(self) -> UiNode {
-        UiNode::row(vec![
-            Loader::new(self.frame).label(self.label).build(),
-            UiNode::text(self.cancel_hint).color(palette::MUTED).dim(),
-        ])
-        .gap(2)
+        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        UiNode::text(format!(
+            "{} {}  {}",
+            frames[self.frame % frames.len()],
+            self.label,
+            self.cancel_hint
+        ))
+        .color(palette::MUTED)
+        .wrap(Wrap::NoWrap)
     }
 }
 
