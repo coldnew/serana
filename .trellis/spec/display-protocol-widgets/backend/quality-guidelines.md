@@ -37,6 +37,10 @@ component needs to render, not how a concrete backend paints it.
 
 - Add new shared widget state to protocol specs first, then implement concrete
   rendering in backend crates.
+- Codex-style surfaces belong in backend-neutral protocol specs with explicit
+  `Kind` enums for related variants. Keep application runtime behavior outside
+  `display-protocol-widgets`; backends should receive titles, rows, body
+  widgets, selected indices, status text, and preview lines.
 
 ---
 

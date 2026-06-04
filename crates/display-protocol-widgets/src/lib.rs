@@ -6,8 +6,22 @@
 
 use display_protocol::UiNode;
 
+pub mod codex;
 pub mod palette;
 pub mod protocol;
+pub use codex::{
+    AnimationSpec, AppLinkSuggestionTypeSpec, AppLinkViewSpec, ApprovalKindSpec,
+    ApprovalOverlaySpec, ChatComposerSpec, ComposerModeSpec, FeedbackViewSpec, FooterSurfaceSpec,
+    FormFieldSpec, HistoryCellKindSpec, HistoryCellSpec, HookCellSpec, IntegrationViewKindSpec,
+    IntegrationViewSpec, MarkdownStreamSpec, McpElicitationOverlaySpec, McpToolCallSpec,
+    MenuSurfaceSpec, MultiSelectPickerSpec, NavigationOverlaySpec, OverlayKindSpec, PatchCellSpec,
+    PendingInputPreviewSpec, PendingThreadApprovalsSpec, PlanCellKindSpec, PlanCellSpec,
+    RequestUserInputOverlaySpec, SelectionPopupKindSpec, SelectionPopupSpec, SelectionRowSpec,
+    SessionInfoCellSpec, SessionPickerSpec, SetupScreenKindSpec, SetupScreenSpec,
+    StatusIndicatorSpec, StatusSurfaceKindSpec, StatusSurfaceSpec, TerminalHyperlinkSpec,
+    TextAreaSpec, TokenUsageSpec, TranscriptSpec, UnifiedExecSpec, VoiceMeterSpec,
+    WebSearchCellSpec,
+};
 pub use protocol::{
     AssistantMessageSpec, BashExecutionSpec, BorderedLoaderSpec, BoxSpec, CancellableLoaderSpec,
     CountdownTimerSpec, DiffLineKindSpec, DiffLineSpec, DiffSpec, DynamicBorderSpec, EditorSpec,

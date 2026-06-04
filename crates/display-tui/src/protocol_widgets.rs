@@ -1,11 +1,18 @@
 use display_protocol_widgets::{
-    AssistantMessageSpec, BashExecutionSpec, BorderedLoaderSpec, BoxSpec, CancellableLoaderSpec,
-    CountdownTimerSpec, DiffLineKindSpec, DiffSpec, DynamicBorderSpec, EditorSpec,
-    ExecutionStatusSpec, FooterSpec, HistorySearchSpec, ImageSpec, InputSpec, KeybindingHintsSpec,
-    LoaderSpec, LoginDialogSpec, MarkdownSpec, MessageFrameSpec, SelectListSpec, SelectorSpec,
-    SettingsListSpec, StatusLineSpec, TabBarSpec, TextSpec, TodoReminderSpec, ToolExecutionSpec,
-    TreeNodeSpec, TreeSelectorSpec, TruncatedTextSpec, UserMessageSpec, VisualTruncateSpec,
-    WelcomeSpec, WidgetSpec,
+    AnimationSpec, AppLinkViewSpec, ApprovalOverlaySpec, AssistantMessageSpec, BashExecutionSpec,
+    BorderedLoaderSpec, BoxSpec, CancellableLoaderSpec, ChatComposerSpec, CountdownTimerSpec,
+    DiffLineKindSpec, DiffSpec, DynamicBorderSpec, EditorSpec, ExecutionStatusSpec,
+    FeedbackViewSpec, FooterSpec, HistoryCellKindSpec, HistoryCellSpec, HistorySearchSpec,
+    HookCellSpec, ImageSpec, InputSpec, IntegrationViewSpec, KeybindingHintsSpec, LoaderSpec,
+    LoginDialogSpec, MarkdownSpec, MarkdownStreamSpec, McpElicitationOverlaySpec, McpToolCallSpec,
+    MenuSurfaceSpec, MessageFrameSpec, MultiSelectPickerSpec, NavigationOverlaySpec, PatchCellSpec,
+    PendingInputPreviewSpec, PendingThreadApprovalsSpec, PlanCellKindSpec, PlanCellSpec,
+    RequestUserInputOverlaySpec, SelectListSpec, SelectionPopupSpec, SelectionRowSpec,
+    SelectorSpec, SessionInfoCellSpec, SessionPickerSpec, SettingsListSpec, SetupScreenSpec,
+    StatusIndicatorSpec, StatusLineSpec, StatusSurfaceSpec, TabBarSpec, TerminalHyperlinkSpec,
+    TextAreaSpec, TextSpec, TodoReminderSpec, TokenUsageSpec, ToolExecutionSpec, TranscriptSpec,
+    TreeNodeSpec, TreeSelectorSpec, TruncatedTextSpec, UnifiedExecSpec, UserMessageSpec,
+    VisualTruncateSpec, VoiceMeterSpec, WebSearchCellSpec, WelcomeSpec, WidgetSpec,
 };
 
 pub fn render_widget_spec_to_lines(spec: &WidgetSpec, width: u16) -> Vec<String> {
@@ -45,6 +52,38 @@ pub fn render_widget_spec_to_lines(spec: &WidgetSpec, width: u16) -> Vec<String>
         WidgetSpec::BorderedLoader(spec) => render_bordered_loader(spec, width),
         WidgetSpec::DynamicBorder(spec) => render_dynamic_border(spec, width),
         WidgetSpec::VisualTruncate(spec) => render_visual_truncate(spec, width),
+        WidgetSpec::ChatComposer(spec) => render_chat_composer(spec, width),
+        WidgetSpec::TextArea(spec) => render_text_area(spec, width),
+        WidgetSpec::SelectionPopup(spec) => render_selection_popup(spec, width),
+        WidgetSpec::MultiSelectPicker(spec) => render_multi_select_picker(spec, width),
+        WidgetSpec::ApprovalOverlay(spec) => render_approval_overlay(spec, width),
+        WidgetSpec::RequestUserInputOverlay(spec) => render_request_user_input_overlay(spec, width),
+        WidgetSpec::McpElicitationOverlay(spec) => render_mcp_elicitation_overlay(spec, width),
+        WidgetSpec::PendingInputPreview(spec) => render_pending_input_preview(spec, width),
+        WidgetSpec::PendingThreadApprovals(spec) => render_pending_thread_approvals(spec, width),
+        WidgetSpec::AppLinkView(spec) => render_app_link_view(spec, width),
+        WidgetSpec::FeedbackView(spec) => render_feedback_view(spec, width),
+        WidgetSpec::HistoryCell(spec) => render_history_cell(spec, width),
+        WidgetSpec::Transcript(spec) => render_transcript(spec, width),
+        WidgetSpec::UnifiedExec(spec) => render_unified_exec(spec, width),
+        WidgetSpec::McpToolCall(spec) => render_mcp_tool_call(spec, width),
+        WidgetSpec::PatchCell(spec) => render_patch_cell(spec, width),
+        WidgetSpec::PlanCell(spec) => render_plan_cell(spec, width),
+        WidgetSpec::HookCell(spec) => render_hook_cell(spec, width),
+        WidgetSpec::WebSearchCell(spec) => render_web_search_cell(spec, width),
+        WidgetSpec::SessionInfoCell(spec) => render_session_info_cell(spec, width),
+        WidgetSpec::StatusIndicator(spec) => render_status_indicator(spec, width),
+        WidgetSpec::StatusSurface(spec) => render_status_surface(spec, width),
+        WidgetSpec::TokenUsage(spec) => render_token_usage(spec, width),
+        WidgetSpec::MenuSurface(spec) => render_menu_surface(spec, width),
+        WidgetSpec::NavigationOverlay(spec) => render_navigation_overlay(spec, width),
+        WidgetSpec::SessionPicker(spec) => render_session_picker(spec, width),
+        WidgetSpec::SetupScreen(spec) => render_setup_screen(spec, width),
+        WidgetSpec::IntegrationView(spec) => render_integration_view(spec, width),
+        WidgetSpec::TerminalHyperlink(spec) => render_terminal_hyperlink(spec, width),
+        WidgetSpec::MarkdownStream(spec) => render_markdown_stream(spec, width),
+        WidgetSpec::Animation(spec) => render_animation(spec, width),
+        WidgetSpec::VoiceMeter(spec) => render_voice_meter(spec, width),
     }
 }
 
@@ -556,6 +595,438 @@ fn render_visual_truncate(spec: &VisualTruncateSpec, width: u16) -> Vec<String> 
     )]
 }
 
+fn render_chat_composer(spec: &ChatComposerSpec, width: u16) -> Vec<String> {
+    let mut body = Vec::new();
+    let marker = if spec.active { "›" } else { " " };
+    let visible_lines = if spec.lines.is_empty() {
+        vec![String::new()]
+    } else {
+        spec.lines.clone()
+    };
+    for (index, line) in visible_lines.iter().enumerate() {
+        let text = if spec.active && index == spec.cursor_line {
+            insert_cursor(line, spec.cursor_col)
+        } else {
+            line.clone()
+        };
+        body.push(format!("{marker} {text}"));
+    }
+    for attachment in &spec.attachments {
+        body.push(format!("  @ {attachment}"));
+    }
+    if let Some(pending) = &spec.pending {
+        body.extend(render_pending_input_preview(
+            pending,
+            width.saturating_sub(4),
+        ));
+    }
+    if let Some(popup) = &spec.popup {
+        body.extend(render_selection_popup(popup, width.saturating_sub(4)));
+    }
+    let footer = render_footer_surface(&spec.footer, width.saturating_sub(4));
+    if !footer.is_empty() {
+        body.push(String::new());
+        body.extend(footer);
+    }
+    render_panel(&format!("Composer · {:?}", spec.mode), &body, width)
+}
+
+fn render_text_area(spec: &TextAreaSpec, width: u16) -> Vec<String> {
+    let start = spec.scroll_top.min(spec.lines.len());
+    let height = spec.height.max(1) as usize;
+    let mut visible = spec
+        .lines
+        .iter()
+        .skip(start)
+        .take(height)
+        .cloned()
+        .collect::<Vec<_>>();
+    if visible.is_empty() {
+        visible.push(spec.placeholder.clone().unwrap_or_default());
+    }
+    for (offset, line) in visible.iter_mut().enumerate() {
+        if spec.focused && start + offset == spec.cursor_line {
+            *line = insert_cursor(line, spec.cursor_col);
+        }
+        *line = truncate_to_width(line, width as usize);
+    }
+    while visible.len() < height {
+        visible.push(String::new());
+    }
+    visible
+}
+
+fn render_selection_popup(spec: &SelectionPopupSpec, width: u16) -> Vec<String> {
+    let mut body = Vec::new();
+    if !spec.query.is_empty() {
+        body.push(format!("/{}", spec.query));
+    }
+    body.extend(render_selection_rows(
+        &spec.rows,
+        spec.selected,
+        spec.max_visible,
+        width.saturating_sub(4),
+    ));
+    if let Some(footer) = &spec.footer {
+        body.push(String::new());
+        body.push(footer.clone());
+    }
+    render_panel(&format!("{:?} · {}", spec.kind, spec.title), &body, width)
+}
+
+fn render_multi_select_picker(spec: &MultiSelectPickerSpec, width: u16) -> Vec<String> {
+    let mut body = render_selection_rows(&spec.rows, spec.selected, spec.rows.len().max(1), width);
+    body.push(String::new());
+    body.push(format!("{} · {}", spec.confirm_label, spec.cancel_label));
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_approval_overlay(spec: &ApprovalOverlaySpec, width: u16) -> Vec<String> {
+    let mut body = wrap_text(&spec.message, width.saturating_sub(4).max(1) as usize);
+    if let Some(command) = &spec.command {
+        body.push(format!("$ {command}"));
+    }
+    body.push(render_choices(&spec.choices, spec.selected));
+    render_panel(&format!("{:?} · {}", spec.kind, spec.title), &body, width)
+}
+
+fn render_request_user_input_overlay(
+    spec: &RequestUserInputOverlaySpec,
+    width: u16,
+) -> Vec<String> {
+    let mut body = wrap_text(&spec.prompt, width.saturating_sub(4).max(1) as usize);
+    body.extend(render_form_fields(&spec.fields, width.saturating_sub(4)));
+    if !spec.choices.is_empty() {
+        body.push(render_choices(&spec.choices, spec.selected));
+    }
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_mcp_elicitation_overlay(spec: &McpElicitationOverlaySpec, width: u16) -> Vec<String> {
+    let title = spec
+        .tool
+        .as_ref()
+        .map(|tool| format!("MCP · {} · {tool}", spec.server))
+        .unwrap_or_else(|| format!("MCP · {}", spec.server));
+    let mut body = wrap_text(&spec.message, width.saturating_sub(4).max(1) as usize);
+    body.extend(render_form_fields(&spec.fields, width.saturating_sub(4)));
+    for option in &spec.persist_options {
+        body.push(format!("□ {option}"));
+    }
+    render_panel(&title, &body, width)
+}
+
+fn render_pending_input_preview(spec: &PendingInputPreviewSpec, width: u16) -> Vec<String> {
+    let mut body = spec
+        .messages
+        .iter()
+        .take(spec.max_visible)
+        .map(|message| truncate_to_width(&format!("• {message}"), width.saturating_sub(4) as usize))
+        .collect::<Vec<_>>();
+    if spec.messages.len() > spec.max_visible {
+        body.push(format!("… {} more", spec.messages.len() - spec.max_visible));
+    }
+    if let Some(hint) = &spec.interrupt_hint {
+        body.push(hint.clone());
+    }
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_pending_thread_approvals(spec: &PendingThreadApprovalsSpec, width: u16) -> Vec<String> {
+    let rows = spec
+        .approvals
+        .iter()
+        .enumerate()
+        .map(|(index, approval)| {
+            let marker = if index == spec.selected { "→" } else { " " };
+            format!("{marker} {approval}")
+        })
+        .collect::<Vec<_>>();
+    render_panel(&spec.title, &rows, width)
+}
+
+fn render_app_link_view(spec: &AppLinkViewSpec, width: u16) -> Vec<String> {
+    let mut body = vec![
+        format!("{:?}", spec.suggestion_type),
+        format!("Open: {}", spec.url),
+    ];
+    if let Some(reason) = &spec.reason {
+        body.extend(wrap_text(reason, width.saturating_sub(4).max(1) as usize));
+    }
+    if let Some(confirmation) = &spec.confirmation {
+        body.push(confirmation.clone());
+    }
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_feedback_view(spec: &FeedbackViewSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!("Category: {}", spec.category)];
+    body.extend(wrap_text(
+        &spec.note,
+        width.saturating_sub(4).max(1) as usize,
+    ));
+    body.push(format!(
+        "{} Include diagnostics",
+        if spec.include_diagnostics {
+            "☑"
+        } else {
+            "☐"
+        }
+    ));
+    for item in &spec.upload_consent_items {
+        body.push(format!("• {item}"));
+    }
+    render_panel("Feedback", &body, width)
+}
+
+fn render_history_cell(spec: &HistoryCellSpec, width: u16) -> Vec<String> {
+    let mut body = spec.lines.clone();
+    for (key, value) in &spec.metadata {
+        body.push(format!("{key}: {value}"));
+    }
+    for child in &spec.children {
+        body.extend(render_widget_spec_to_lines(child, width.saturating_sub(4)));
+    }
+    let title = spec
+        .title
+        .clone()
+        .unwrap_or_else(|| history_cell_kind_label(spec.kind).to_string());
+    render_panel(&title, &body, width)
+}
+
+fn render_transcript(spec: &TranscriptSpec, width: u16) -> Vec<String> {
+    let mut lines = Vec::new();
+    let cell_width = width.saturating_sub(6).max(4);
+    for cell in &spec.cells {
+        lines.extend(render_history_cell(cell, cell_width));
+        lines.push(String::new());
+    }
+    trim_rendered_lines(&mut lines);
+    let start = spec.scroll_top.min(lines.len());
+    let end = (start + spec.height as usize).min(lines.len());
+    render_panel(&spec.title, &lines[start..end], width)
+}
+
+fn render_unified_exec(spec: &UnifiedExecSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!("{} · {}", spec.status, spec.command)];
+    if let Some(code) = spec.exit_code {
+        body.push(format!("exit {code}"));
+    }
+    body.extend(spec.stdout.iter().map(|line| format!("out │ {line}")));
+    body.extend(spec.stderr.iter().map(|line| format!("err │ {line}")));
+    for session in &spec.sessions {
+        body.push(format!("session: {session}"));
+    }
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_mcp_tool_call(spec: &McpToolCallSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!("{} · {}", spec.server, spec.status)];
+    for (key, value) in &spec.arguments {
+        body.push(format!("{key}: {value}"));
+    }
+    body.extend(spec.output.iter().cloned());
+    render_panel(&format!("MCP · {}", spec.tool), &body, width)
+}
+
+fn render_patch_cell(spec: &PatchCellSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!(
+        "{} · +{} -{}",
+        spec.status, spec.added, spec.removed
+    )];
+    body.extend(spec.files.iter().map(|file| format!("• {file}")));
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_plan_cell(spec: &PlanCellSpec, width: u16) -> Vec<String> {
+    let title = match spec.kind {
+        PlanCellKindSpec::Proposed => "Plan",
+        PlanCellKindSpec::Streaming => "Plan · Streaming",
+        PlanCellKindSpec::Update => "Plan · Update",
+    };
+    let body = spec
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| {
+            let marker = if Some(index) == spec.active {
+                "→"
+            } else {
+                "□"
+            };
+            format!("{marker} {step}")
+        })
+        .collect::<Vec<_>>();
+    render_panel(title, &body, width)
+}
+
+fn render_hook_cell(spec: &HookCellSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!("status: {}", spec.status)];
+    body.extend(spec.output.iter().cloned());
+    render_panel(&format!("Hook · {}", spec.hook), &body, width)
+}
+
+fn render_web_search_cell(spec: &WebSearchCellSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!("query: {}", spec.query)];
+    body.extend(spec.results.iter().map(|result| format!("• {result}")));
+    render_panel("Web Search", &body, width)
+}
+
+fn render_session_info_cell(spec: &SessionInfoCellSpec, width: u16) -> Vec<String> {
+    let mut body = vec![
+        format!("cwd: {}", spec.cwd),
+        format!("model: {}", spec.model),
+    ];
+    if let Some(effort) = &spec.effort {
+        body.push(format!("effort: {effort}"));
+    }
+    render_panel(&format!("Session · {}", spec.session_id), &body, width)
+}
+
+fn render_status_indicator(spec: &StatusIndicatorSpec, width: u16) -> Vec<String> {
+    let marker = if spec.active { "●" } else { "○" };
+    let details = spec
+        .details
+        .as_ref()
+        .map(|details| format!(" · {details}"))
+        .unwrap_or_default();
+    vec![truncate_to_width(
+        &format!("{marker} {}: {}{details}", spec.label, spec.state),
+        width as usize,
+    )]
+}
+
+fn render_status_surface(spec: &StatusSurfaceSpec, width: u16) -> Vec<String> {
+    let mut body = vec![format!("{:?}", spec.kind)];
+    for (key, value) in &spec.rows {
+        body.push(format!("{key}: {value}"));
+    }
+    for child in &spec.body {
+        body.extend(render_widget_spec_to_lines(child, width.saturating_sub(4)));
+    }
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_token_usage(spec: &TokenUsageSpec, width: u16) -> Vec<String> {
+    let percent = spec
+        .percent
+        .or_else(|| {
+            spec.limit
+                .map(|limit| ((spec.used * 100) / limit.max(1)) as u8)
+        })
+        .unwrap_or(0)
+        .min(100);
+    let mut line = format!("tokens: {}", spec.used);
+    if let Some(limit) = spec.limit {
+        line.push_str(&format!("/{limit}"));
+    }
+    if let Some(reset) = &spec.reset {
+        line.push_str(&format!(" · resets {reset}"));
+    }
+    vec![line, render_progress_bar(percent, width)]
+}
+
+fn render_menu_surface(spec: &MenuSurfaceSpec, width: u16) -> Vec<String> {
+    let body = render_selection_rows(&spec.rows, spec.selected, spec.rows.len().max(1), width);
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_navigation_overlay(spec: &NavigationOverlaySpec, width: u16) -> Vec<String> {
+    let mut body = spec.lines.clone();
+    for child in &spec.body {
+        body.extend(render_widget_spec_to_lines(child, width.saturating_sub(4)));
+    }
+    let start = spec.scroll_top.min(body.len());
+    render_panel(
+        &format!("{:?} · {}", spec.kind, spec.title),
+        &body[start..],
+        width,
+    )
+}
+
+fn render_session_picker(spec: &SessionPickerSpec, width: u16) -> Vec<String> {
+    let mut body = Vec::new();
+    if !spec.query.is_empty() {
+        body.push(format!("search: {}", spec.query));
+    }
+    body.extend(render_selection_rows(
+        &spec.rows,
+        spec.selected,
+        spec.rows.len().max(1),
+        width.saturating_sub(4),
+    ));
+    if !spec.preview.is_empty() {
+        body.push(String::new());
+        body.push("Preview".to_string());
+        body.extend(spec.preview.iter().cloned());
+    }
+    render_panel(&spec.title, &body, width)
+}
+
+fn render_setup_screen(spec: &SetupScreenSpec, width: u16) -> Vec<String> {
+    let mut body = wrap_text(&spec.message, width.saturating_sub(4).max(1) as usize);
+    body.extend(render_selection_rows(
+        &spec.rows,
+        spec.selected,
+        spec.rows.len().max(1),
+        width.saturating_sub(4),
+    ));
+    for child in &spec.body {
+        body.extend(render_widget_spec_to_lines(child, width.saturating_sub(4)));
+    }
+    render_panel(&format!("{:?} · {}", spec.kind, spec.title), &body, width)
+}
+
+fn render_integration_view(spec: &IntegrationViewSpec, width: u16) -> Vec<String> {
+    let mut body = render_selection_rows(
+        &spec.rows,
+        spec.selected,
+        spec.rows.len().max(1),
+        width.saturating_sub(4),
+    );
+    body.extend(spec.details.iter().cloned());
+    render_panel(&format!("{:?} · {}", spec.kind, spec.title), &body, width)
+}
+
+fn render_terminal_hyperlink(spec: &TerminalHyperlinkSpec, width: u16) -> Vec<String> {
+    vec![truncate_to_width(
+        &format!("{} <{}>", spec.label, spec.uri),
+        width as usize,
+    )]
+}
+
+fn render_markdown_stream(spec: &MarkdownStreamSpec, width: u16) -> Vec<String> {
+    let mut text = spec.committed.clone();
+    if !spec.streaming_tail.is_empty() {
+        text.push_str(&spec.streaming_tail);
+    }
+    let mut lines = render_markdown(&MarkdownSpec::new(text), width);
+    for _ in 0..spec.holdback_lines.min(lines.len()) {
+        lines.pop();
+    }
+    lines
+}
+
+fn render_animation(spec: &AnimationSpec, width: u16) -> Vec<String> {
+    let frame = spec
+        .frames
+        .get(spec.frame % spec.frames.len().max(1))
+        .map(String::as_str)
+        .unwrap_or_default();
+    vec![truncate_to_width(
+        &format!("{} {frame}", spec.name),
+        width as usize,
+    )]
+}
+
+fn render_voice_meter(spec: &VoiceMeterSpec, width: u16) -> Vec<String> {
+    let state = if spec.recording { "recording" } else { "idle" };
+    vec![
+        truncate_to_width(&format!("{} · {state}", spec.label), width as usize),
+        render_progress_bar(spec.level, width),
+    ]
+}
+
 fn primary_column_width(spec: &SelectListSpec) -> usize {
     let widest = spec
         .items
@@ -611,6 +1082,151 @@ fn render_segments(segments: &[display_protocol_widgets::StatusSegmentSpec]) -> 
         })
         .collect::<Vec<_>>()
         .join("  ")
+}
+
+fn render_selection_rows(
+    rows: &[SelectionRowSpec],
+    selected: usize,
+    max_visible: usize,
+    width: u16,
+) -> Vec<String> {
+    if rows.is_empty() {
+        return vec!["  No items".to_string()];
+    }
+    let selected = selected.min(rows.len().saturating_sub(1));
+    let start = selected
+        .saturating_sub(max_visible / 2)
+        .min(rows.len().saturating_sub(max_visible));
+    let end = (start + max_visible.max(1)).min(rows.len());
+    let label_width = rows
+        .iter()
+        .map(|row| row.label.chars().count())
+        .max()
+        .unwrap_or(1)
+        .min(32);
+    let mut lines = Vec::new();
+    for (index, row) in rows.iter().enumerate().take(end).skip(start) {
+        let cursor = if index == selected { "→" } else { " " };
+        let check = if row.checked { "☑" } else { " " };
+        let disabled = if row.disabled { " (disabled)" } else { "" };
+        let label = truncate_to_width(&row.label, label_width);
+        let desc = row
+            .description
+            .as_ref()
+            .or(row.matched.as_ref())
+            .map(|value| format!("  {value}"))
+            .unwrap_or_default();
+        lines.push(truncate_to_width(
+            &format!("{cursor} {check} {label}{disabled}{desc}"),
+            width as usize,
+        ));
+    }
+    lines
+}
+
+fn render_choices(choices: &[String], selected: usize) -> String {
+    choices
+        .iter()
+        .enumerate()
+        .map(|(index, choice)| {
+            if index == selected {
+                format!("[ {choice} ]")
+            } else {
+                format!("  {choice}  ")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn render_form_fields(
+    fields: &[display_protocol_widgets::FormFieldSpec],
+    width: u16,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    for field in fields {
+        let required = if field.required { " *" } else { "" };
+        lines.push(format!("{}{}", field.label, required));
+        let value = if field.value.is_empty() {
+            field.placeholder.clone().unwrap_or_default()
+        } else {
+            field.value.clone()
+        };
+        lines.push(truncate_to_width(
+            &format!(
+                "[{}]",
+                pad_to_width(value, width.saturating_sub(2) as usize)
+            ),
+            width as usize,
+        ));
+        if let Some(error) = &field.error {
+            lines.push(error.clone());
+        }
+    }
+    lines
+}
+
+fn render_footer_surface(
+    footer: &display_protocol_widgets::FooterSurfaceSpec,
+    width: u16,
+) -> Vec<String> {
+    let mut left = footer.left.clone();
+    if let Some(mode) = &footer.mode {
+        left.push(format!("mode: {mode}"));
+    }
+    if let Some(goal) = &footer.goal {
+        left.push(format!("goal: {goal}"));
+    }
+    let left = left.join(" · ");
+    let right = footer.right.join(" · ");
+    if left.is_empty() && right.is_empty() {
+        Vec::new()
+    } else {
+        let used = left.chars().count() + right.chars().count();
+        let gap = if used < width as usize {
+            " ".repeat(width as usize - used)
+        } else {
+            " ".to_string()
+        };
+        vec![truncate_to_width(
+            &format!("{left}{gap}{right}"),
+            width as usize,
+        )]
+    }
+}
+
+fn render_progress_bar(percent: u8, width: u16) -> String {
+    let width = width as usize;
+    let bar_width = width.saturating_sub(6).clamp(1, 30);
+    let filled = (bar_width * percent as usize) / 100;
+    truncate_to_width(
+        &format!(
+            "{}{} {percent}%",
+            "█".repeat(filled),
+            "░".repeat(bar_width.saturating_sub(filled))
+        ),
+        width,
+    )
+}
+
+fn history_cell_kind_label(kind: HistoryCellKindSpec) -> &'static str {
+    match kind {
+        HistoryCellKindSpec::Plain => "Plain",
+        HistoryCellKindSpec::User => "User",
+        HistoryCellKindSpec::Agent => "Assistant",
+        HistoryCellKindSpec::Reasoning => "Reasoning",
+        HistoryCellKindSpec::StreamingTail => "Streaming",
+        HistoryCellKindSpec::Exec => "Exec",
+        HistoryCellKindSpec::Mcp => "MCP",
+        HistoryCellKindSpec::Patch => "Patch",
+        HistoryCellKindSpec::Plan => "Plan",
+        HistoryCellKindSpec::Hook => "Hook",
+        HistoryCellKindSpec::WebSearch => "Web Search",
+        HistoryCellKindSpec::Session => "Session",
+        HistoryCellKindSpec::Separator => "Separator",
+        HistoryCellKindSpec::Approval => "Approval",
+        HistoryCellKindSpec::RequestUserInputResult => "Input Result",
+    }
 }
 
 fn status_icon(status: ExecutionStatusSpec) -> &'static str {

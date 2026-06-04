@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::codex::*;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WidgetSpec {
     Text(TextSpec),
@@ -44,6 +46,38 @@ pub enum WidgetSpec {
     BorderedLoader(BorderedLoaderSpec),
     DynamicBorder(DynamicBorderSpec),
     VisualTruncate(VisualTruncateSpec),
+    ChatComposer(Box<ChatComposerSpec>),
+    TextArea(TextAreaSpec),
+    SelectionPopup(SelectionPopupSpec),
+    MultiSelectPicker(MultiSelectPickerSpec),
+    ApprovalOverlay(ApprovalOverlaySpec),
+    RequestUserInputOverlay(RequestUserInputOverlaySpec),
+    McpElicitationOverlay(McpElicitationOverlaySpec),
+    PendingInputPreview(PendingInputPreviewSpec),
+    PendingThreadApprovals(PendingThreadApprovalsSpec),
+    AppLinkView(AppLinkViewSpec),
+    FeedbackView(FeedbackViewSpec),
+    HistoryCell(HistoryCellSpec),
+    Transcript(TranscriptSpec),
+    UnifiedExec(UnifiedExecSpec),
+    McpToolCall(McpToolCallSpec),
+    PatchCell(PatchCellSpec),
+    PlanCell(PlanCellSpec),
+    HookCell(HookCellSpec),
+    WebSearchCell(WebSearchCellSpec),
+    SessionInfoCell(SessionInfoCellSpec),
+    StatusIndicator(StatusIndicatorSpec),
+    StatusSurface(StatusSurfaceSpec),
+    TokenUsage(TokenUsageSpec),
+    MenuSurface(MenuSurfaceSpec),
+    NavigationOverlay(NavigationOverlaySpec),
+    SessionPicker(SessionPickerSpec),
+    SetupScreen(SetupScreenSpec),
+    IntegrationView(IntegrationViewSpec),
+    TerminalHyperlink(TerminalHyperlinkSpec),
+    MarkdownStream(MarkdownStreamSpec),
+    Animation(AnimationSpec),
+    VoiceMeter(VoiceMeterSpec),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
