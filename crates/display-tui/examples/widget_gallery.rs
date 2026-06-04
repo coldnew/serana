@@ -380,7 +380,7 @@ fn gallery_sections() -> Vec<GallerySection> {
         GallerySection {
             title: "Login Dialog",
             summary: "LoginDialog covers the /login device flow state.",
-            spec: LoginDialogSpec::new("Codex", "https://auth.openai.com/device", "ABCD-EFGH")
+            spec: LoginDialogSpec::new("OpenAI", "https://auth.openai.com/device", "ABCD-EFGH")
                 .status("Waiting for confirmation")
                 .into(),
         },

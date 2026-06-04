@@ -1,7 +1,7 @@
-//! Codex-style TUI surface protocols.
+//! Agent TUI surface protocols.
 //!
 //! These specs intentionally describe state and layout intent only. Backends
-//! render them with their own widgets while callers avoid depending on Codex's
+//! render them with their own widgets while callers avoid depending on
 //! application-specific runtime types.
 
 use serde::{Deserialize, Serialize};

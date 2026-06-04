@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::codex::*;
+use crate::surfaces::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WidgetSpec {
