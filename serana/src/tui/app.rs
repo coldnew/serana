@@ -1022,6 +1022,15 @@ impl App {
                     }
                 }
             }
+            SlashResult::Export(path) => {
+                let content = self.export_session(path.as_deref());
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content,
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
             SlashResult::SkillList => {
                 if let Some(ref store) = self.skill_store {
                     let skills = store.all();
@@ -1169,6 +1178,28 @@ impl App {
                     thinking: None,
                 });
             }
+        }
+    }
+
+    fn export_session(&self, path: Option<&str>) -> String {
+        let path = path
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.workspace.join("serana-session.html"));
+        let path = if path.is_absolute() {
+            path
+        } else {
+            self.workspace.join(path)
+        };
+
+        let html = render_session_html(&self.messages, &self.model_status());
+        if let Some(parent) = path.parent() {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                return format!("Failed to export session: {}", error);
+            }
+        }
+        match std::fs::write(&path, html) {
+            Ok(()) => format!("Exported session to {}", path.display()),
+            Err(error) => format!("Failed to export session: {}", error),
         }
     }
 
@@ -1528,6 +1559,54 @@ pub enum MessageRole {
     System,
 }
 
+fn render_session_html(messages: &[ChatMessage], model_status: &str) -> String {
+    let mut body = String::new();
+    for message in messages {
+        let role = match message.role {
+            MessageRole::User => "User",
+            MessageRole::Agent => "Assistant",
+            MessageRole::System => "System",
+        };
+        body.push_str("<article class=\"message\"><h2>");
+        body.push_str(role);
+        body.push_str("</h2><pre>");
+        body.push_str(&escape_html(&message.content));
+        body.push_str("</pre></article>\n");
+    }
+
+    format!(
+        r#"<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Serana Session Export</title>
+<style>
+body {{ font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }}
+pre {{ white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }}
+.message {{ border-top: 1px solid #ddd; padding: 1rem 0; }}
+h1 {{ margin-bottom: 0.25rem; }}
+h2 {{ font-size: 1rem; margin-bottom: 0.5rem; }}
+</style>
+</head>
+<body>
+<h1>Serana Session Export</h1>
+<p>Model: {}</p>
+{}
+</body>
+</html>
+"#,
+        escape_html(model_status),
+        body,
+    )
+}
+
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1636,5 +1715,20 @@ mod tests {
 
         assert_eq!(app.messages.len(), 1);
         assert_eq!(app.messages[0].content, "No session store available.");
+    }
+
+    #[test]
+    fn session_html_export_escapes_content() {
+        let messages = vec![ChatMessage {
+            role: MessageRole::User,
+            content: "<hello>&\"".to_string(),
+            tool_calls: Vec::new(),
+            thinking: None,
+        }];
+
+        let html = render_session_html(&messages, "codex/gpt-5.5");
+
+        assert!(html.contains("&lt;hello&gt;&amp;&quot;"));
+        assert!(html.contains("codex/gpt-5.5"));
     }
 }

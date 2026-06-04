@@ -69,6 +69,8 @@ pub enum SlashResult {
     SetThinkingLevel(String),
     /// Copy last assistant response to clipboard.
     Copy,
+    /// Export current session to a file.
+    Export(Option<String>),
     /// Resume a session (show session picker).
     Resume,
     /// Unknown command.
@@ -305,6 +307,18 @@ impl SlashCommandRegistry {
             name: "copy",
             description: "Copy last assistant response to clipboard",
             handler: Box::new(|_| SlashResult::Copy),
+        });
+        self.register(SlashCommand {
+            name: "export",
+            description: "Export current session to HTML. Usage: /export [file]",
+            handler: Box::new(|args| {
+                let path = args.trim();
+                if path.is_empty() {
+                    SlashResult::Export(None)
+                } else {
+                    SlashResult::Export(Some(path.to_string()))
+                }
+            }),
         });
         self.register(SlashCommand {
             name: "resume",
@@ -570,6 +584,21 @@ mod tests {
         match registry.dispatch("/name") {
             Some(SlashResult::Display(message)) => assert_eq!(message, "Usage: /name <name>"),
             _ => panic!("Expected Display"),
+        }
+    }
+
+    #[test]
+    fn export_command_accepts_optional_path() {
+        let registry = SlashCommandRegistry::new();
+
+        match registry.dispatch("/export") {
+            Some(SlashResult::Export(None)) => {}
+            _ => panic!("Expected Export(None)"),
+        }
+
+        match registry.dispatch("/export out/session.html") {
+            Some(SlashResult::Export(Some(path))) => assert_eq!(path, "out/session.html"),
+            _ => panic!("Expected Export(Some)"),
         }
     }
 }
