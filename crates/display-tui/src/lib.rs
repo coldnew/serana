@@ -1,9 +1,11 @@
-mod terminal;
-mod input;
 pub mod conversions;
+mod input;
+pub mod protocol_widgets;
+mod terminal;
 
-pub use terminal::{TuiTerminal, install_panic_hook};
-pub use input::{poll_input, crossterm_to_input_event, crossterm_to_key_event};
+pub use input::{crossterm_to_input_event, crossterm_to_key_event, poll_input};
+pub use protocol_widgets::{render_widget_spec_to_lines, trim_rendered_lines};
+pub use terminal::{install_panic_hook, TuiTerminal};
 
 use display_protocol::{paint, ScreenBuffer, UiNode};
 

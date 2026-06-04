@@ -7,6 +7,12 @@
 use display_protocol::UiNode;
 
 pub mod palette;
+pub mod protocol;
+pub use protocol::{
+    BoxSpec, CancellableLoaderSpec, InputSpec, LoaderSpec, MarkdownSpec, SelectItemSpec,
+    SelectListSpec, SettingItemSpec, SettingsListSpec, SpacerSpec, TextSpec, TruncatedTextSpec,
+    WidgetSpec,
+};
 
 mod button;
 pub use button::{Button, ButtonStyle};

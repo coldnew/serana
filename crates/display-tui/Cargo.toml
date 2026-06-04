@@ -10,5 +10,6 @@ workspace = true
 
 [dependencies]
 display-protocol = { path = "../display-protocol" }
+display-protocol-widgets = { path = "../display-protocol-widgets" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
