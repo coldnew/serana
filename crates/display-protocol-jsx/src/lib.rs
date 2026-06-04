@@ -490,8 +490,12 @@ impl JsxElement {
         };
         let scroll_y = self.attr_expr("scroll_y").unwrap_or_else(|| quote!(0u32));
         let scroll_x = self.attr_expr("scroll_x").unwrap_or_else(|| quote!(0u32));
-        let viewport_height = self.attr_expr("viewport_height").unwrap_or_else(|| quote!(24u16));
-        let viewport_width = self.attr_expr("viewport_width").unwrap_or_else(|| quote!(80u16));
+        let viewport_height = self
+            .attr_expr("viewport_height")
+            .unwrap_or_else(|| quote!(24u16));
+        let viewport_width = self
+            .attr_expr("viewport_width")
+            .unwrap_or_else(|| quote!(80u16));
         let content_height = optional_attr(self.attr_expr("content_height"));
         let content_width = optional_attr(self.attr_expr("content_width"));
         let virtual_scroll = self.bool_attr("virtual_scroll", false);
@@ -499,8 +503,14 @@ impl JsxElement {
             .attr_expr("scroll_policy")
             .unwrap_or_else(|| quote!(::display_protocol::ScrollPolicy::Auto));
         if let Err(err) = self.reject_attrs(&[
-            "scroll_y", "scroll_x", "viewport_height", "viewport_width",
-            "content_height", "content_width", "virtual_scroll", "scroll_policy",
+            "scroll_y",
+            "scroll_x",
+            "viewport_height",
+            "viewport_width",
+            "content_height",
+            "content_width",
+            "virtual_scroll",
+            "scroll_policy",
         ]) {
             return err.to_compile_error();
         }

@@ -1,6 +1,6 @@
+use super::register_native;
 use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
-use super::register_native;
 
 pub fn register(ns: &mut Namespace) {
     // Constants — registered as direct values, not functions
@@ -65,28 +65,6 @@ fn to_f64(v: &Value) -> Result<f64, String> {
     }
 }
 
-// --- Constants ---
-
-fn native_pi(_args: &[Value]) -> Result<Value, String> {
-    Ok(Value::Float(std::f64::consts::PI))
-}
-
-fn native_e(_args: &[Value]) -> Result<Value, String> {
-    Ok(Value::Float(std::f64::consts::E))
-}
-
-fn native_tau(_args: &[Value]) -> Result<Value, String> {
-    Ok(Value::Float(std::f64::consts::TAU))
-}
-
-fn native_infinity(_args: &[Value]) -> Result<Value, String> {
-    Ok(Value::Float(f64::INFINITY))
-}
-
-fn native_nan(_args: &[Value]) -> Result<Value, String> {
-    Ok(Value::Float(f64::NAN))
-}
-
 // --- Basic ---
 
 fn native_math_abs(args: &[Value]) -> Result<Value, String> {
@@ -105,8 +83,20 @@ fn native_signum(args: &[Value]) -> Result<Value, String> {
         return Err("signum requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::Int(n) => Ok(Value::Float(if *n > 0 { 1.0 } else if *n < 0 { -1.0 } else { 0.0 })),
-        Value::Float(n) => Ok(Value::Float(if *n > 0.0 { 1.0 } else if *n < 0.0 { -1.0 } else { 0.0 })),
+        Value::Int(n) => Ok(Value::Float(if *n > 0 {
+            1.0
+        } else if *n < 0 {
+            -1.0
+        } else {
+            0.0
+        })),
+        Value::Float(n) => Ok(Value::Float(if *n > 0.0 {
+            1.0
+        } else if *n < 0.0 {
+            -1.0
+        } else {
+            0.0
+        })),
         _ => Err("signum requires a number".to_string()),
     }
 }

@@ -1,5 +1,5 @@
-use display_protocol::{ListMarker, ListNode, Style, UiNode};
 use crate::palette;
+use display_protocol::{ListMarker, ListNode, Style, UiNode};
 
 /// A list of items with optional markers (bullet, number, dash).
 ///
@@ -35,20 +35,32 @@ impl List {
 
     /// Create a bulleted list.
     pub fn bullets(items: Vec<UiNode>) -> Self {
-        Self { items, marker: ListMarker::Bullet }
+        Self {
+            items,
+            marker: ListMarker::Bullet,
+        }
     }
 
     /// Create a numbered list.
     pub fn numbered(items: Vec<UiNode>) -> Self {
-        Self { items, marker: ListMarker::Number }
+        Self {
+            items,
+            marker: ListMarker::Number,
+        }
     }
 
     /// Create a dashed list.
     pub fn dashed(items: Vec<UiNode>) -> Self {
-        Self { items, marker: ListMarker::Dash }
+        Self {
+            items,
+            marker: ListMarker::Dash,
+        }
     }
 
-    pub fn marker(mut self, m: ListMarker) -> Self { self.marker = m; self }
+    pub fn marker(mut self, m: ListMarker) -> Self {
+        self.marker = m;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         UiNode::List(ListNode {
@@ -60,5 +72,7 @@ impl List {
 }
 
 impl From<List> for UiNode {
-    fn from(l: List) -> Self { l.build() }
+    fn from(l: List) -> Self {
+        l.build()
+    }
 }

@@ -1,5 +1,5 @@
-use display_protocol::{FlexNode, Padding, Style, UiNode};
 use crate::palette;
+use display_protocol::{FlexNode, Padding, Style, UiNode};
 
 /// A toggle switch (on/off).
 ///
@@ -26,8 +26,14 @@ impl Toggle {
         }
     }
 
-    pub fn on(mut self, v: bool) -> Self { self.on = v; self }
-    pub fn disabled(mut self, v: bool) -> Self { self.disabled = v; self }
+    pub fn on(mut self, v: bool) -> Self {
+        self.on = v;
+        self
+    }
+    pub fn disabled(mut self, v: bool) -> Self {
+        self.disabled = v;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let (track_bg, knob_fg, label_fg) = if self.disabled {
@@ -35,7 +41,11 @@ impl Toggle {
         } else if self.on {
             (palette::PRIMARY, palette::WHITE, palette::LIGHT)
         } else {
-            (palette::Color::new(55, 55, 55), palette::MUTED, palette::LIGHT)
+            (
+                palette::Color::new(55, 55, 55),
+                palette::MUTED,
+                palette::LIGHT,
+            )
         };
 
         // Toggle track: [●  ] or [  ●]
@@ -68,5 +78,7 @@ impl Toggle {
 }
 
 impl From<Toggle> for UiNode {
-    fn from(t: Toggle) -> Self { t.build() }
+    fn from(t: Toggle) -> Self {
+        t.build()
+    }
 }

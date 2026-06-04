@@ -14,5 +14,9 @@ pub const BLACK: Color = Color::BLACK;
 
 pub fn foreground_for_bg(bg: Color) -> Color {
     let brightness = 0.299 * bg.r as f32 + 0.587 * bg.g as f32 + 0.114 * bg.b as f32;
-    if brightness > 128.0 { BLACK } else { WHITE }
+    if brightness > 128.0 {
+        BLACK
+    } else {
+        WHITE
+    }
 }

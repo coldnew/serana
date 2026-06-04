@@ -34,6 +34,9 @@ pub struct Config {
     /// Legacy: providers array from older config format
     #[serde(default)]
     pub providers: Vec<LegacyProviderConfig>,
+    /// Auto-retry configuration for transient LLM failures.
+    #[serde(default)]
+    pub retry: RetryConfig,
 }
 
 /// Legacy provider entry from older config format.
@@ -83,6 +86,47 @@ pub struct LlmConfig {
     pub api_key: Option<String>,
 }
 
+/// Auto-retry configuration for transient LLM failures.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryConfig {
+    /// Enable auto-retry on transient errors.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Maximum number of retries per turn.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Base delay in milliseconds before first retry.
+    #[serde(default = "default_base_delay_ms")]
+    pub base_delay_ms: u64,
+    /// Maximum delay cap in milliseconds.
+    #[serde(default = "default_max_delay_ms")]
+    pub max_delay_ms: u64,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_base_delay_ms() -> u64 {
+    2000
+}
+fn default_max_delay_ms() -> u64 {
+    60_000
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_retries: 3,
+            base_delay_ms: 2000,
+            max_delay_ms: 60_000,
+        }
+    }
+}
+
 fn default_model() -> String {
     "gpt-4".to_string()
 }
@@ -108,6 +152,7 @@ impl Default for Config {
             default_model: None,
             default_provider: None,
             providers: Vec::new(),
+            retry: RetryConfig::default(),
         }
     }
 }
@@ -281,6 +326,7 @@ pub fn generate_sample_config() -> String {
         default_model: None,
         default_provider: None,
         providers: Vec::new(),
+        retry: RetryConfig::default(),
     };
 
     toml::to_string_pretty(&config).unwrap_or_default()

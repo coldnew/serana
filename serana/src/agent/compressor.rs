@@ -195,6 +195,7 @@ mod tests {
             max_tokens: 128_000,
             protect_last_n: 2,
             thresholds: CompressionThresholds::default(),
+            ..Default::default()
         };
         let compressor = ContextCompressor::new(config);
         let llm = MockLlm;
@@ -238,6 +239,7 @@ mod tests {
             max_tokens: 128_000,
             protect_last_n: 1,
             thresholds: CompressionThresholds::default(),
+            ..Default::default()
         };
         let compressor = ContextCompressor::new(config);
         let auxiliary = AuxiliaryClient::new(Arc::new(MockLlm));

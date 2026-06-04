@@ -1,5 +1,5 @@
-use display_protocol::{Style, TreeViewNode, TreeItem, UiNode};
 use crate::palette;
+use display_protocol::{Style, TreeItem, TreeViewNode, UiNode};
 
 /// A collapsible tree view (file explorer, nested menus, AST viewer).
 ///
@@ -46,15 +46,28 @@ impl TreeBranch {
         }
     }
 
-    pub fn icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
-    pub fn expanded(mut self, e: bool) -> Self { self.expanded = e; self }
-    pub fn children(mut self, items: Vec<TreeBranch>) -> Self { self.children = items; self }
+    pub fn icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+    pub fn expanded(mut self, e: bool) -> Self {
+        self.expanded = e;
+        self
+    }
+    pub fn children(mut self, items: Vec<TreeBranch>) -> Self {
+        self.children = items;
+        self
+    }
 
     fn into_tree_item(self) -> TreeItem {
         TreeItem {
             label: self.label,
             icon: self.icon,
-            children: self.children.into_iter().map(|c| c.into_tree_item()).collect(),
+            children: self
+                .children
+                .into_iter()
+                .map(|c| c.into_tree_item())
+                .collect(),
             expanded: self.expanded,
         }
     }
@@ -69,25 +82,32 @@ impl TreeView {
         }
     }
 
-    pub fn selected(mut self, idx: Option<usize>) -> Self { self.selected = idx; self }
-    pub fn indent(mut self, i: u16) -> Self { self.indent = i; self }
+    pub fn selected(mut self, idx: Option<usize>) -> Self {
+        self.selected = idx;
+        self
+    }
+    pub fn indent(mut self, i: u16) -> Self {
+        self.indent = i;
+        self
+    }
 
     pub fn build(self) -> UiNode {
-        let items: Vec<TreeItem> = self.items
-            .into_iter()
-            .map(|b| b.into_tree_item())
-            .collect();
+        let items: Vec<TreeItem> = self.items.into_iter().map(|b| b.into_tree_item()).collect();
 
         UiNode::TreeView(TreeViewNode {
             items,
             selected: self.selected,
             style: Style::default().fg(palette::LIGHT),
-            selected_style: Style::default().fg(palette::WHITE).bg(palette::Color::new(40, 50, 70)),
+            selected_style: Style::default()
+                .fg(palette::WHITE)
+                .bg(palette::Color::new(40, 50, 70)),
             indent: self.indent,
         })
     }
 }
 
 impl From<TreeView> for UiNode {
-    fn from(tv: TreeView) -> Self { tv.build() }
+    fn from(tv: TreeView) -> Self {
+        tv.build()
+    }
 }

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::core::{AgentCallbacks, ApprovalDecision, Result, ToolApproval, ToolCall, ToolCallData};
+use crate::core::{AgentCallbacks, Result, ToolApproval, ToolCall, ToolCallData};
 use crate::tools::ToolRegistry;
 
 pub async fn execute_tools_concurrent(

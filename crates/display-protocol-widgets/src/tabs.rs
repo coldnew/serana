@@ -1,5 +1,5 @@
-use display_protocol::{Style, TabBarNode, TabItem, UiNode};
 use crate::palette;
+use display_protocol::{Style, TabBarNode, TabItem, UiNode};
 
 /// A tab bar with selectable tabs.
 ///
@@ -30,7 +30,10 @@ impl Tabs {
         }
     }
 
-    pub fn active(mut self, idx: usize) -> Self { self.active = idx; self }
+    pub fn active(mut self, idx: usize) -> Self {
+        self.active = idx;
+        self
+    }
 
     /// Mark a tab as modified (shows a dot indicator).
     pub fn modified(mut self, idx: usize, m: bool) -> Self {
@@ -41,7 +44,8 @@ impl Tabs {
     }
 
     pub fn build(self) -> UiNode {
-        let tab_items: Vec<TabItem> = self.items
+        let tab_items: Vec<TabItem> = self
+            .items
             .into_iter()
             .map(|(title, modified)| TabItem {
                 title,
@@ -54,13 +58,13 @@ impl Tabs {
             items: tab_items,
             active: self.active,
             style: Style::default(),
-            active_style: Style::default()
-                .fg(palette::PRIMARY)
-                .underline(),
+            active_style: Style::default().fg(palette::PRIMARY).underline(),
         })
     }
 }
 
 impl From<Tabs> for UiNode {
-    fn from(t: Tabs) -> Self { t.build() }
+    fn from(t: Tabs) -> Self {
+        t.build()
+    }
 }

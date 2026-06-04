@@ -168,8 +168,8 @@ impl Editor {
             match key.code {
                 KeyCode::Char('g') => {
                     let n = self.count.take().unwrap_or(1);
-                    self.cursor.row = (n.saturating_sub(1))
-                        .min(self.buffer.line_count().saturating_sub(1));
+                    self.cursor.row =
+                        (n.saturating_sub(1)).min(self.buffer.line_count().saturating_sub(1));
                     self.set_cursor_col(0);
                     self.clamp_cursor();
                     self.update_scroll();
@@ -335,7 +335,8 @@ impl Editor {
                 return;
             }
             self.take_count(); // consume the default 1
-            let (row, col) = Motion::LineStart.apply(&self.cursor, &self.buffer, self.term_height as usize);
+            let (row, col) =
+                Motion::LineStart.apply(&self.cursor, &self.buffer, self.term_height as usize);
             self.cursor.row = row;
             self.set_cursor_col(col);
             return;
@@ -641,9 +642,8 @@ impl Editor {
                     } else {
                         ch.to_ascii_lowercase()
                     };
-                    self.buffer.replace_range(
-                        self.cursor.row, col, col + 1, &toggled.to_string(),
-                    );
+                    self.buffer
+                        .replace_range(self.cursor.row, col, col + 1, &toggled.to_string());
                     if col + 1 < self.buffer.line_len(self.cursor.row) {
                         self.set_cursor_col(col + 1);
                     }
@@ -653,7 +653,8 @@ impl Editor {
             // Line-relative movement (first non-blank)
             KeyCode::Enter | KeyCode::Char('+') => {
                 let n = self.take_count();
-                self.cursor.row = (self.cursor.row + n).min(self.buffer.line_count().saturating_sub(1));
+                self.cursor.row =
+                    (self.cursor.row + n).min(self.buffer.line_count().saturating_sub(1));
                 let line = self.buffer.line(self.cursor.row);
                 self.set_cursor_col(line.find(|c: char| !c.is_ascii_whitespace()).unwrap_or(0));
             }
@@ -769,7 +770,10 @@ impl Editor {
         let count = self.peek_count();
         let term_height = self.term_height as usize;
         let motion = match Motion::from_key(key.code, count) {
-            Some(m) => { self.take_count(); m }
+            Some(m) => {
+                self.take_count();
+                m
+            }
             None => return,
         };
         let (end_row, end_col) = motion.apply(&self.cursor, &self.buffer, term_height);
@@ -780,8 +784,16 @@ impl Editor {
             ec = (ec + 1).min(self.buffer.line_len(end_row));
         }
         let forward = end_row > saved_row || (end_row == saved_row && ec > saved_col);
-        let from = if forward { (saved_row, saved_col) } else { (end_row, ec) };
-        let to = if forward { (end_row, ec) } else { (saved_row, saved_col) };
+        let from = if forward {
+            (saved_row, saved_col)
+        } else {
+            (end_row, ec)
+        };
+        let to = if forward {
+            (end_row, ec)
+        } else {
+            (saved_row, saved_col)
+        };
         match op {
             OperatorKind::Delete => {
                 self.push_undo_state();
@@ -818,15 +830,42 @@ impl Editor {
 
     fn handle_ctrl_normal(&mut self, key: KeyEvent) -> bool {
         match key.code {
-            KeyCode::Char('f') => { self.move_pages_down(); true }
-            KeyCode::Char('b') => { self.move_pages_up(); true }
-            KeyCode::Char('d') => { self.move_half_pages_down(); true }
-            KeyCode::Char('u') => { self.move_half_pages_up(); true }
-            KeyCode::Char('e') => { self.scroll_one_line_down(); true }
-            KeyCode::Char('y') => { self.scroll_one_line_up(); true }
-            KeyCode::Char('a') => { self.increment_number(true); true }
-            KeyCode::Char('x') => { self.increment_number(false); true }
-            KeyCode::Char('r') => { self.redo(); true }
+            KeyCode::Char('f') => {
+                self.move_pages_down();
+                true
+            }
+            KeyCode::Char('b') => {
+                self.move_pages_up();
+                true
+            }
+            KeyCode::Char('d') => {
+                self.move_half_pages_down();
+                true
+            }
+            KeyCode::Char('u') => {
+                self.move_half_pages_up();
+                true
+            }
+            KeyCode::Char('e') => {
+                self.scroll_one_line_down();
+                true
+            }
+            KeyCode::Char('y') => {
+                self.scroll_one_line_up();
+                true
+            }
+            KeyCode::Char('a') => {
+                self.increment_number(true);
+                true
+            }
+            KeyCode::Char('x') => {
+                self.increment_number(false);
+                true
+            }
+            KeyCode::Char('r') => {
+                self.redo();
+                true
+            }
             _ => false,
         }
     }
@@ -934,7 +973,10 @@ impl Editor {
             self.scroll.row -= 1;
         }
         self.cursor.row = self.cursor.row.max(self.scroll.row);
-        self.cursor.row = self.cursor.row.min(self.scroll.row + (self.term_height as usize).saturating_sub(2) - 1);
+        self.cursor.row = self
+            .cursor
+            .row
+            .min(self.scroll.row + (self.term_height as usize).saturating_sub(2) - 1);
     }
 
     /// Repeat last search (`n` / `N`).
@@ -969,9 +1011,7 @@ impl Editor {
         while row >= 0 && row < total {
             if self.buffer.line(row as usize).contains(pattern) {
                 self.cursor.row = row as usize;
-                self.set_cursor_col(
-                    self.buffer.line(row as usize).find(pattern).unwrap_or(0),
-                );
+                self.set_cursor_col(self.buffer.line(row as usize).find(pattern).unwrap_or(0));
                 found = true;
                 break;
             }
@@ -1013,7 +1053,11 @@ impl Editor {
                     self.message = Some("Unmatched bracket".into());
                     return;
                 }
-                c = if is_forward { 0 } else { (self.buffer.line_len(r as usize) as isize) - 1 };
+                c = if is_forward {
+                    0
+                } else {
+                    (self.buffer.line_len(r as usize) as isize) - 1
+                };
                 continue;
             }
 
@@ -1098,7 +1142,8 @@ impl Editor {
                 n -= count;
             }
             let padded = format!("{:0>width$}", n, width = num_str.len());
-            self.buffer.replace_range(self.cursor.row, start, end, &padded);
+            self.buffer
+                .replace_range(self.cursor.row, start, end, &padded);
             self.cursor.col = start;
         }
     }
@@ -1125,7 +1170,8 @@ impl Editor {
             }
             self.yank_register = YankRegister::Chars(parts.join("\n"));
 
-            self.buffer.replace_range(sr, sc, self.buffer.line_len(sr), "");
+            self.buffer
+                .replace_range(sr, sc, self.buffer.line_len(sr), "");
             for _ in (sr + 1)..=er {
                 if self.buffer.line_count() > sr + 1 {
                     self.buffer.delete_line(sr + 1);
@@ -1349,7 +1395,9 @@ impl Editor {
     // ─── Visual selection operations ───────────────────────────────
 
     fn indent_selection(&mut self, amount: usize) {
-        let Some(ref sel) = self.selection else { return };
+        let Some(ref sel) = self.selection else {
+            return;
+        };
         let (sl, _sc, el, _ec) = sel.normalized_range();
         let indent = " ".repeat(amount);
         for row in sl..=el {
@@ -1363,7 +1411,9 @@ impl Editor {
     }
 
     fn dedent_selection(&mut self, amount: usize) {
-        let Some(ref sel) = self.selection else { return };
+        let Some(ref sel) = self.selection else {
+            return;
+        };
         let (sl, _sc, el, _ec) = sel.normalized_range();
         for row in sl..=el {
             let r = row as usize;
@@ -1380,7 +1430,9 @@ impl Editor {
     }
 
     fn case_selection(&mut self, upper: bool) {
-        let Some(ref sel) = self.selection else { return };
+        let Some(ref sel) = self.selection else {
+            return;
+        };
         let (sl, sc, el, ec) = sel.normalized_range();
         for row in sl..=el {
             let r = row as usize;
@@ -1389,13 +1441,21 @@ impl Editor {
             }
             let line = self.buffer.line(r).to_string();
             let start_col = if r == sl as usize { sc as usize } else { 0 };
-            let end_col = if r == el as usize { (ec as usize + 1).min(line.len()) } else { line.len() };
+            let end_col = if r == el as usize {
+                (ec as usize + 1).min(line.len())
+            } else {
+                line.len()
+            };
             if start_col >= end_col {
                 continue;
             }
             let mut chars: Vec<char> = line[start_col..end_col].chars().collect();
             for ch in &mut chars {
-                *ch = if upper { ch.to_ascii_uppercase() } else { ch.to_ascii_lowercase() };
+                *ch = if upper {
+                    ch.to_ascii_uppercase()
+                } else {
+                    ch.to_ascii_lowercase()
+                };
             }
             let new_part: String = chars.into_iter().collect();
             self.buffer.replace_range(r, start_col, end_col, &new_part);
@@ -1405,7 +1465,9 @@ impl Editor {
     }
 
     fn toggle_case_selection(&mut self) {
-        let Some(ref sel) = self.selection else { return };
+        let Some(ref sel) = self.selection else {
+            return;
+        };
         let (sl, sc, el, ec) = sel.normalized_range();
         for row in sl..=el {
             let r = row as usize;
@@ -1414,7 +1476,11 @@ impl Editor {
             }
             let line = self.buffer.line(r).to_string();
             let start_col = if r == sl as usize { sc as usize } else { 0 };
-            let end_col = if r == el as usize { (ec as usize + 1).min(line.len()) } else { line.len() };
+            let end_col = if r == el as usize {
+                (ec as usize + 1).min(line.len())
+            } else {
+                line.len()
+            };
             if start_col >= end_col {
                 continue;
             }

@@ -4,7 +4,7 @@ pub mod gui;
 pub mod style;
 pub mod wgpu_backend;
 
-pub use backend::{DisplayBackend, InputEvent, MouseKind, MoraRect, Cell, CellBuffer};
+pub use backend::{Cell, CellBuffer, DisplayBackend, InputEvent, MoraRect, MouseKind};
 pub use event::{MoraKeyCode, MoraKeyEvent, MoraKeyModifiers};
 pub use gui::GuiBackend;
 pub use style::{MoraColor, MoraStyle};

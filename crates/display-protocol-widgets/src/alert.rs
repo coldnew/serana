@@ -1,5 +1,5 @@
-use display_protocol::{Border, Padding, Style, UiNode, BoxNode, FlexNode};
 use crate::palette;
+use display_protocol::{Border, BoxNode, FlexNode, Padding, Style, UiNode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlertLevel {
@@ -18,17 +18,44 @@ pub struct Alert {
 
 impl Alert {
     pub fn new(level: AlertLevel, message: impl Into<String>) -> Self {
-        Self { level, title: None, message: message.into() }
+        Self {
+            level,
+            title: None,
+            message: message.into(),
+        }
     }
 
-    pub fn title(mut self, t: impl Into<String>) -> Self { self.title = Some(t.into()); self }
+    pub fn title(mut self, t: impl Into<String>) -> Self {
+        self.title = Some(t.into());
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let (icon_str, fg, bg, border_fg) = match self.level {
-            AlertLevel::Info => ("ℹ", palette::INFO, palette::Color::new(20, 40, 60), palette::INFO),
-            AlertLevel::Success => ("✓", palette::SUCCESS, palette::Color::new(20, 50, 30), palette::SUCCESS),
-            AlertLevel::Warning => ("⚠", palette::WARNING, palette::Color::new(50, 45, 20), palette::WARNING),
-            AlertLevel::Error => ("✖", palette::DANGER, palette::Color::new(50, 20, 20), palette::DANGER),
+            AlertLevel::Info => (
+                "ℹ",
+                palette::INFO,
+                palette::Color::new(20, 40, 60),
+                palette::INFO,
+            ),
+            AlertLevel::Success => (
+                "✓",
+                palette::SUCCESS,
+                palette::Color::new(20, 50, 30),
+                palette::SUCCESS,
+            ),
+            AlertLevel::Warning => (
+                "⚠",
+                palette::WARNING,
+                palette::Color::new(50, 45, 20),
+                palette::WARNING,
+            ),
+            AlertLevel::Error => (
+                "✖",
+                palette::DANGER,
+                palette::Color::new(50, 20, 20),
+                palette::DANGER,
+            ),
         };
 
         let mut children = Vec::new();
@@ -37,10 +64,7 @@ impl Alert {
 
         if let Some(title) = &self.title {
             children.push(UiNode::Row(FlexNode {
-                children: vec![
-                    icon,
-                    UiNode::text(title).color(fg).bold(),
-                ],
+                children: vec![icon, UiNode::text(title).color(fg).bold()],
                 style: Style::default(),
                 gap: 1,
                 align: display_protocol::Align::Center,
@@ -74,5 +98,7 @@ impl Alert {
 }
 
 impl From<Alert> for UiNode {
-    fn from(a: Alert) -> Self { a.build() }
+    fn from(a: Alert) -> Self {
+        a.build()
+    }
 }

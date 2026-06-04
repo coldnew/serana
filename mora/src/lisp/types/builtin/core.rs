@@ -4,7 +4,7 @@ use std::sync::Arc;
 use super::invoke_fn;
 use super::register_native;
 use crate::lisp::ns::Namespace;
-use crate::lisp::types::{Symbol, Value};
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut Namespace) {
     // --- Arithmetic ---

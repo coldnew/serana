@@ -1,5 +1,5 @@
-use display_protocol::{Align, FlexNode, Justify, Padding, Style, UiNode};
 use crate::palette;
+use display_protocol::{Align, FlexNode, Justify, Padding, Style, UiNode};
 
 #[derive(Debug, Clone)]
 pub struct FormField {
@@ -11,11 +11,22 @@ pub struct FormField {
 
 impl FormField {
     pub fn new(label: impl Into<String>, input: UiNode) -> Self {
-        Self { label: label.into(), input, error: None, required: false }
+        Self {
+            label: label.into(),
+            input,
+            error: None,
+            required: false,
+        }
     }
 
-    pub fn error(mut self, msg: impl Into<String>) -> Self { self.error = Some(msg.into()); self }
-    pub fn required(mut self, v: bool) -> Self { self.required = v; self }
+    pub fn error(mut self, msg: impl Into<String>) -> Self {
+        self.error = Some(msg.into());
+        self
+    }
+    pub fn required(mut self, v: bool) -> Self {
+        self.required = v;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let mut children = Vec::new();
@@ -69,12 +80,25 @@ pub struct Form {
 
 impl Form {
     pub fn new() -> Self {
-        Self { fields: Vec::new(), actions: Vec::new(), gap: 1 }
+        Self {
+            fields: Vec::new(),
+            actions: Vec::new(),
+            gap: 1,
+        }
     }
 
-    pub fn field(mut self, node: UiNode) -> Self { self.fields.push(node); self }
-    pub fn action(mut self, node: UiNode) -> Self { self.actions.push(node); self }
-    pub fn gap(mut self, g: u16) -> Self { self.gap = g; self }
+    pub fn field(mut self, node: UiNode) -> Self {
+        self.fields.push(node);
+        self
+    }
+    pub fn action(mut self, node: UiNode) -> Self {
+        self.actions.push(node);
+        self
+    }
+    pub fn gap(mut self, g: u16) -> Self {
+        self.gap = g;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let mut children: Vec<UiNode> = self.fields;
@@ -110,5 +134,7 @@ impl Form {
 }
 
 impl Default for Form {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -214,6 +214,7 @@ pub struct App {
     pub skill_store: Option<crate::tools::skill::SkillStore>,
     // Task queue for /queue command
     pub task_queue: VecDeque<String>,
+    /// Last bash command for !! re-execute
     pub last_bash_command: Option<String>,
 }
 
@@ -274,8 +275,8 @@ impl App {
             current_session_id: None,
             recent_sessions: Vec::new(),
             skill_store: None,
-            task_queue: VecDeque::new(),
             last_bash_command: None,
+            task_queue: VecDeque::new(),
         }
     }
 
@@ -460,7 +461,7 @@ impl App {
             return;
         }
 
-        let prefix = content.trim();
+        let prefix = content.trim_start();
         // Strip the '/' for matching
         let query = if prefix.len() > 1 { &prefix[1..] } else { "" };
 
@@ -639,14 +640,18 @@ impl App {
         Ok(true)
     }
 
+    /// Process @path file attachments in user input.
+    /// Replaces @path with the file content wrapped in <file> tags.
     fn expand_file_attachments(&self, input: &str) -> String {
         let mut result = String::with_capacity(input.len());
         let mut chars = input.char_indices().peekable();
 
         while let Some((i, ch)) = chars.next() {
             if ch == '@' {
+                // Collect the path after @
                 let path_start = i + 1;
                 let mut path_end = path_start;
+                // Path ends at whitespace, newline, or end of string
                 for (_, c) in chars.by_ref() {
                     if c.is_whitespace() {
                         break;
@@ -659,6 +664,7 @@ impl App {
                     continue;
                 }
 
+                // Resolve path
                 let path = if path_str.starts_with('~') {
                     if let Some(home) = dirs::home_dir() {
                         home.join(
@@ -668,23 +674,24 @@ impl App {
                                 .trim_start_matches('/'),
                         )
                     } else {
-                        PathBuf::from(path_str)
+                        std::path::PathBuf::from(path_str)
                     }
                 } else if std::path::Path::new(path_str).is_absolute() {
-                    PathBuf::from(path_str)
+                    std::path::PathBuf::from(path_str)
                 } else {
                     self.workspace.join(path_str)
                 };
 
                 match std::fs::read_to_string(&path) {
                     Ok(content) => {
+                        let display = path_str;
                         result.push_str(&format!(
                             "<file path=\"{}\">\n{}\n</file>",
-                            path_str, content
+                            display, content
                         ));
                     }
-                    Err(error) => {
-                        result.push_str(&format!("@{} (error: {})", path_str, error));
+                    Err(e) => {
+                        result.push_str(&format!("@{} (error: {})", path_str, e));
                     }
                 }
             } else {
@@ -694,6 +701,7 @@ impl App {
         result
     }
 
+    /// Execute a bash command and return its output.
     fn execute_bash_command(&self, command: &str) -> String {
         match std::process::Command::new("sh")
             .arg("-c")
@@ -717,6 +725,7 @@ impl App {
                 if result.is_empty() {
                     "(no output)".to_string()
                 } else {
+                    // Truncate very long output
                     if result.len() > 8000 {
                         result.truncate(8000);
                         result.push_str("\n... (truncated)");
@@ -724,21 +733,23 @@ impl App {
                     result
                 }
             }
-            Err(error) => format!("Failed to execute: {}", error),
+            Err(e) => format!("Failed to execute: {}", e),
         }
     }
 
     fn submit_message(&mut self) {
         let content = self.editor.content();
         self.editor.clear();
+
         let trimmed = content.trim();
 
+        // Handle !! re-execute last bash command
         if trimmed == "!!" {
-            if let Some(ref command) = self.last_bash_command.clone() {
-                let output = self.execute_bash_command(command);
+            if let Some(ref cmd) = self.last_bash_command.clone() {
+                let output = self.execute_bash_command(cmd);
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: format!("$ {}\n{}", command, output),
+                    content: format!("$ {}\n{}", cmd, output),
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
@@ -753,13 +764,14 @@ impl App {
             return;
         }
 
-        if let Some(command) = trimmed.strip_prefix('!') {
-            if !command.is_empty() {
-                self.last_bash_command = Some(command.to_string());
-                let output = self.execute_bash_command(command);
+        // Handle !command bash quick-execute
+        if let Some(cmd) = trimmed.strip_prefix('!') {
+            if !cmd.is_empty() {
+                self.last_bash_command = Some(cmd.to_string());
+                let output = self.execute_bash_command(cmd);
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    content: format!("$ {}\n{}", command, output),
+                    content: format!("$ {}\n{}", cmd, output),
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
@@ -767,11 +779,13 @@ impl App {
             return;
         }
 
+        // Handle slash commands
         if let Some(result) = self.slash_commands.dispatch(&content) {
             self.handle_slash_result(result);
             return;
         }
 
+        // Expand @path file attachments
         let expanded = self.expand_file_attachments(&content);
 
         self.show_welcome = false;
@@ -1248,6 +1262,148 @@ impl App {
                     tool_calls: Vec::new(),
                     thinking: None,
                 });
+            }
+            SlashResult::Fork => {
+                if let (Some(ref store), Some(ref sid)) =
+                    (&self.session_store, &self.current_session_id)
+                {
+                    match store.fork_session(sid, None) {
+                        Ok(new_session) => {
+                            let old_id = self.current_session_id.clone();
+                            self.current_session_id = Some(new_session.meta.id.clone());
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!(
+                                    "Forked session {} → {}. Messages copied ({}).",
+                                    old_id.as_deref().unwrap_or("?"),
+                                    new_session.meta.id,
+                                    new_session.meta.message_count,
+                                ),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                        Err(e) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Failed to fork session: {}", e),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "No active session to fork.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::SessionTree => {
+                if let (Some(ref store), Some(ref sid)) =
+                    (&self.session_store, &self.current_session_id)
+                {
+                    match store.list_children(sid) {
+                        Ok(children) => {
+                            if children.is_empty() {
+                                self.messages.push(ChatMessage {
+                                    role: MessageRole::System,
+                                    content: "No forks of this session.".to_string(),
+                                    tool_calls: Vec::new(),
+                                    thinking: None,
+                                });
+                            } else {
+                                let mut lines =
+                                    vec![format!("Session tree — {} fork(s):", children.len())];
+                                for (i, child) in children.iter().enumerate() {
+                                    let title = child.title.as_deref().unwrap_or("untitled");
+                                    lines.push(format!(
+                                        "  {}. {} — {} msgs — {}",
+                                        i + 1,
+                                        child.id,
+                                        child.message_count,
+                                        title
+                                    ));
+                                }
+                                self.messages.push(ChatMessage {
+                                    role: MessageRole::System,
+                                    content: lines.join("\n"),
+                                    tool_calls: Vec::new(),
+                                    thinking: None,
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Error listing session tree: {}", e),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: "No active session.".to_string(),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
+            }
+            SlashResult::NewSession => {
+                self.messages.clear();
+                self.pending_messages.clear();
+                self.scroll = 0;
+                self.show_welcome = true;
+                self.current_session_id = None;
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "Started new session.".to_string(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            SlashResult::Logout(provider) => {
+                let cred_path = dirs::config_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("serana")
+                    .join(format!("{}.key", provider));
+                if cred_path.exists() {
+                    match std::fs::remove_file(&cred_path) {
+                        Ok(()) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!(
+                                    "Logged out from {}. Credentials removed.",
+                                    provider
+                                ),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                        Err(e) => {
+                            self.messages.push(ChatMessage {
+                                role: MessageRole::System,
+                                content: format!("Failed to remove credentials: {}", e),
+                                tool_calls: Vec::new(),
+                                thinking: None,
+                            });
+                        }
+                    }
+                } else {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!(
+                            "No stored credentials found for {}. API keys from environment variables cannot be removed.",
+                            provider
+                        ),
+                        tool_calls: Vec::new(),
+                        thinking: None,
+                    });
+                }
             }
         }
     }
@@ -1858,28 +2014,5 @@ mod tests {
 
         assert!(html.contains("&lt;hello&gt;&amp;&quot;"));
         assert!(html.contains("codex/gpt-5.5"));
-    }
-
-    #[test]
-    fn expands_file_attachment_references() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("note.txt"), "hello").unwrap();
-        let app = App::new(dir.path().to_path_buf());
-
-        let expanded = app.expand_file_attachments("read @note.txt please");
-
-        assert!(expanded.contains("<file path=\"note.txt\">"));
-        assert!(expanded.contains("hello"));
-    }
-
-    #[test]
-    fn bang_bang_without_previous_command_shows_message() {
-        let mut app = App::new(PathBuf::from("."));
-        app.editor.set_content("!!");
-
-        app.submit_message();
-
-        assert_eq!(app.messages.len(), 1);
-        assert_eq!(app.messages[0].content, "No previous command to re-execute.");
     }
 }

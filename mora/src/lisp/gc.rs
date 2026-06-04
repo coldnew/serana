@@ -109,7 +109,7 @@ pub struct GcHeap {
     roots: RwLock<HashSet<usize>>,
     next_id: AtomicUsize,
     /// Set by the collector during sweep to pause mutator briefly.
-    sweeping: AtomicBool,
+    _sweeping: AtomicBool,
     /// Configuration: trigger collection after this many allocations.
     alloc_threshold: AtomicUsize,
     /// Counter of allocations since last collection.
@@ -123,7 +123,7 @@ impl GcHeap {
             children: RwLock::new(HashMap::new()),
             roots: RwLock::new(HashSet::new()),
             next_id: AtomicUsize::new(1),
-            sweeping: AtomicBool::new(false),
+            _sweeping: AtomicBool::new(false),
             alloc_threshold: AtomicUsize::new(1000),
             alloc_count: AtomicUsize::new(0),
         })
@@ -284,7 +284,7 @@ impl Default for GcHeap {
             children: RwLock::new(HashMap::new()),
             roots: RwLock::new(HashSet::new()),
             next_id: AtomicUsize::new(1),
-            sweeping: AtomicBool::new(false),
+            _sweeping: AtomicBool::new(false),
             alloc_threshold: AtomicUsize::new(1000),
             alloc_count: AtomicUsize::new(0),
         }
@@ -372,7 +372,7 @@ mod tests {
 
     #[derive(Debug)]
     struct WithChild {
-        value: i64,
+        _value: i64,
         child: Option<usize>, // Gc ID of child
     }
     impl Traceable for WithChild {
@@ -434,7 +434,7 @@ mod tests {
         let parent = Gc::new(
             &heap,
             WithChild {
-                value: 1,
+                _value: 1,
                 child: Some(child.id()),
             },
         );
@@ -454,7 +454,7 @@ mod tests {
         let parent = Gc::new(
             &heap,
             WithChild {
-                value: 1,
+                _value: 1,
                 child: Some(child.id()),
             },
         );
@@ -498,14 +498,14 @@ mod tests {
         let a = Gc::new(
             &heap,
             WithChild {
-                value: 1,
+                _value: 1,
                 child: None,
             },
         );
         let b = Gc::new(
             &heap,
             WithChild {
-                value: 2,
+                _value: 2,
                 child: Some(a.id()),
             },
         );

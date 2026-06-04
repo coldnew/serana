@@ -1,4 +1,4 @@
-use display_protocol::{Color, Style, StyledLine, StyledSpan};
+use display_protocol::{Style, StyledLine, StyledSpan};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use super::syntax::SyntaxHighlighter;

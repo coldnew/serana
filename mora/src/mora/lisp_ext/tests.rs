@@ -1,5 +1,4 @@
 use super::core::*;
-use super::editor_state::*;
 use crate::lisp::types::Value;
 
 #[test]
@@ -125,15 +124,10 @@ fn interactive_defn_registers_and_executes_editor_command() {
 fn kill_ring_push_and_yank() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
-    bridge
-        .eval("(kill-ring-push \"hello world\")")
-        .unwrap();
+    bridge.eval("(kill-ring-push \"hello world\")").unwrap();
     let result = bridge.eval("(kill-ring-yank)").unwrap();
     assert_eq!(result, Value::string("hello world"));
-    assert_eq!(
-        bridge.eval("(kill-ring-count)").unwrap(),
-        Value::Int(1)
-    );
+    assert_eq!(bridge.eval("(kill-ring-count)").unwrap(), Value::Int(1));
     take_editor_state();
 }
 #[test]
@@ -144,11 +138,20 @@ fn kill_ring_pop_cycling() {
     bridge.eval("(kill-ring-push \"second\")").unwrap();
     bridge.eval("(kill-ring-push \"third\")").unwrap();
     // yank returns most recent
-    assert_eq!(bridge.eval("(kill-ring-yank)").unwrap(), Value::string("third"));
+    assert_eq!(
+        bridge.eval("(kill-ring-yank)").unwrap(),
+        Value::string("third")
+    );
     // pop forward cycles
-    assert_eq!(bridge.eval("(kill-ring-pop)").unwrap(), Value::string("first"));
+    assert_eq!(
+        bridge.eval("(kill-ring-pop)").unwrap(),
+        Value::string("first")
+    );
     // pop back cycles backward
-    assert_eq!(bridge.eval("(kill-ring-pop-back)").unwrap(), Value::string("third"));
+    assert_eq!(
+        bridge.eval("(kill-ring-pop-back)").unwrap(),
+        Value::string("third")
+    );
     let contents = bridge.eval("(kill-ring-contents)").unwrap();
     match contents {
         Value::Vector(v) => assert_eq!(v.len(), 3),
@@ -197,7 +200,9 @@ fn pop_mark_ring() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
     // Set up buffer with enough lines
-    bridge.eval("(buffer-set-content \"line0\nline1\nline2\nline3\nline4\nline5\")").unwrap();
+    bridge
+        .eval("(buffer-set-content \"line0\nline1\nline2\nline3\nline4\nline5\")")
+        .unwrap();
     bridge.eval("(cursor-set! 1 0)").unwrap();
     bridge.eval("(set-mark)").unwrap();
     bridge.eval("(cursor-set! 2 0)").unwrap();
@@ -234,8 +239,14 @@ fn var_set_and_get() {
         bridge.eval("(var-get \"tab-width\")").unwrap(),
         Value::Int(4)
     );
-    assert_eq!(bridge.eval("(var-bound? \"tab-width\")").unwrap(), Value::Bool(true));
-    assert_eq!(bridge.eval("(var-bound? \"unknown\")").unwrap(), Value::Bool(false));
+    assert_eq!(
+        bridge.eval("(var-bound? \"tab-width\")").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        bridge.eval("(var-bound? \"unknown\")").unwrap(),
+        Value::Bool(false)
+    );
     assert_eq!(bridge.eval("(var-get \"unknown\")").unwrap(), Value::Nil);
     take_editor_state();
 }
@@ -243,13 +254,17 @@ fn var_set_and_get() {
 fn var_local_sets_default_only() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
-    bridge.eval("(var-local \"indent-tabs-mode\" true)").unwrap();
+    bridge
+        .eval("(var-local \"indent-tabs-mode\" true)")
+        .unwrap();
     assert_eq!(
         bridge.eval("(var-get \"indent-tabs-mode\")").unwrap(),
         Value::Bool(true)
     );
     // var-local should not overwrite existing value
-    bridge.eval("(var-local \"indent-tabs-mode\" false)").unwrap();
+    bridge
+        .eval("(var-local \"indent-tabs-mode\" false)")
+        .unwrap();
     assert_eq!(
         bridge.eval("(var-get \"indent-tabs-mode\")").unwrap(),
         Value::Bool(true)
@@ -302,7 +317,10 @@ fn undo_redo_cycle() {
     // Redo should restore the modification
     let result = bridge.eval("(redo)").unwrap();
     assert_eq!(result, Value::Bool(true));
-    assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("modified"));
+    assert_eq!(
+        bridge.eval("(buffer-content)").unwrap(),
+        Value::string("modified")
+    );
     // Undo again
     let result = bridge.eval("(undo)").unwrap();
     assert_eq!(result, Value::Bool(true));
@@ -316,10 +334,7 @@ fn undo_redo_cycle() {
     );
     // Go back — should have 2 branches now
     bridge.eval("(undo)").unwrap();
-    assert_eq!(
-        bridge.eval("(undo-tree-branches)").unwrap(),
-        Value::Int(2)
-    );
+    assert_eq!(bridge.eval("(undo-tree-branches)").unwrap(), Value::Int(2));
     take_editor_state();
 }
 // --- Hook Extension Tests ---
@@ -328,15 +343,32 @@ fn hook_query_operations() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
     // Initially no hooks
-    assert_eq!(bridge.eval("(hook-bound? \"after-save\")").unwrap(), Value::Bool(false));
-    assert_eq!(bridge.eval("(hooks-for \"after-save\")").unwrap(), Value::Int(0));
+    assert_eq!(
+        bridge.eval("(hook-bound? \"after-save\")").unwrap(),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        bridge.eval("(hooks-for \"after-save\")").unwrap(),
+        Value::Int(0)
+    );
     // Add a hook
-    bridge.eval("(add-hook \"after-save\" (fn [] nil))").unwrap();
-    assert_eq!(bridge.eval("(hook-bound? \"after-save\")").unwrap(), Value::Bool(true));
-    assert_eq!(bridge.eval("(hooks-for \"after-save\")").unwrap(), Value::Int(1));
+    bridge
+        .eval("(add-hook \"after-save\" (fn [] nil))")
+        .unwrap();
+    assert_eq!(
+        bridge.eval("(hook-bound? \"after-save\")").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        bridge.eval("(hooks-for \"after-save\")").unwrap(),
+        Value::Int(1)
+    );
     // Remove by index
     bridge.eval("(remove-hook \"after-save\" 0)").unwrap();
-    assert_eq!(bridge.eval("(hook-bound? \"after-save\")").unwrap(), Value::Bool(false));
+    assert_eq!(
+        bridge.eval("(hook-bound? \"after-save\")").unwrap(),
+        Value::Bool(false)
+    );
     take_editor_state();
 }
 // --- Minibuffer Tests ---
@@ -368,12 +400,23 @@ fn minibuffer_y_or_n() {
 fn narrow_and_widen() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
-    bridge.eval("(buffer-set-content \"line1\nline2\nline3\nline4\")").unwrap();
-    assert_eq!(bridge.eval("(buffer-narrowed?)").unwrap(), Value::Bool(false));
+    bridge
+        .eval("(buffer-set-content \"line1\nline2\nline3\nline4\")")
+        .unwrap();
+    assert_eq!(
+        bridge.eval("(buffer-narrowed?)").unwrap(),
+        Value::Bool(false)
+    );
     bridge.eval("(narrow-to-region 1 3)").unwrap();
-    assert_eq!(bridge.eval("(buffer-narrowed?)").unwrap(), Value::Bool(true));
+    assert_eq!(
+        bridge.eval("(buffer-narrowed?)").unwrap(),
+        Value::Bool(true)
+    );
     bridge.eval("(widen)").unwrap();
-    assert_eq!(bridge.eval("(buffer-narrowed?)").unwrap(), Value::Bool(false));
+    assert_eq!(
+        bridge.eval("(buffer-narrowed?)").unwrap(),
+        Value::Bool(false)
+    );
     take_editor_state();
 }
 // --- Text Search Tests ---
@@ -381,7 +424,9 @@ fn narrow_and_widen() {
 fn search_forward_finds_pattern() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
-    bridge.eval("(buffer-set-content \"hello world foo bar\")").unwrap();
+    bridge
+        .eval("(buffer-set-content \"hello world foo bar\")")
+        .unwrap();
     bridge.eval("(cursor-set! 0 0)").unwrap();
     let result = bridge.eval("(search-forward \"world\")").unwrap();
     assert_eq!(result, Value::Int(6)); // "world" starts at col 6
@@ -396,7 +441,9 @@ fn search_forward_finds_pattern() {
 fn search_backward_finds_pattern() {
     set_editor_state(EditorState::new());
     let mut bridge = MoraLispBridge::new();
-    bridge.eval("(buffer-set-content \"hello world hello\")").unwrap();
+    bridge
+        .eval("(buffer-set-content \"hello world hello\")")
+        .unwrap();
     bridge.eval("(cursor-set! 0 15)").unwrap(); // near end
     let result = bridge.eval("(search-backward \"hello\")").unwrap();
     assert_eq!(result, Value::Int(0)); // first "hello" at col 0
@@ -473,14 +520,23 @@ fn emacs_like_init_config() {
         )
         .unwrap();
     // Verify everything worked
-    assert_eq!(bridge.eval("(var-get \"tab-width\")").unwrap(), Value::Int(4));
+    assert_eq!(
+        bridge.eval("(var-get \"tab-width\")").unwrap(),
+        Value::Int(4)
+    );
     assert_eq!(
         bridge.eval("(register-get \"s\")").unwrap(),
         Value::string("fn main() {\n    \n}")
     );
-    assert_eq!(bridge.eval("(kill-ring-yank)").unwrap(), Value::string("import std;"));
+    assert_eq!(
+        bridge.eval("(kill-ring-yank)").unwrap(),
+        Value::string("import std;")
+    );
     assert!(bridge.has_command("delete-line"));
-    assert_eq!(bridge.eval("(hook-bound? \"before-save\")").unwrap(), Value::Bool(true));
+    assert_eq!(
+        bridge.eval("(hook-bound? \"before-save\")").unwrap(),
+        Value::Bool(true)
+    );
     take_editor_state();
 }
 // --- Undo-Tree Tests ---
@@ -506,10 +562,7 @@ fn undo_tree_branching_preserves_alternate_history() {
     // Go back to A — should have 2 branches
     bridge.eval("(undo)").unwrap();
     assert_eq!(bridge.eval("(buffer-content)").unwrap(), Value::string("A"));
-    assert_eq!(
-        bridge.eval("(undo-tree-branches)").unwrap(),
-        Value::Int(2)
-    );
+    assert_eq!(bridge.eval("(undo-tree-branches)").unwrap(), Value::Int(2));
     // Switch to branch 0
     bridge.eval("(undo-tree-switch-branch 0)").unwrap();
     let branch0 = bridge.eval("(buffer-content)").unwrap();
@@ -622,7 +675,10 @@ fn tramp_parse_path_no_user() {
         .unwrap();
     match result {
         Value::Map(m) => {
-            assert_eq!(*m.get(&Value::keyword("method")).unwrap(), Value::string("scp"));
+            assert_eq!(
+                *m.get(&Value::keyword("method")).unwrap(),
+                Value::string("scp")
+            );
             assert!(!m.contains_key(&Value::keyword("user")));
         }
         _ => panic!("expected map"),
@@ -666,373 +722,441 @@ fn describe_function_returns_doc() {
     let doc = bridge.eval("(describe-function \"cursor-set!\")").unwrap();
     match doc {
         Value::String(s) => {
-            assert!(s.contains("cursor") || s.contains("Cursor"), "doc should mention cursor: {}", s);
+            assert!(
+                s.contains("cursor") || s.contains("Cursor"),
+                "doc should mention cursor: {}",
+                s
+            );
         }
         _ => panic!("expected string, got {:?}", doc),
     }
     // Unknown function returns nil
-    let result = bridge.eval("(describe-function \"nonexistent-function\")").unwrap();
+    let result = bridge
+        .eval("(describe-function \"nonexistent-function\")")
+        .unwrap();
     assert_eq!(result, Value::Nil);
     take_editor_state();
 }
-    // --- Editing Features ---
-    #[test]
-    fn expand_region_works() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"hello world\")").unwrap();
-        bridge.eval("(cursor-set! 0 3)").unwrap(); // cursor in "hello"
-        // Expand to word
-        bridge.eval("(expand-region)").unwrap();
-        assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
-        // Expand to line
-        bridge.eval("(expand-region)").unwrap();
-        // Contract back
-        bridge.eval("(contract-region)").unwrap();
-        assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
-        take_editor_state();
-    }
-    #[test]
-    fn hungry_delete_removes_whitespace() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"hello   world\")").unwrap();
-        bridge.eval("(cursor-set! 0 5)").unwrap(); // cursor after "hello", in spaces
-        bridge.eval("(hungry-delete-forward)").unwrap();
-        assert_eq!(
-            bridge.eval("(buffer-content)").unwrap(),
-            Value::string("helloworld")
-        );
-        take_editor_state();
-    }
-    #[test]
-    fn cleanup_buffer_removes_trailing_whitespace() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"hello   \nworld\t\n\")").unwrap();
-        bridge.eval("(cleanup-buffer)").unwrap();
-        let content = bridge.eval("(buffer-content)").unwrap();
-        match content {
-            Value::String(s) => {
-                // Trailing whitespace should be removed
-                assert!(!s.contains("hello   "), "trailing spaces removed");
-            }
-            _ => panic!("expected string"),
+// --- Editing Features ---
+#[test]
+fn expand_region_works() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge.eval("(buffer-set-content \"hello world\")").unwrap();
+    bridge.eval("(cursor-set! 0 3)").unwrap(); // cursor in "hello"
+                                               // Expand to word
+    bridge.eval("(expand-region)").unwrap();
+    assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
+    // Expand to line
+    bridge.eval("(expand-region)").unwrap();
+    // Contract back
+    bridge.eval("(contract-region)").unwrap();
+    assert_eq!(bridge.eval("(mark-active?)").unwrap(), Value::Bool(true));
+    take_editor_state();
+}
+#[test]
+fn hungry_delete_removes_whitespace() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"hello   world\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 5)").unwrap(); // cursor after "hello", in spaces
+    bridge.eval("(hungry-delete-forward)").unwrap();
+    assert_eq!(
+        bridge.eval("(buffer-content)").unwrap(),
+        Value::string("helloworld")
+    );
+    take_editor_state();
+}
+#[test]
+fn cleanup_buffer_removes_trailing_whitespace() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"hello   \nworld\t\n\")")
+        .unwrap();
+    bridge.eval("(cleanup-buffer)").unwrap();
+    let content = bridge.eval("(buffer-content)").unwrap();
+    match content {
+        Value::String(s) => {
+            // Trailing whitespace should be removed
+            assert!(!s.contains("hello   "), "trailing spaces removed");
         }
-        take_editor_state();
+        _ => panic!("expected string"),
     }
-    #[test]
-    fn insert_empty_line_adds_line() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"line1\nline2\")").unwrap();
-        bridge.eval("(cursor-set! 0 0)").unwrap();
-        bridge.eval("(insert-empty-line)").unwrap();
-        let count = bridge.eval("(buffer-line-count)").unwrap();
-        assert_eq!(count, Value::Int(3));
-        take_editor_state();
+    take_editor_state();
+}
+#[test]
+fn insert_empty_line_adds_line() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"line1\nline2\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 0)").unwrap();
+    bridge.eval("(insert-empty-line)").unwrap();
+    let count = bridge.eval("(buffer-line-count)").unwrap();
+    assert_eq!(count, Value::Int(3));
+    take_editor_state();
+}
+// --- History Features ---
+#[test]
+fn recentf_operations() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    assert_eq!(
+        bridge.eval("(recentf-list)").unwrap(),
+        Value::vector(vec![])
+    );
+    bridge
+        .eval("(recentf-add \"/home/user/file1.txt\")")
+        .unwrap();
+    bridge
+        .eval("(recentf-add \"/home/user/file2.rs\")")
+        .unwrap();
+    let list = bridge.eval("(recentf-list)").unwrap();
+    match list {
+        Value::Vector(v) => assert_eq!(v.len(), 2),
+        _ => panic!("expected vector"),
     }
-    // --- History Features ---
-    #[test]
-    fn recentf_operations() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        assert_eq!(
-            bridge.eval("(recentf-list)").unwrap(),
-            Value::vector(vec![])
-        );
-        bridge.eval("(recentf-add \"/home/user/file1.txt\")").unwrap();
-        bridge.eval("(recentf-add \"/home/user/file2.rs\")").unwrap();
-        let list = bridge.eval("(recentf-list)").unwrap();
-        match list {
-            Value::Vector(v) => assert_eq!(v.len(), 2),
-            _ => panic!("expected vector"),
+    bridge.eval("(recentf-clear)").unwrap();
+    assert_eq!(
+        bridge.eval("(recentf-list)").unwrap(),
+        Value::vector(vec![])
+    );
+    take_editor_state();
+}
+// --- Visual Features ---
+#[test]
+fn which_key_for_prefix() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    // Define some keybindings under a prefix
+    bridge
+        .eval("(define-key \"C-x C-f\" \"find-file\")")
+        .unwrap();
+    bridge
+        .eval("(define-key \"C-x C-s\" \"save-buffer\")")
+        .unwrap();
+    bridge
+        .eval("(define-key \"C-x b\" \"switch-to-buffer\")")
+        .unwrap();
+    // Query bindings under C-x
+    let result = bridge.eval("(which-key-for-prefix \"C-x\")").unwrap();
+    match result {
+        Value::Vector(v) => {
+            assert!(v.len() >= 3, "should have at least 3 C-x bindings");
         }
-        bridge.eval("(recentf-clear)").unwrap();
-        assert_eq!(
-            bridge.eval("(recentf-list)").unwrap(),
-            Value::vector(vec![])
-        );
-        take_editor_state();
+        _ => panic!("expected vector"),
     }
-    // --- Visual Features ---
-    #[test]
-    fn which_key_for_prefix() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        // Define some keybindings under a prefix
-        bridge.eval("(define-key \"C-x C-f\" \"find-file\")").unwrap();
-        bridge.eval("(define-key \"C-x C-s\" \"save-buffer\")").unwrap();
-        bridge.eval("(define-key \"C-x b\" \"switch-to-buffer\")").unwrap();
-        // Query bindings under C-x
-        let result = bridge.eval("(which-key-for-prefix \"C-x\")").unwrap();
-        match result {
-            Value::Vector(v) => {
-                assert!(v.len() >= 3, "should have at least 3 C-x bindings");
-            }
-            _ => panic!("expected vector"),
+    take_editor_state();
+}
+#[test]
+fn query_replace_pattern() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"hello world hello\")")
+        .unwrap();
+    bridge
+        .eval("(query-replace-pattern \"hello\" \"hi\")")
+        .unwrap();
+    assert_eq!(
+        bridge.eval("(buffer-content)").unwrap(),
+        Value::string("hi world hi")
+    );
+    take_editor_state();
+}
+#[test]
+fn focus_mode_toggle() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
+    bridge.eval("(focus-mode-toggle)").unwrap();
+    assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(true));
+    bridge.eval("(focus-mode-toggle)").unwrap();
+    assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
+    take_editor_state();
+}
+// --- Smartparens ---
+
+#[test]
+fn smartparens_wrap_region() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge.eval("(buffer-set-content \"hello world\")").unwrap();
+    bridge.eval("(cursor-set! 0 5)").unwrap();
+    bridge.eval("(set-mark)").unwrap();
+    bridge.eval("(cursor-set! 0 0)").unwrap();
+    bridge.eval("(smartparens-wrap \"(\" \")\")").unwrap();
+    let content = bridge.eval("(buffer-content)").unwrap();
+    match content {
+        Value::String(s) => assert_eq!(*s, "(hello) world"),
+        _ => panic!("expected string"),
+    }
+    take_editor_state();
+}
+
+#[test]
+fn smartparens_insert_pair() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge.eval("(buffer-set-content \"hello\")").unwrap();
+    bridge.eval("(cursor-set! 0 5)").unwrap();
+    bridge
+        .eval("(smartparens-insert-pair \"[\" \"]\")")
+        .unwrap();
+    let content = bridge.eval("(buffer-content)").unwrap();
+    match content {
+        Value::String(s) => assert_eq!(*s, "hello[]"),
+        _ => panic!("expected string"),
+    }
+    take_editor_state();
+}
+
+#[test]
+fn smartparens_unwrap() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge.eval("(buffer-set-content \"(hello)\")").unwrap();
+    bridge.eval("(cursor-set! 0 3)").unwrap();
+    bridge.eval("(smartparens-unwrap)").unwrap();
+    let content = bridge.eval("(buffer-content)").unwrap();
+    match content {
+        Value::String(s) => assert_eq!(*s, "hello"),
+        _ => panic!("expected string"),
+    }
+    take_editor_state();
+}
+
+// --- Leader Key ---
+
+#[test]
+fn leader_set_key_and_bindings() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge.eval("(leader-set-key \"f\" \"find-file\")").unwrap();
+    bridge
+        .eval("(leader-set-key \"s\" \"save-buffer\")")
+        .unwrap();
+    let bindings = bridge.eval("(leader-bindings)").unwrap();
+    match bindings {
+        Value::Vector(v) => assert!(v.len() >= 2),
+        _ => panic!("expected vector"),
+    }
+    take_editor_state();
+}
+
+// --- Grep ---
+
+#[test]
+fn grep_finds_pattern() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    let result = bridge
+        .eval(r#"(grep "Cargo.toml" "/data/Workspace/serana-new")"#)
+        .unwrap();
+    match result {
+        Value::String(s) => assert!(s.contains("Cargo.toml")),
+        _ => panic!("expected string"),
+    }
+    take_editor_state();
+}
+
+// --- Org ---
+
+#[test]
+fn org_heading_level() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge
+        .eval("(buffer-set-content \"* Heading 1\n** Heading 2\n*** Heading 3\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 0)").unwrap();
+    assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(1));
+    bridge.eval("(cursor-set! 1 0)").unwrap();
+    assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(2));
+    bridge.eval("(cursor-set! 2 0)").unwrap();
+    assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(3));
+    take_editor_state();
+}
+
+#[test]
+fn org_todo_state() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge
+        .eval("(buffer-set-content \"* TODO Fix bug\n* DONE Write tests\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 0)").unwrap();
+    assert_eq!(
+        bridge.eval("(org-todo-state)").unwrap(),
+        Value::string("TODO")
+    );
+    bridge.eval("(cursor-set! 1 0)").unwrap();
+    assert_eq!(
+        bridge.eval("(org-todo-state)").unwrap(),
+        Value::string("DONE")
+    );
+    take_editor_state();
+}
+
+#[test]
+fn org_agenda_lists_todos() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge
+        .eval("(buffer-set-content \"* TODO A\n* DONE B\n* TODO C\")")
+        .unwrap();
+    let agenda = bridge.eval("(org-agenda-list)").unwrap();
+    match agenda {
+        Value::Vector(v) => assert_eq!(v.len(), 3),
+        _ => panic!("expected vector"),
+    }
+    take_editor_state();
+}
+
+// --- Session ---
+
+#[test]
+fn session_save_and_load() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+
+    bridge
+        .eval("(buffer-set-content \"test content\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 4)").unwrap();
+
+    let path = "/tmp/mora_test_session.mora";
+    bridge
+        .eval(&format!("(session-save \"{}\")", path))
+        .unwrap();
+
+    set_editor_state(EditorState::new());
+    let mut bridge2 = MoraLispBridge::new();
+    bridge2
+        .eval(&format!("(session-load \"{}\")", path))
+        .unwrap();
+
+    let content = bridge2.eval("(buffer-content)").unwrap();
+    match content {
+        Value::String(s) => assert_eq!(*s, "test content"),
+        _ => panic!("expected string"),
+    }
+    take_editor_state();
+}
+
+// --- Dabbrev ---
+
+#[test]
+fn dabbrev_expand_finds_match() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"hello_world hello_there hello_test\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 5)").unwrap();
+    match bridge.eval("(dabbrev-expand)").unwrap() {
+        Value::String(s) => {
+            assert!(!s.is_empty());
         }
-        take_editor_state();
+        _ => panic!("expected string"),
     }
-    #[test]
-    fn query_replace_pattern() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"hello world hello\")").unwrap();
-        bridge.eval("(query-replace-pattern \"hello\" \"hi\")").unwrap();
-        assert_eq!(
-            bridge.eval("(buffer-content)").unwrap(),
-            Value::string("hi world hi")
-        );
-        take_editor_state();
+    take_editor_state();
+}
+
+// --- Symbol Overlay ---
+
+#[test]
+fn symbol_overlay_highlight() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"foo bar foo baz foo\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 3)").unwrap();
+    match bridge.eval("(symbol-overlay-highlight)").unwrap() {
+        Value::Vector(v) => assert!(v.len() >= 3, "should find 3 foos"),
+        _ => panic!("expected vector"),
     }
-    #[test]
-    fn focus_mode_toggle() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
-        bridge.eval("(focus-mode-toggle)").unwrap();
-        assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(true));
-        bridge.eval("(focus-mode-toggle)").unwrap();
-        assert_eq!(bridge.eval("(focus-mode?)").unwrap(), Value::Bool(false));
-        take_editor_state();
+    bridge.eval("(symbol-overlay-remove)").unwrap();
+    take_editor_state();
+}
+// --- Dabbrev (integration) ---
+
+#[test]
+fn dabbrev_expand_cyclic() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"alpha\nalphabeta\nalphabetagamma\nalpha\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 3)").unwrap();
+    // First expand should find a match
+    let r1 = bridge.eval("(dabbrev-expand)").unwrap();
+    match &r1 {
+        Value::String(s) => assert!(!s.is_empty()),
+        _ => panic!("expected string"),
     }
-    // --- Smartparens ---
-
-    #[test]
-    fn smartparens_wrap_region() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        bridge.eval("(buffer-set-content \"hello world\")").unwrap();
-        bridge.eval("(cursor-set! 0 5)").unwrap();
-        bridge.eval("(set-mark)").unwrap();
-        bridge.eval("(cursor-set! 0 0)").unwrap();
-        bridge.eval("(smartparens-wrap \"(\" \")\")").unwrap();
-        let content = bridge.eval("(buffer-content)").unwrap();
-        match content {
-            Value::String(s) => assert_eq!(*s, "(hello) world"),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
+    // Second expand should cycle
+    let r2 = bridge.eval("(dabbrev-expand)").unwrap();
+    match &r2 {
+        Value::String(s) => assert!(!s.is_empty()),
+        _ => panic!("expected string"),
     }
+    take_editor_state();
+}
 
-    #[test]
-    fn smartparens_insert_pair() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
+// --- Comment ---
 
-        bridge.eval("(buffer-set-content \"hello\")").unwrap();
-        bridge.eval("(cursor-set! 0 5)").unwrap();
-        bridge.eval("(smartparens-insert-pair \"[\" \"]\")").unwrap();
-        let content = bridge.eval("(buffer-content)").unwrap();
-        match content {
-            Value::String(s) => assert_eq!(*s, "hello[]"),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
+#[test]
+fn comment_and_uncomment() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"hello\nworld\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 0)").unwrap();
+    bridge.eval("(set-mark)").unwrap();
+    bridge.eval("(cursor-set! 1 5)").unwrap();
+    bridge.eval("(comment-region)").unwrap();
+    match bridge.eval("(buffer-content)").unwrap() {
+        Value::String(s) => assert!(s.contains("; ")),
+        _ => panic!("expected string"),
     }
+    take_editor_state();
+}
 
-    #[test]
-    fn smartparens_unwrap() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
+// --- Org Combined ---
 
-        bridge.eval("(buffer-set-content \"(hello)\")").unwrap();
-        bridge.eval("(cursor-set! 0 3)").unwrap();
-        bridge.eval("(smartparens-unwrap)").unwrap();
-        let content = bridge.eval("(buffer-content)").unwrap();
-        match content {
-            Value::String(s) => assert_eq!(*s, "hello"),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
-    }
-
-    // --- Leader Key ---
-
-    #[test]
-    fn leader_set_key_and_bindings() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        bridge.eval("(leader-set-key \"f\" \"find-file\")").unwrap();
-        bridge.eval("(leader-set-key \"s\" \"save-buffer\")").unwrap();
-        let bindings = bridge.eval("(leader-bindings)").unwrap();
-        match bindings {
-            Value::Vector(v) => assert!(v.len() >= 2),
-            _ => panic!("expected vector"),
-        }
-        take_editor_state();
-    }
-
-    // --- Grep ---
-
-    #[test]
-    fn grep_finds_pattern() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        let result = bridge.eval(r#"(grep "Cargo.toml" "/data/Workspace/serana-new")"#).unwrap();
-        match result {
-            Value::String(s) => assert!(s.contains("Cargo.toml")),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
-    }
-
-    // --- Org ---
-
-    #[test]
-    fn org_heading_level() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        bridge.eval("(buffer-set-content \"* Heading 1\n** Heading 2\n*** Heading 3\")").unwrap();
-        bridge.eval("(cursor-set! 0 0)").unwrap();
-        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(1));
-        bridge.eval("(cursor-set! 1 0)").unwrap();
-        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(2));
-        bridge.eval("(cursor-set! 2 0)").unwrap();
-        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(3));
-        take_editor_state();
-    }
-
-    #[test]
-    fn org_todo_state() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        bridge.eval("(buffer-set-content \"* TODO Fix bug\n* DONE Write tests\")").unwrap();
-        bridge.eval("(cursor-set! 0 0)").unwrap();
-        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("TODO"));
-        bridge.eval("(cursor-set! 1 0)").unwrap();
-        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("DONE"));
-        take_editor_state();
-    }
-
-    #[test]
-    fn org_agenda_lists_todos() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        bridge.eval("(buffer-set-content \"* TODO A\n* DONE B\n* TODO C\")").unwrap();
-        let agenda = bridge.eval("(org-agenda-list)").unwrap();
-        match agenda {
-            Value::Vector(v) => assert_eq!(v.len(), 3),
-            _ => panic!("expected vector"),
-        }
-        take_editor_state();
-    }
-
-    // --- Session ---
-
-    #[test]
-    fn session_save_and_load() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-
-        bridge.eval("(buffer-set-content \"test content\")").unwrap();
-        bridge.eval("(cursor-set! 0 4)").unwrap();
-
-        let path = "/tmp/mora_test_session.mora";
-        bridge.eval(&format!("(session-save \"{}\")", path)).unwrap();
-
-        set_editor_state(EditorState::new());
-        let mut bridge2 = MoraLispBridge::new();
-        bridge2.eval(&format!("(session-load \"{}\")", path)).unwrap();
-
-        let content = bridge2.eval("(buffer-content)").unwrap();
-        match content {
-            Value::String(s) => assert_eq!(*s, "test content"),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
-    }
-
-    // --- Dabbrev ---
-
-    #[test]
-    fn dabbrev_expand_finds_match() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"hello_world hello_there hello_test\")").unwrap();
-        bridge.eval("(cursor-set! 0 5)").unwrap();
-        match bridge.eval("(dabbrev-expand)").unwrap() {
-            Value::String(s) => { assert!(!s.is_empty()); }
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
-    }
-
-    // --- Symbol Overlay ---
-
-    #[test]
-    fn symbol_overlay_highlight() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"foo bar foo baz foo\")").unwrap();
-        bridge.eval("(cursor-set! 0 3)").unwrap();
-        match bridge.eval("(symbol-overlay-highlight)").unwrap() {
-            Value::Vector(v) => assert!(v.len() >= 3, "should find 3 foos"),
-            _ => panic!("expected vector"),
-        }
-        bridge.eval("(symbol-overlay-remove)").unwrap();
-        take_editor_state();
-    }
-    // --- Dabbrev (integration) ---
-
-    #[test]
-    fn dabbrev_expand_cyclic() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"alpha\nalphabeta\nalphabetagamma\nalpha\")").unwrap();
-        bridge.eval("(cursor-set! 0 3)").unwrap();
-        // First expand should find a match
-        let r1 = bridge.eval("(dabbrev-expand)").unwrap();
-        match &r1 {
-            Value::String(s) => assert!(!s.is_empty()),
-            _ => panic!("expected string"),
-        }
-        // Second expand should cycle
-        let r2 = bridge.eval("(dabbrev-expand)").unwrap();
-        match &r2 {
-            Value::String(s) => assert!(!s.is_empty()),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
-    }
-
-    // --- Comment ---
-
-    #[test]
-    fn comment_and_uncomment() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"hello\nworld\")").unwrap();
-        bridge.eval("(cursor-set! 0 0)").unwrap();
-        bridge.eval("(set-mark)").unwrap();
-        bridge.eval("(cursor-set! 1 5)").unwrap();
-        bridge.eval("(comment-region)").unwrap();
-        match bridge.eval("(buffer-content)").unwrap() {
-            Value::String(s) => assert!(s.contains("; ")),
-            _ => panic!("expected string"),
-        }
-        take_editor_state();
-    }
-
-    // --- Org Combined ---
-
-    #[test]
-    fn org_heading_and_todo() {
-        set_editor_state(EditorState::new());
-        let mut bridge = MoraLispBridge::new();
-        bridge.eval("(buffer-set-content \"* TODO Fix\n** DONE Test\n*** Normal\")").unwrap();
-        bridge.eval("(cursor-set! 0 0)").unwrap();
-        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(1));
-        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("TODO"));
-        bridge.eval("(cursor-set! 1 0)").unwrap();
-        assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(2));
-        assert_eq!(bridge.eval("(org-todo-state)").unwrap(), Value::string("DONE"));
-        take_editor_state();
-    }
+#[test]
+fn org_heading_and_todo() {
+    set_editor_state(EditorState::new());
+    let mut bridge = MoraLispBridge::new();
+    bridge
+        .eval("(buffer-set-content \"* TODO Fix\n** DONE Test\n*** Normal\")")
+        .unwrap();
+    bridge.eval("(cursor-set! 0 0)").unwrap();
+    assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(1));
+    assert_eq!(
+        bridge.eval("(org-todo-state)").unwrap(),
+        Value::string("TODO")
+    );
+    bridge.eval("(cursor-set! 1 0)").unwrap();
+    assert_eq!(bridge.eval("(org-heading-level)").unwrap(), Value::Int(2));
+    assert_eq!(
+        bridge.eval("(org-todo-state)").unwrap(),
+        Value::string("DONE")
+    );
+    take_editor_state();
+}

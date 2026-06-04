@@ -191,14 +191,6 @@ impl KeyAction {
     }
 }
 
-fn ctrl_char(c: char) -> (MoraKeyModifiers, MoraKeyCode) {
-    (MoraKeyModifiers::CTRL, MoraKeyCode::Char(c))
-}
-
-fn alt_char(c: char) -> (MoraKeyModifiers, MoraKeyCode) {
-    (MoraKeyModifiers::ALT, MoraKeyCode::Char(c))
-}
-
 pub fn normal_key(key: MoraKeyEvent) -> KeyAction {
     match (key.modifiers, key.code) {
         (_, MoraKeyCode::Char('i')) => KeyAction::SetMode(EditorMode::Insert),

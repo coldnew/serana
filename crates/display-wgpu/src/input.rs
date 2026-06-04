@@ -1,6 +1,6 @@
-use display_protocol::{InputEvent, KeyEvent, KeyCode, KeyModifiers, MouseEventKind};
+use display_protocol::{InputEvent, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
-use winit::keyboard::{Key, NamedKey, ModifiersState};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 
 /// Convert a winit `WindowEvent` into a display-protocol `InputEvent`.
 ///
@@ -21,7 +21,9 @@ pub fn winit_to_input_event(event: &WindowEvent, modifiers: ModifiersState) -> O
                 None
             }
         }
-        WindowEvent::MouseInput { state, button: _, .. } => {
+        WindowEvent::MouseInput {
+            state, button: _, ..
+        } => {
             let kind = match state {
                 ElementState::Pressed => MouseEventKind::Press,
                 ElementState::Released => MouseEventKind::Release,
@@ -34,14 +36,12 @@ pub fn winit_to_input_event(event: &WindowEvent, modifiers: ModifiersState) -> O
                 modifiers: proto_mods,
             })
         }
-        WindowEvent::CursorMoved { position, .. } => {
-            Some(InputEvent::Mouse {
-                x: position.x as u16,
-                y: position.y as u16,
-                kind: MouseEventKind::Drag,
-                modifiers: proto_mods,
-            })
-        }
+        WindowEvent::CursorMoved { position, .. } => Some(InputEvent::Mouse {
+            x: position.x as u16,
+            y: position.y as u16,
+            kind: MouseEventKind::Drag,
+            modifiers: proto_mods,
+        }),
         WindowEvent::MouseWheel { delta, .. } => {
             let (_scroll_x, scroll_y) = match delta {
                 MouseScrollDelta::LineDelta(dx, dy) => (*dx as f64, *dy as f64),
@@ -61,12 +61,10 @@ pub fn winit_to_input_event(event: &WindowEvent, modifiers: ModifiersState) -> O
                 modifiers: proto_mods,
             })
         }
-        WindowEvent::Resized(size) => {
-            Some(InputEvent::Resize {
-                width: size.width as u16,
-                height: size.height as u16,
-            })
-        }
+        WindowEvent::Resized(size) => Some(InputEvent::Resize {
+            width: size.width as u16,
+            height: size.height as u16,
+        }),
         WindowEvent::Focused(focused) => {
             if *focused {
                 Some(InputEvent::FocusGained)

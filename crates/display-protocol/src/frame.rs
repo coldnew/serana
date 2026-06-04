@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::types::Style;
+use serde::{Deserialize, Serialize};
 
 /// A single cell in the character grid
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

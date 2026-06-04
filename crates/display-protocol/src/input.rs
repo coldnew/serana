@@ -69,9 +69,12 @@ impl KeyModifiers {
     }
 
     pub fn contains(&self, other: &Self) -> bool {
-        (if self.ctrl { 1 } else { 0 } | if other.ctrl { 1 } else { 0 }) == (if self.ctrl { 1 } else { 0 })
-            && (if self.alt { 1 } else { 0 } | if other.alt { 1 } else { 0 }) == (if self.alt { 1 } else { 0 })
-            && (if self.shift { 1 } else { 0 } | if other.shift { 1 } else { 0 }) == (if self.shift { 1 } else { 0 })
+        (if self.ctrl { 1 } else { 0 } | if other.ctrl { 1 } else { 0 })
+            == (if self.ctrl { 1 } else { 0 })
+            && (if self.alt { 1 } else { 0 } | if other.alt { 1 } else { 0 })
+                == (if self.alt { 1 } else { 0 })
+            && (if self.shift { 1 } else { 0 } | if other.shift { 1 } else { 0 })
+                == (if self.shift { 1 } else { 0 })
     }
 }
 

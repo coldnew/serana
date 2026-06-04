@@ -21,7 +21,7 @@ pub use compression::{
     CompactionAction, CompactionMethod, CompactionResult, CompactionStats, CompressionConfig,
     CompressionDecision, CompressionThresholds, ToolTokenDetail,
 };
-pub use config::{Config, LegacyProviderConfig, LlmConfig, ProviderConfig};
+pub use config::{Config, LegacyProviderConfig, LlmConfig, ProviderConfig, RetryConfig};
 pub use context::Context;
 pub use interruptible::{CancelToken, InterruptibleApiCall};
 pub use iteration_budget::{

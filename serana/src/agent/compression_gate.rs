@@ -85,6 +85,7 @@ mod tests {
                 preflight: 0.5,
                 gateway: 1.0,
             },
+            ..Default::default()
         });
         let gate = CompressionGate::new(&compressor, &MockLlm, None);
 
@@ -105,6 +106,7 @@ mod tests {
                 preflight: 0.0,
                 gateway: 0.0,
             },
+            ..Default::default()
         });
         let gate = CompressionGate::new(&compressor, &MockLlm, None);
         let messages = vec![

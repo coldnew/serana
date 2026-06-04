@@ -1,5 +1,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent as CrosstermKeyEvent, KeyModifiers};
-use display_protocol::{InputEvent, KeyEvent, KeyCode as ProtoKeyCode, KeyModifiers as ProtoModifiers, MouseEventKind};
+use display_protocol::{
+    InputEvent, KeyCode as ProtoKeyCode, KeyEvent, KeyModifiers as ProtoModifiers, MouseEventKind,
+};
 use std::time::Duration;
 
 /// Poll for terminal input with timeout. Returns display-protocol InputEvent.
@@ -10,7 +12,10 @@ pub fn poll_input(timeout_ms: u64) -> Option<InputEvent> {
                 let proto_key = crossterm_to_key_event(key);
                 Some(InputEvent::Key(proto_key))
             }
-            Event::Resize(w, h) => Some(InputEvent::Resize { width: w, height: h }),
+            Event::Resize(w, h) => Some(InputEvent::Resize {
+                width: w,
+                height: h,
+            }),
             Event::Mouse(mouse) => {
                 let kind = match mouse.kind {
                     event::MouseEventKind::Down(_) => MouseEventKind::Press,
@@ -30,7 +35,6 @@ pub fn poll_input(timeout_ms: u64) -> Option<InputEvent> {
             Event::FocusGained => Some(InputEvent::FocusGained),
             Event::FocusLost => Some(InputEvent::FocusLost),
             Event::Paste(text) => Some(InputEvent::Paste(text)),
-            _ => None,
         }
     } else {
         None

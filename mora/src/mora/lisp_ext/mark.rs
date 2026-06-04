@@ -1,19 +1,62 @@
-use crate::lisp::types::Value;
 use super::editor_state::{with_editor_state, with_editor_state_mut};
-use super::helpers::{extract_string, extract_int};
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("set-mark", Value::Native(prim_set_mark), "Set the mark at the current cursor position.");
-    ns.intern_private_with_doc("mark-set!", Value::Native(prim_set_mark), "Set the mark at the current cursor position.");
-    ns.intern_with_doc("goto-mark", Value::Native(prim_goto_mark), "Move the cursor to the mark position.");
-    ns.intern_private_with_doc("mark-goto", Value::Native(prim_goto_mark), "Move the cursor to the mark position.");
-    ns.intern_with_doc("pop-mark", Value::Native(prim_pop_mark), "Pop the mark ring and move the cursor to the previous mark.");
-    ns.intern_private_with_doc("mark-pop!", Value::Native(prim_pop_mark), "Pop the mark ring and move the cursor to the previous mark.");
-    ns.intern_with_doc("mark-active?", Value::Native(prim_mark_active), "Return t if the mark is currently active.");
-    ns.intern_with_doc("mark-position", Value::Native(prim_mark_position), "Return the current mark position as [row col], or nil.");
-    ns.intern_private_with_doc("mark-pos", Value::Native(prim_mark_position), "Return the current mark position as [row col], or nil.");
-    ns.intern_with_doc("deactivate-mark", Value::Native(prim_deactivate_mark), "Deactivate the mark.");
-    ns.intern_private_with_doc("deactivate-mark!", Value::Native(prim_deactivate_mark), "Deactivate the mark.");
+    ns.intern_with_doc(
+        "set-mark",
+        Value::Native(prim_set_mark),
+        "Set the mark at the current cursor position.",
+    );
+    ns.intern_private_with_doc(
+        "mark-set!",
+        Value::Native(prim_set_mark),
+        "Set the mark at the current cursor position.",
+    );
+    ns.intern_with_doc(
+        "goto-mark",
+        Value::Native(prim_goto_mark),
+        "Move the cursor to the mark position.",
+    );
+    ns.intern_private_with_doc(
+        "mark-goto",
+        Value::Native(prim_goto_mark),
+        "Move the cursor to the mark position.",
+    );
+    ns.intern_with_doc(
+        "pop-mark",
+        Value::Native(prim_pop_mark),
+        "Pop the mark ring and move the cursor to the previous mark.",
+    );
+    ns.intern_private_with_doc(
+        "mark-pop!",
+        Value::Native(prim_pop_mark),
+        "Pop the mark ring and move the cursor to the previous mark.",
+    );
+    ns.intern_with_doc(
+        "mark-active?",
+        Value::Native(prim_mark_active),
+        "Return t if the mark is currently active.",
+    );
+    ns.intern_with_doc(
+        "mark-position",
+        Value::Native(prim_mark_position),
+        "Return the current mark position as [row col], or nil.",
+    );
+    ns.intern_private_with_doc(
+        "mark-pos",
+        Value::Native(prim_mark_position),
+        "Return the current mark position as [row col], or nil.",
+    );
+    ns.intern_with_doc(
+        "deactivate-mark",
+        Value::Native(prim_deactivate_mark),
+        "Deactivate the mark.",
+    );
+    ns.intern_private_with_doc(
+        "deactivate-mark!",
+        Value::Native(prim_deactivate_mark),
+        "Deactivate the mark.",
+    );
 }
 
 /// (set-mark) → set mark at current cursor position
@@ -65,14 +108,12 @@ fn prim_mark_active(_args: &[Value]) -> Result<Value, String> {
 }
 /// (mark-position) → get current mark position [row col] or nil
 fn prim_mark_position(_args: &[Value]) -> Result<Value, String> {
-    with_editor_state(|state| {
-        match state.mark_pos {
-            Some((row, col)) => Ok(Value::vector(vec![
-                Value::Int(row as i64),
-                Value::Int(col as i64),
-            ])),
-            None => Ok(Value::Nil),
-        }
+    with_editor_state(|state| match state.mark_pos {
+        Some((row, col)) => Ok(Value::vector(vec![
+            Value::Int(row as i64),
+            Value::Int(col as i64),
+        ])),
+        None => Ok(Value::Nil),
     })
 }
 /// (deactivate-mark) → deactivate the mark

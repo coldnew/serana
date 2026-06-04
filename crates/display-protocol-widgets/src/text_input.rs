@@ -1,5 +1,5 @@
-use display_protocol::{InputNode, Style, UiNode};
 use crate::palette;
+use display_protocol::{InputNode, Style, UiNode};
 
 /// A single-line text input field.
 ///
@@ -32,10 +32,22 @@ impl TextInput {
         }
     }
 
-    pub fn placeholder(mut self, p: impl Into<String>) -> Self { self.placeholder = p.into(); self }
-    pub fn cursor_pos(mut self, pos: u16) -> Self { self.cursor = pos; self }
-    pub fn width(mut self, w: u16) -> Self { self.width = Some(w); self }
-    pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
+    pub fn placeholder(mut self, p: impl Into<String>) -> Self {
+        self.placeholder = p.into();
+        self
+    }
+    pub fn cursor_pos(mut self, pos: u16) -> Self {
+        self.cursor = pos;
+        self
+    }
+    pub fn width(mut self, w: u16) -> Self {
+        self.width = Some(w);
+        self
+    }
+    pub fn focused(mut self, f: bool) -> Self {
+        self.focused = f;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let cursor_style = if self.focused {
@@ -57,5 +69,7 @@ impl TextInput {
 }
 
 impl From<TextInput> for UiNode {
-    fn from(t: TextInput) -> Self { t.build() }
+    fn from(t: TextInput) -> Self {
+        t.build()
+    }
 }

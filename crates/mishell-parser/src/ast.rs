@@ -108,10 +108,7 @@ pub enum WordPart {
     /// Variable expansion: `$VAR`
     Variable(String),
     /// Parameter expansion: `${var:-default}`, `${#var}`, etc.
-    ParamExpansion {
-        name: String,
-        op: ParamOp,
-    },
+    ParamExpansion { name: String, op: ParamOp },
     /// Command substitution: `$(cmd)` or `` `cmd` ``
     CommandSub(CommandBody),
     /// Arithmetic expansion: `$((expr))`

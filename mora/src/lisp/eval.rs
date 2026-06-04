@@ -136,8 +136,8 @@ pub struct Evaluator {
     pub ns: NamespaceRegistry,
     pub thread_pool: ThreadPool,
     pub gc_heap: Arc<GcHeap>,
-    collector: Option<CollectorHandle>,
-    macroexpand_cache: HashMap<Symbol, Value>,
+    _collector: Option<CollectorHandle>,
+    _macroexpand_cache: HashMap<Symbol, Value>,
     form_cache: HashMap<u64, Vec<Value>>,
     pub compiled_fns: HashMap<String, crate::lisp::bytecode::CompiledFunction>,
     call_stack: Vec<String>,
@@ -171,8 +171,8 @@ impl Evaluator {
             ns: NamespaceRegistry::new(),
             thread_pool: ThreadPool::new(4),
             gc_heap,
-            collector: Some(collector),
-            macroexpand_cache: HashMap::new(),
+            _collector: Some(collector),
+            _macroexpand_cache: HashMap::new(),
             form_cache: HashMap::new(),
             compiled_fns: HashMap::new(),
             call_stack: Vec::new(),
@@ -231,7 +231,7 @@ impl Evaluator {
         args: &[Value],
         closure: &Arc<Mutex<HashMap<Symbol, Value>>>,
     ) -> Result<Value, EvalError> {
-        use crate::lisp::bytecode::{CompiledFunction, Op};
+        use crate::lisp::bytecode::Op;
 
         let compiled = self
             .compiled_fns
@@ -264,7 +264,7 @@ impl Evaluator {
         // Bind closure vars to locals (after params)
         let closure_env = closure.lock();
         let mut next_local = compiled.params.len() as u16;
-        for (sym, val) in closure_env.iter() {
+        for (_sym, val) in closure_env.iter() {
             if (next_local as usize) < locals.len() {
                 locals[next_local as usize] = val.clone();
                 next_local += 1;
@@ -1193,7 +1193,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_defmacro(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+    fn eval_defmacro(&mut self, _env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.len() < 3 {
             return Err(EvalError::SpecialForm(
                 "defmacro requires at least 3 arguments".to_string(),
@@ -1386,7 +1386,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_dot(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+    fn eval_dot(&mut self, _env: Env, args: &[Value]) -> Result<Value, EvalError> {
         // Interop: (. object method args...)
         if args.len() < 2 {
             return Err(EvalError::SpecialForm(
@@ -1897,7 +1897,7 @@ impl Evaluator {
         }
     }
 
-    fn eval_future(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+    fn eval_future(&mut self, _env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
             return Err(EvalError::SpecialForm(
                 "future requires at least 1 argument".to_string(),
@@ -1957,13 +1957,17 @@ impl Evaluator {
                         Ok(val) => result = val,
                         Err(e) => {
                             *f_clone.result.lock() = Some(Err(e));
-                            f_clone.done.store(true, std::sync::atomic::Ordering::SeqCst);
+                            f_clone
+                                .done
+                                .store(true, std::sync::atomic::Ordering::SeqCst);
                             return;
                         }
                     }
                 }
                 *f_clone.result.lock() = Some(Ok(result));
-                f_clone.done.store(true, std::sync::atomic::Ordering::SeqCst);
+                f_clone
+                    .done
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
             });
         }
         Ok(future)
@@ -2102,7 +2106,7 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn eval_thread(&mut self, env: Env, args: &[Value]) -> Result<Value, EvalError> {
+    fn eval_thread(&mut self, _env: Env, args: &[Value]) -> Result<Value, EvalError> {
         if args.is_empty() {
             return Err(EvalError::SpecialForm(
                 "thread requires at least 1 argument".to_string(),
@@ -2127,7 +2131,7 @@ impl Evaluator {
         }))
     }
 
-    fn eval_promise(&mut self, env: Env, _args: &[Value]) -> Result<Value, EvalError> {
+    fn eval_promise(&mut self, _env: Env, _args: &[Value]) -> Result<Value, EvalError> {
         Ok(Value::promise())
     }
 

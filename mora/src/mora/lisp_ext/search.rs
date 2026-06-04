@@ -1,11 +1,23 @@
-use crate::lisp::types::Value;
 use super::editor_state::*;
-use super::helpers::{extract_string, extract_int};
+use super::helpers::extract_string;
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("search-forward", Value::Native(prim_search_forward), "Search forward from point for PATTERN. Move cursor and return position.");
-    ns.intern_with_doc("search-backward", Value::Native(prim_search_backward), "Search backward from point for PATTERN. Move cursor and return position.");
-    ns.intern_with_doc("looking-at", Value::Native(prim_looking_at), "Return t if text after point matches PATTERN.");
+    ns.intern_with_doc(
+        "search-forward",
+        Value::Native(prim_search_forward),
+        "Search forward from point for PATTERN. Move cursor and return position.",
+    );
+    ns.intern_with_doc(
+        "search-backward",
+        Value::Native(prim_search_backward),
+        "Search backward from point for PATTERN. Move cursor and return position.",
+    );
+    ns.intern_with_doc(
+        "looking-at",
+        Value::Native(prim_looking_at),
+        "Return t if text after point matches PATTERN.",
+    );
 }
 
 /// (search-forward "pattern") → search forward for pattern, move cursor, return position or nil
@@ -13,14 +25,19 @@ fn prim_search_forward(args: &[Value]) -> Result<Value, String> {
     let pattern = extract_string(args, 0)?;
     with_editor_state_mut(|state| {
         // Search from current cursor position forward
-        let start_col_offset = if state.cursor_col < state.lines.get(state.cursor_row).map_or(0, |l| l.len()) {
-            state.cursor_col + 1
-        } else {
-            0
-        };
+        let start_col_offset =
+            if state.cursor_col < state.lines.get(state.cursor_row).map_or(0, |l| l.len()) {
+                state.cursor_col + 1
+            } else {
+                0
+            };
         for row in state.cursor_row..state.lines.len() {
             let line = &state.lines[row];
-            let search_from = if row == state.cursor_row { start_col_offset } else { 0 };
+            let search_from = if row == state.cursor_row {
+                start_col_offset
+            } else {
+                0
+            };
             if search_from < line.len() {
                 if let Some(pos) = line[search_from..].find(&pattern) {
                     let col = search_from + pos;

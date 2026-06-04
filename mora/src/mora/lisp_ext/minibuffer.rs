@@ -1,11 +1,22 @@
+use super::helpers::extract_string;
 use crate::lisp::types::Value;
-use super::editor_state::*;
-use super::helpers::{extract_string, extract_int};
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("read-string", Value::Native(prim_read_string), "Read a string from the minibuffer, prompting with PROMPT.");
-    ns.intern_with_doc("completing-read", Value::Native(prim_completing_read), "Read a string from the minibuffer with completion.");
-    ns.intern_with_doc("y-or-n?", Value::Native(prim_y_or_n), "Ask the user a yes-or-no question with PROMPT.");
+    ns.intern_with_doc(
+        "read-string",
+        Value::Native(prim_read_string),
+        "Read a string from the minibuffer, prompting with PROMPT.",
+    );
+    ns.intern_with_doc(
+        "completing-read",
+        Value::Native(prim_completing_read),
+        "Read a string from the minibuffer with completion.",
+    );
+    ns.intern_with_doc(
+        "y-or-n?",
+        Value::Native(prim_y_or_n),
+        "Ask the user a yes-or-no question with PROMPT.",
+    );
 }
 
 /// (read-string "prompt" ["default"]) → read a string from the minibuffer

@@ -171,8 +171,8 @@ pub fn create_minor_mode(name: &str) -> Option<Box<dyn MinorMode>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::display::event::{MoraKeyCode, MoraKeyModifiers};
+    use super::*;
 
     #[test]
     fn test_registry_create() {
@@ -328,7 +328,7 @@ mod tests {
         registry.enable_by_name("auto-indent");
         assert_eq!(registry.on_insert_newline(), Some(KeyAction::IndentLine));
 
-        let mut registry2 = MinorModeRegistry::new();
+        let registry2 = MinorModeRegistry::new();
         assert_eq!(registry2.on_insert_newline(), None);
     }
 }

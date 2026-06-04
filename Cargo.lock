@@ -911,6 +911,7 @@ name = "display-protocol-widgets"
 version = "0.1.0"
 dependencies = [
  "display-protocol",
+ "serde",
 ]
 
 [[package]]
@@ -919,6 +920,7 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "display-protocol",
+ "display-protocol-widgets",
  "ratatui",
 ]
 

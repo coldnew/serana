@@ -133,8 +133,8 @@ impl Motion {
                 (row, first_non_blank(buffer.line(row)))
             }
             Motion::ScreenLineFirstNonBlank(n) => {
-                let row = (cursor.row + n.saturating_sub(1))
-                    .min(buffer.line_count().saturating_sub(1));
+                let row =
+                    (cursor.row + n.saturating_sub(1)).min(buffer.line_count().saturating_sub(1));
                 (row, first_non_blank(buffer.line(row)))
             }
             Motion::PageDown(n) => {

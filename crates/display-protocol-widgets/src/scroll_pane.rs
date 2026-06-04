@@ -57,8 +57,14 @@ impl ScrollPane {
         self
     }
 
-    pub fn scroll_x(mut self, x: u32) -> Self { self.scroll_x = x; self }
-    pub fn scroll_y(mut self, y: u32) -> Self { self.scroll_y = y; self }
+    pub fn scroll_x(mut self, x: u32) -> Self {
+        self.scroll_x = x;
+        self
+    }
+    pub fn scroll_y(mut self, y: u32) -> Self {
+        self.scroll_y = y;
+        self
+    }
 
     pub fn content_size(mut self, width: Option<u32>, height: Option<u32>) -> Self {
         self.content_width = width;
@@ -66,7 +72,10 @@ impl ScrollPane {
         self
     }
 
-    pub fn virtual_scroll(mut self, v: bool) -> Self { self.virtual_scroll = v; self }
+    pub fn virtual_scroll(mut self, v: bool) -> Self {
+        self.virtual_scroll = v;
+        self
+    }
 
     pub fn scroll_policy(mut self, policy: ScrollPolicy) -> Self {
         self.scroll_policy = policy;
@@ -89,5 +98,7 @@ impl ScrollPane {
 }
 
 impl From<ScrollPane> for UiNode {
-    fn from(s: ScrollPane) -> Self { s.build() }
+    fn from(s: ScrollPane) -> Self {
+        s.build()
+    }
 }

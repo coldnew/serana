@@ -10,6 +10,7 @@ pub struct AgentRuntimeConfig {
     pub skills: Vec<String>,
     pub compressor: ContextCompressor,
     pub tool_profile: ToolProfile,
+    pub retry_config: crate::core::RetryConfig,
 }
 
 #[derive(Clone)]
@@ -24,13 +25,13 @@ impl AgentRuntimeConfig {
     pub fn new(workspace: PathBuf) -> Self {
         Self::hermes(workspace)
     }
-
     pub fn hermes(workspace: PathBuf) -> Self {
         Self {
             workspace,
             skills: Vec::new(),
             compressor: ContextCompressor::with_defaults(),
             tool_profile: ToolProfile::Hermes,
+            retry_config: crate::core::RetryConfig::default(),
         }
     }
 
@@ -46,6 +47,11 @@ impl AgentRuntimeConfig {
 
     pub fn with_tool_profile(mut self, profile: ToolProfile) -> Self {
         self.tool_profile = profile;
+        self
+    }
+
+    pub fn with_retry_config(mut self, config: crate::core::RetryConfig) -> Self {
+        self.retry_config = config;
         self
     }
 

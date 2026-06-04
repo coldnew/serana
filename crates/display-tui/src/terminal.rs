@@ -5,7 +5,7 @@ use crossterm::{
 };
 use display_protocol::buffer::ScreenBuffer;
 use display_protocol::render::{render_commands_to_buffer, RenderCommandArray};
-use display_protocol::{CursorStyle, FrameUpdate, Grid, InputEvent};
+use display_protocol::{CursorStyle, FrameUpdate, InputEvent};
 use ratatui::{backend::CrosstermBackend, buffer::Buffer as RatatuiBuffer, layout::Rect, Terminal};
 use std::io;
 
@@ -93,7 +93,7 @@ impl TuiTerminal {
             for y in 0..grid.height.min(area.height) {
                 for x in 0..grid.width.min(area.width) {
                     let cell = grid.get(x, y);
-                    let ratatui_cell = buf.get_mut(x, y);
+                    let ratatui_cell = &mut buf[(x, y)];
                     ratatui_cell.set_symbol(&cell.ch.to_string());
                     ratatui_cell.set_style(crate::conversions::style_to_ratatui(cell.style));
                 }
@@ -182,19 +182,4 @@ pub fn install_panic_hook() {
         let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Show);
         default_hook(info);
     }));
-}
-
-/// Convert a display-protocol Grid to a ratatui Buffer (for advanced use cases).
-pub fn grid_to_ratatui_buf(grid: &Grid) -> RatatuiBuffer {
-    let area = Rect::new(0, 0, grid.width, grid.height);
-    let mut buf = RatatuiBuffer::empty(area);
-    for y in 0..grid.height {
-        for x in 0..grid.width {
-            let cell = grid.get(x, y);
-            let ratatui_cell = buf.get_mut(x, y);
-            ratatui_cell.set_symbol(&cell.ch.to_string());
-            ratatui_cell.set_style(crate::conversions::style_to_ratatui(cell.style));
-        }
-    }
-    buf
 }

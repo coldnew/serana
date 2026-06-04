@@ -33,10 +33,23 @@ impl Popup {
         }
     }
 
-    pub fn at(mut self, x: u16, y: u16) -> Self { self.x = x; self.y = y; self }
-    pub fn x(mut self, x: u16) -> Self { self.x = x; self }
-    pub fn y(mut self, y: u16) -> Self { self.y = y; self }
-    pub fn z_index(mut self, z: i32) -> Self { self.z_index = z; self }
+    pub fn at(mut self, x: u16, y: u16) -> Self {
+        self.x = x;
+        self.y = y;
+        self
+    }
+    pub fn x(mut self, x: u16) -> Self {
+        self.x = x;
+        self
+    }
+    pub fn y(mut self, y: u16) -> Self {
+        self.y = y;
+        self
+    }
+    pub fn z_index(mut self, z: i32) -> Self {
+        self.z_index = z;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         UiNode::Overlay(OverlayNode {
@@ -50,5 +63,7 @@ impl Popup {
 }
 
 impl From<Popup> for UiNode {
-    fn from(p: Popup) -> Self { p.build() }
+    fn from(p: Popup) -> Self {
+        p.build()
+    }
 }

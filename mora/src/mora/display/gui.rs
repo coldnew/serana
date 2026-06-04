@@ -1,5 +1,4 @@
-use super::backend::{DisplayBackend, InputEvent, MoraRect, CellBuffer};
-use super::event::MoraKeyEvent;
+use super::backend::{CellBuffer, DisplayBackend, InputEvent};
 use super::style::MoraStyle;
 
 pub struct GuiBackend {
@@ -22,10 +21,8 @@ impl GuiBackend {
 
 impl DisplayBackend for GuiBackend {
     fn init(&mut self) -> Result<(), String> {
-        self.cells = vec![
-            vec![(' ', MoraStyle::default()); self.width as usize];
-            self.height as usize
-        ];
+        self.cells =
+            vec![vec![(' ', MoraStyle::default()); self.width as usize]; self.height as usize];
         Ok(())
     }
 
@@ -38,10 +35,8 @@ impl DisplayBackend for GuiBackend {
     }
 
     fn clear(&mut self) {
-        self.cells = vec![
-            vec![(' ', MoraStyle::default()); self.width as usize];
-            self.height as usize
-        ];
+        self.cells =
+            vec![vec![(' ', MoraStyle::default()); self.width as usize]; self.height as usize];
     }
 
     fn flush(&mut self) -> Result<(), String> {

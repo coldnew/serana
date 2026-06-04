@@ -4,13 +4,11 @@
 /// The coldnew-night theme is the default.
 ///
 /// Colors map to display-protocol's Color type (RGB, 8-bit per channel).
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::lisp::types::Value;
 
-use super::editor_state::{with_editor_state, with_editor_state_mut};
 use super::helpers::extract_string;
 
 // ── Color type ───────────────────────────────────────────────
@@ -40,7 +38,11 @@ impl ThemeColor {
     }
 
     pub fn to_display_protocol(&self) -> display_protocol::Color {
-        display_protocol::Color { r: self.r, g: self.g, b: self.b }
+        display_protocol::Color {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+        }
     }
 
     pub fn to_hex(&self) -> String {
@@ -60,7 +62,10 @@ pub struct Theme {
 
 impl Theme {
     pub fn get(&self, face: &str) -> ThemeColor {
-        self.faces.get(face).copied().unwrap_or(ThemeColor::new(200, 200, 200))
+        self.faces
+            .get(face)
+            .copied()
+            .unwrap_or(ThemeColor::new(200, 200, 200))
     }
 
     pub fn set(&mut self, face: &str, color: ThemeColor) {
@@ -106,7 +111,10 @@ fn coldnew_night() -> Theme {
     faces.insert("builtin".into(), ThemeColor::new(0xcc, 0xaa, 0xff));
     faces.insert("constant".into(), ThemeColor::new(0xcc, 0xaa, 0xff));
     faces.insert("comment".into(), ThemeColor::new(0x99, 0xaa, 0xcc));
-    faces.insert("comment-delimiter".into(), ThemeColor::new(0x5f, 0x5f, 0x5f));
+    faces.insert(
+        "comment-delimiter".into(),
+        ThemeColor::new(0x5f, 0x5f, 0x5f),
+    );
     faces.insert("doc".into(), ThemeColor::new(0x97, 0xab, 0xc6));
     faces.insert("function-name".into(), ThemeColor::new(0xaa, 0xcc, 0xff));
     faces.insert("keyword".into(), ThemeColor::new(0xaa, 0xff, 0xaa));
@@ -153,8 +161,14 @@ fn coldnew_night() -> Theme {
     // Modeline
     faces.insert("modeline-fg".into(), ThemeColor::new(0xc6, 0xcc, 0xcc));
     faces.insert("modeline-bg".into(), ThemeColor::new(0x40, 0x42, 0x54));
-    faces.insert("modeline-inactive-fg".into(), ThemeColor::new(0x99, 0x99, 0x99));
-    faces.insert("modeline-inactive-bg".into(), ThemeColor::new(0x29, 0x29, 0x29));
+    faces.insert(
+        "modeline-inactive-fg".into(),
+        ThemeColor::new(0x99, 0x99, 0x99),
+    );
+    faces.insert(
+        "modeline-inactive-bg".into(),
+        ThemeColor::new(0x29, 0x29, 0x29),
+    );
 
     // Status/echo area
     faces.insert("echo-fg".into(), ThemeColor::new(0x00, 0xc8, 0xc8));
@@ -171,7 +185,10 @@ fn coldnew_night() -> Theme {
     faces.insert("menu-selected-fg".into(), ThemeColor::new(0xff, 0xff, 0xff));
     faces.insert("menu-selected-bg".into(), ThemeColor::new(0x3b, 0x3f, 0x41));
     faces.insert("line-number".into(), ThemeColor::new(0x5f, 0x5f, 0x5f));
-    faces.insert("line-number-active".into(), ThemeColor::new(0x99, 0x99, 0x99));
+    faces.insert(
+        "line-number-active".into(),
+        ThemeColor::new(0x99, 0x99, 0x99),
+    );
     faces.insert("fringe".into(), ThemeColor::new(0x20, 0x20, 0x20));
     faces.insert("scrollbar".into(), ThemeColor::new(0x29, 0x29, 0x29));
     faces.insert("tab-active".into(), ThemeColor::new(0x3b, 0x3f, 0x41));
@@ -187,7 +204,10 @@ fn coldnew_night() -> Theme {
     faces.insert("isearch".into(), ThemeColor::new(0xca, 0xe6, 0x82));
     faces.insert("lazy-highlight".into(), ThemeColor::new(0x3b, 0x3f, 0x41));
 
-    Theme { name: "night-coldnew".into(), faces }
+    Theme {
+        name: "night-coldnew".into(),
+        faces,
+    }
 }
 
 // ── Global theme registry ────────────────────────────────────
@@ -242,7 +262,9 @@ fn prim_theme_names(_args: &[Value]) -> Result<Value, String> {
     THEME_REGISTRY.with(|reg| {
         let mut names: Vec<String> = reg.borrow().keys().cloned().collect();
         names.sort();
-        Ok(Value::vector(names.into_iter().map(Value::string).collect()))
+        Ok(Value::vector(
+            names.into_iter().map(Value::string).collect(),
+        ))
     })
 }
 
@@ -257,8 +279,8 @@ fn prim_theme_get(args: &[Value]) -> Result<Value, String> {
 fn prim_theme_set_face(args: &[Value]) -> Result<Value, String> {
     let face = extract_string(args, 0)?;
     let color_str = extract_string(args, 1)?;
-    let color = ThemeColor::from_hex(&color_str)
-        .ok_or_else(|| format!("invalid color: {}", color_str))?;
+    let color =
+        ThemeColor::from_hex(&color_str).ok_or_else(|| format!("invalid color: {}", color_str))?;
 
     ACTIVE_THEME.with(|name| {
         THEME_REGISTRY.with(|reg| {
@@ -295,7 +317,10 @@ fn prim_theme_define(args: &[Value]) -> Result<Value, String> {
         _ => return Err("theme-define requires a map of face→color".to_string()),
     }
 
-    let theme = Theme { name: name.clone(), faces };
+    let theme = Theme {
+        name: name.clone(),
+        faces,
+    };
     THEME_REGISTRY.with(|reg| {
         reg.borrow_mut().insert(name.clone(), theme);
     });
@@ -310,8 +335,7 @@ fn prim_theme_clone(args: &[Value]) -> Result<Value, String> {
     let cloned = ACTIVE_THEME.with(|active| {
         THEME_REGISTRY.with(|reg| {
             let reg = reg.borrow();
-            let original = reg.get(&*active.borrow())
-                .expect("no active theme");
+            let original = reg.get(&*active.borrow()).expect("no active theme");
             let mut cloned = original.clone();
             cloned.name = new_name.clone();
             cloned
@@ -329,14 +353,17 @@ fn prim_theme_clone(args: &[Value]) -> Result<Value, String> {
 /// (theme-colors) → map of all face names → hex colors in active theme
 fn prim_theme_colors(_args: &[Value]) -> Result<Value, String> {
     let pairs = with_active_theme(|theme| {
-        let mut entries: Vec<(String, String)> = theme.faces.iter()
+        let mut entries: Vec<(String, String)> = theme
+            .faces
+            .iter()
             .map(|(k, v)| (k.clone(), v.to_hex()))
             .collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         entries
     });
     Ok(Value::map(
-        pairs.into_iter()
+        pairs
+            .into_iter()
             .map(|(k, v)| (Value::keyword(k), Value::string(v)))
             .collect(),
     ))
@@ -346,40 +373,68 @@ fn prim_theme_colors(_args: &[Value]) -> Result<Value, String> {
 fn prim_theme_to_style(args: &[Value]) -> Result<Value, String> {
     let face = extract_string(args, 0)?;
     let color = get_face(&face);
-    Ok(Value::map(vec![
-        (Value::keyword("fg"), Value::string(color.to_hex())),
-    ]))
+    Ok(Value::map(vec![(
+        Value::keyword("fg"),
+        Value::string(color.to_hex()),
+    )]))
 }
 
 // ── Registration ─────────────────────────────────────────────
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("theme-load", Value::Native(prim_theme_load),
-        "Load and activate a named theme.");
-    ns.intern_with_doc("theme-active", Value::Native(prim_theme_active),
-        "Return name of the active theme.");
-    ns.intern_with_doc("theme-names", Value::Native(prim_theme_names),
-        "Return vector of available theme names.");
-    ns.intern_with_doc("theme-get", Value::Native(prim_theme_get),
-        "Get hex color for FACE in active theme.");
-    ns.intern_with_doc("theme-set-face", Value::Native(prim_theme_set_face),
-        "Set FACE to COLOR (hex) in active theme.");
-    ns.intern_with_doc("theme-define", Value::Native(prim_theme_define),
-        "Define a theme: (theme-define NAME {:default-fg \"#c6cccc\" :keyword \"#aaffaa\" ...}).");
-    ns.intern_with_doc("theme-clone", Value::Native(prim_theme_clone),
-        "Clone current theme to NEW-NAME.");
-    ns.intern_with_doc("theme-colors", Value::Native(prim_theme_colors),
-        "Return map of all face→color in active theme.");
-    ns.intern_with_doc("theme-to-style", Value::Native(prim_theme_to_style),
-        "Get style map for FACE.");
+    ns.intern_with_doc(
+        "theme-load",
+        Value::Native(prim_theme_load),
+        "Load and activate a named theme.",
+    );
+    ns.intern_with_doc(
+        "theme-active",
+        Value::Native(prim_theme_active),
+        "Return name of the active theme.",
+    );
+    ns.intern_with_doc(
+        "theme-names",
+        Value::Native(prim_theme_names),
+        "Return vector of available theme names.",
+    );
+    ns.intern_with_doc(
+        "theme-get",
+        Value::Native(prim_theme_get),
+        "Get hex color for FACE in active theme.",
+    );
+    ns.intern_with_doc(
+        "theme-set-face",
+        Value::Native(prim_theme_set_face),
+        "Set FACE to COLOR (hex) in active theme.",
+    );
+    ns.intern_with_doc(
+        "theme-define",
+        Value::Native(prim_theme_define),
+        "Define a theme: (theme-define NAME {:default-fg \"#c6cccc\" :keyword \"#aaffaa\" ...}).",
+    );
+    ns.intern_with_doc(
+        "theme-clone",
+        Value::Native(prim_theme_clone),
+        "Clone current theme to NEW-NAME.",
+    );
+    ns.intern_with_doc(
+        "theme-colors",
+        Value::Native(prim_theme_colors),
+        "Return map of all face→color in active theme.",
+    );
+    ns.intern_with_doc(
+        "theme-to-style",
+        Value::Native(prim_theme_to_style),
+        "Get style map for FACE.",
+    );
 }
 
 // ── Tests ────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::editor_state::*;
+    use super::*;
 
     fn setup() {
         set_editor_state(EditorState::new());
@@ -394,7 +449,10 @@ mod tests {
         setup();
         let mut bridge = super::super::core::MoraLispBridge::new();
 
-        assert_eq!(bridge.eval("(theme-active)").unwrap(), Value::string("night-coldnew"));
+        assert_eq!(
+            bridge.eval("(theme-active)").unwrap(),
+            Value::string("night-coldnew")
+        );
 
         let names = bridge.eval("(theme-names)").unwrap();
         match names {
@@ -426,12 +484,16 @@ mod tests {
         setup();
         let mut bridge = super::super::core::MoraLispBridge::new();
 
-        bridge.eval("(theme-set-face \"keyword\" \"#ff00ff\")").unwrap();
+        bridge
+            .eval("(theme-set-face \"keyword\" \"#ff00ff\")")
+            .unwrap();
         let kw = bridge.eval("(theme-get \"keyword\")").unwrap();
         assert_eq!(kw, Value::string("#ff00ff"));
 
         // Restore
-        bridge.eval("(theme-set-face \"keyword\" \"#aaffaa\")").unwrap();
+        bridge
+            .eval("(theme-set-face \"keyword\" \"#aaffaa\")")
+            .unwrap();
         teardown();
     }
 
@@ -441,14 +503,28 @@ mod tests {
         let mut bridge = super::super::core::MoraLispBridge::new();
 
         // Use theme-set-face for per-face customization
-        bridge.eval("(theme-set-face \"default-bg\" \"#000000\")").unwrap();
-        bridge.eval("(theme-set-face \"default-fg\" \"#ffffff\")").unwrap();
-        assert_eq!(bridge.eval("(theme-get \"default-bg\")").unwrap(), Value::string("#000000"));
-        assert_eq!(bridge.eval("(theme-get \"default-fg\")").unwrap(), Value::string("#ffffff"));
+        bridge
+            .eval("(theme-set-face \"default-bg\" \"#000000\")")
+            .unwrap();
+        bridge
+            .eval("(theme-set-face \"default-fg\" \"#ffffff\")")
+            .unwrap();
+        assert_eq!(
+            bridge.eval("(theme-get \"default-bg\")").unwrap(),
+            Value::string("#000000")
+        );
+        assert_eq!(
+            bridge.eval("(theme-get \"default-fg\")").unwrap(),
+            Value::string("#ffffff")
+        );
 
         // Restore original values
-        bridge.eval("(theme-set-face \"default-bg\" \"#202020\")").unwrap();
-        bridge.eval("(theme-set-face \"default-fg\" \"#c6cccc\")").unwrap();
+        bridge
+            .eval("(theme-set-face \"default-bg\" \"#202020\")")
+            .unwrap();
+        bridge
+            .eval("(theme-set-face \"default-fg\" \"#c6cccc\")")
+            .unwrap();
         teardown();
     }
 
@@ -458,7 +534,9 @@ mod tests {
         let mut bridge = super::super::core::MoraLispBridge::new();
 
         bridge.eval("(theme-clone \"my-night\")").unwrap();
-        bridge.eval("(theme-set-face \"keyword\" \"#ff00ff\")").unwrap();
+        bridge
+            .eval("(theme-set-face \"keyword\" \"#ff00ff\")")
+            .unwrap();
 
         // Original should be unchanged
         bridge.eval("(theme-load \"night-coldnew\")").unwrap();
@@ -495,10 +573,22 @@ mod tests {
 
     #[test]
     fn test_theme_color_from_hex() {
-        assert_eq!(ThemeColor::from_hex("#ff0000"), Some(ThemeColor::new(255, 0, 0)));
-        assert_eq!(ThemeColor::from_hex("#00ff00"), Some(ThemeColor::new(0, 255, 0)));
-        assert_eq!(ThemeColor::from_hex("#0000ff"), Some(ThemeColor::new(0, 0, 255)));
-        assert_eq!(ThemeColor::from_hex("#202020"), Some(ThemeColor::new(0x20, 0x20, 0x20)));
+        assert_eq!(
+            ThemeColor::from_hex("#ff0000"),
+            Some(ThemeColor::new(255, 0, 0))
+        );
+        assert_eq!(
+            ThemeColor::from_hex("#00ff00"),
+            Some(ThemeColor::new(0, 255, 0))
+        );
+        assert_eq!(
+            ThemeColor::from_hex("#0000ff"),
+            Some(ThemeColor::new(0, 0, 255))
+        );
+        assert_eq!(
+            ThemeColor::from_hex("#202020"),
+            Some(ThemeColor::new(0x20, 0x20, 0x20))
+        );
         assert_eq!(ThemeColor::from_hex("invalid"), None);
     }
 
@@ -509,23 +599,56 @@ mod tests {
 
         // Verify all expected faces from coldnew-night exist
         let expected = [
-            "default-bg", "default-fg", "cursor", "current-line", "selection",
-            "keyword", "string", "comment", "function-name", "builtin", "constant",
-            "type", "variable-name", "doc", "number",
-            "red", "green", "blue", "yellow", "magenta", "cyan", "orange", "aqua",
-            "modeline-fg", "modeline-bg",
-            "error", "warning", "info",
-            "search-match", "isearch",
-            "diff-added", "diff-removed", "diff-changed",
-            "line-number", "line-number-active",
-            "rainbow-1", "rainbow-2", "rainbow-3",
+            "default-bg",
+            "default-fg",
+            "cursor",
+            "current-line",
+            "selection",
+            "keyword",
+            "string",
+            "comment",
+            "function-name",
+            "builtin",
+            "constant",
+            "type",
+            "variable-name",
+            "doc",
+            "number",
+            "red",
+            "green",
+            "blue",
+            "yellow",
+            "magenta",
+            "cyan",
+            "orange",
+            "aqua",
+            "modeline-fg",
+            "modeline-bg",
+            "error",
+            "warning",
+            "info",
+            "search-match",
+            "isearch",
+            "diff-added",
+            "diff-removed",
+            "diff-changed",
+            "line-number",
+            "line-number-active",
+            "rainbow-1",
+            "rainbow-2",
+            "rainbow-3",
         ];
 
         for face in &expected {
             let color = bridge.eval(&format!("(theme-get \"{}\")", face)).unwrap();
             match color {
                 Value::String(s) => {
-                    assert!(s.starts_with('#'), "face {} should be hex color: {}", face, s);
+                    assert!(
+                        s.starts_with('#'),
+                        "face {} should be hex color: {}",
+                        face,
+                        s
+                    );
                     assert_eq!(s.len(), 7, "face {} hex should be 7 chars: {}", face, s);
                 }
                 _ => panic!("face {} should return string", face),

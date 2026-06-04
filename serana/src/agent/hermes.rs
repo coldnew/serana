@@ -27,6 +27,7 @@ pub struct HermesAgent {
     meta_cognition: Arc<MetaCognition>,
     checkpoint_manager: CheckpointManager,
     stream_rules: Mutex<Option<StreamRuleEngine>>,
+    retry_config: crate::core::RetryConfig,
 }
 
 impl HermesAgent {
@@ -60,6 +61,7 @@ impl HermesAgent {
             meta_cognition: Arc::new(MetaCognition::new()),
             checkpoint_manager: CheckpointManager::new(),
             stream_rules: Mutex::new(None),
+            retry_config: crate::core::RetryConfig::default(),
         }
     }
 
@@ -117,6 +119,11 @@ impl HermesAgent {
         self
     }
 
+    pub fn with_retry_config(mut self, config: crate::core::RetryConfig) -> Self {
+        self.retry_config = config;
+        self
+    }
+
     fn apply_prompt_config(&mut self, config: AgentPromptConfig) {
         self.prompt_builder = PromptBuilder::new(config.workspace).with_skills(config.skills);
         self.compressor = config.compressor;
@@ -147,6 +154,7 @@ impl Agent for HermesAgent {
             meta_cognition: &self.meta_cognition,
             checkpoint_manager: &self.checkpoint_manager,
             stream_rules: rules_opt.as_mut(),
+            retry_config: self.retry_config.clone(),
         })
         .execute(instruction)
         .await;
@@ -242,6 +250,7 @@ mod tests {
                 preflight: 0.0,
                 gateway: 0.0,
             },
+            ..Default::default()
         });
         let agent = HermesAgent::with_tools(
             Box::new(CompressionAwareLlm {

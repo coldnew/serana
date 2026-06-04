@@ -3,7 +3,7 @@ use std::process::Command;
 use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
 
-use super::helpers::{extract_string, extract_int};
+use super::helpers::extract_string;
 
 fn run_cmd(program: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(program)

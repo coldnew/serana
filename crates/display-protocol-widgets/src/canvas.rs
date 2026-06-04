@@ -29,10 +29,16 @@ impl Canvas {
     }
 
     /// Set the frame ID for WGPU rendering.
-    pub fn frame(mut self, id: impl Into<String>) -> Self { self.frame_id = id.into(); self }
+    pub fn frame(mut self, id: impl Into<String>) -> Self {
+        self.frame_id = id.into();
+        self
+    }
 
     /// Set background color.
-    pub fn bg(mut self, c: Color) -> Self { self.bg = c; self }
+    pub fn bg(mut self, c: Color) -> Self {
+        self.bg = c;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         UiNode::Canvas(CanvasNode {
@@ -45,5 +51,7 @@ impl Canvas {
 }
 
 impl From<Canvas> for UiNode {
-    fn from(c: Canvas) -> Self { c.build() }
+    fn from(c: Canvas) -> Self {
+        c.build()
+    }
 }

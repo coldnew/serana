@@ -1,5 +1,4 @@
 use crate::buffer::ScreenBuffer;
-use crate::types::Color;
 
 /// Backend-agnostic renderer trait.
 ///
@@ -156,13 +155,27 @@ impl AnsiRenderer {
 fn cell_to_sgr(cell: &crate::buffer::ScreenCell) -> String {
     let mut sgr = String::from("\x1b[0");
 
-    if cell.bold { sgr.push_str(";1"); }
-    if cell.dim { sgr.push_str(";2"); }
-    if cell.italic { sgr.push_str(";3"); }
-    if cell.underline { sgr.push_str(";4"); }
-    if cell.blink { sgr.push_str(";5"); }
-    if cell.reverse { sgr.push_str(";7"); }
-    if cell.strikethrough { sgr.push_str(";9"); }
+    if cell.bold {
+        sgr.push_str(";1");
+    }
+    if cell.dim {
+        sgr.push_str(";2");
+    }
+    if cell.italic {
+        sgr.push_str(";3");
+    }
+    if cell.underline {
+        sgr.push_str(";4");
+    }
+    if cell.blink {
+        sgr.push_str(";5");
+    }
+    if cell.reverse {
+        sgr.push_str(";7");
+    }
+    if cell.strikethrough {
+        sgr.push_str(";9");
+    }
 
     // Foreground
     sgr.push_str(&format!(";38;2;{};{};{}", cell.fg.r, cell.fg.g, cell.fg.b));
@@ -186,7 +199,19 @@ mod tests {
     fn test_ansi_renderer_full_redraw() {
         let mut renderer = AnsiRenderer::new(10, 3);
         let mut buf = ScreenBuffer::new(10, 3);
-        buf.set_char(0, 0, 'H', Color::WHITE, Color::BLACK, false, false, false, false, false, false);
+        buf.set_char(
+            0,
+            0,
+            'H',
+            Color::WHITE,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         renderer.render(&buf).unwrap();
         let output = renderer.take_output();
         assert!(output.contains("\x1b[2J")); // Clear screen
@@ -201,7 +226,19 @@ mod tests {
         renderer.take_output(); // Clear first frame
 
         let mut buf2 = ScreenBuffer::new(10, 3);
-        buf2.set_char(5, 2, 'X', Color::RED, Color::BLACK, false, false, false, false, false, false);
+        buf2.set_char(
+            5,
+            2,
+            'X',
+            Color::RED,
+            Color::BLACK,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
         renderer.render(&buf2).unwrap();
         let output = renderer.take_output();
         assert!(output.contains('X'));

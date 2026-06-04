@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crossterm::event::KeyEvent;
 use display_protocol::InputEvent;
 
 /// Terminal event
@@ -18,16 +17,14 @@ pub struct EventHandler {
 }
 
 impl EventHandler {
-    pub fn new(_tick_rate: Duration) -> Self {
-        Self {
-            tick_rate: Duration::from_millis(16),
-        }
+    pub fn new(tick_rate: Duration) -> Self {
+        Self { tick_rate }
     }
 
     /// Get next event using display-tui input polling
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> crate::core::Result<Event> {
-        match display_tui::poll_input(16) {
+        match display_tui::poll_input(self.tick_rate.as_millis() as u64) {
             Some(event) => Ok(Event::Input(event)),
             None => Ok(Event::Tick),
         }

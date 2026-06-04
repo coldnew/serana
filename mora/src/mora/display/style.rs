@@ -5,4 +5,4 @@
 //! are provided by display-protocol's `tui` feature.
 
 pub use display_protocol::{Color as MoraColor, Style as MoraStyle};
-pub use display_protocol::{StyledSpan, StyledLine};
+pub use display_protocol::{StyledLine, StyledSpan};

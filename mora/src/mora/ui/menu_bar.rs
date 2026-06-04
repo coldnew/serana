@@ -1,5 +1,5 @@
 use crate::mora::editor::MoraEditor;
-use display_protocol::{Color, Style, UiNode};
+use display_protocol::{Style, UiNode};
 
 use super::pad_to_width;
 
@@ -64,7 +64,5 @@ pub(super) fn build_menu_bar(editor: &MoraEditor, width: u16) -> UiNode {
         }
     }
 
-    UiNode::row(spans)
-        .width(width)
-        .height(1)
+    UiNode::row(spans).width(width).height(1)
 }

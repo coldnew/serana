@@ -1,35 +1,143 @@
-use crate::lisp::types::Value;
 use super::editor_state::{with_editor_state, with_editor_state_mut};
-use super::helpers::{extract_string, extract_int};
+use super::helpers::{extract_int, extract_string};
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("buffer-name", Value::Native(prim_buffer_name), "Return the name of the current buffer.");
-    ns.intern_private_with_doc("name", Value::Native(prim_buffer_name), "Return the name of the current buffer.");
-    ns.intern_with_doc("buffer-content", Value::Native(prim_buffer_content), "Return the contents of the current buffer as a string.");
-    ns.intern_private_with_doc("content", Value::Native(prim_buffer_content), "Return the contents of the current buffer as a string.");
-    ns.intern_with_doc("buffer-set-content", Value::Native(prim_buffer_set_content), "Set the contents of the current buffer.");
-    ns.intern_private_with_doc("set-content!", Value::Native(prim_buffer_set_content), "Set the contents of the current buffer.");
-    ns.intern_with_doc("buffer-modified?", Value::Native(prim_buffer_modified), "Return t if the current buffer has been modified.");
-    ns.intern_private_with_doc("modified?", Value::Native(prim_buffer_modified), "Return t if the current buffer has been modified.");
-    ns.intern_with_doc("buffer-file-path", Value::Native(prim_buffer_file_path), "Return the file path of the current buffer, or nil.");
-    ns.intern_private_with_doc("file-path", Value::Native(prim_buffer_file_path), "Return the file path of the current buffer, or nil.");
-    ns.intern_with_doc("buffer-line-count", Value::Native(prim_buffer_line_count), "Return the number of lines in the current buffer.");
-    ns.intern_private_with_doc("line-count", Value::Native(prim_buffer_line_count), "Return the number of lines in the current buffer.");
-    ns.intern_with_doc("buffer-current-line", Value::Native(prim_buffer_current_line), "Return the content of the current line.");
-    ns.intern_private_with_doc("current-line", Value::Native(prim_buffer_current_line), "Return the content of the current line.");
-    ns.intern_with_doc("buffer-line-at", Value::Native(prim_buffer_line_at), "Return the content of line N (0-indexed).");
-    ns.intern_private_with_doc("line-at", Value::Native(prim_buffer_line_at), "Return the content of line N (0-indexed).");
-    ns.intern_with_doc("buffer-insert!", Value::Native(prim_buffer_insert), "Insert text at the cursor position.");
-    ns.intern_private_with_doc("insert!", Value::Native(prim_buffer_insert), "Insert text at the cursor position.");
-    ns.intern_with_doc("buffer-replace-line!", Value::Native(prim_buffer_replace_line), "Replace the current line with new content.");
-    ns.intern_private_with_doc("replace-line!", Value::Native(prim_buffer_replace_line), "Replace the current line with new content.");
-    ns.intern_with_doc("buffer-narrowed?", Value::Native(prim_buffer_narrowed), "Return t if the current buffer is narrowed.");
-    ns.intern_private_with_doc("narrowed?", Value::Native(prim_buffer_narrowed), "Return t if the current buffer is narrowed.");
-    ns.intern_with_doc("narrow-to-region", Value::Native(prim_narrow_to_region), "Restrict editing to lines START through END.");
-    ns.intern_with_doc("widen", Value::Native(prim_widen), "Remove restrictions from the current buffer.");
-    ns.intern_with_doc("buffer-substring", Value::Native(prim_buffer_substring_range), "Return the text between START and END positions.");
-    ns.intern_private_with_doc("substring-range", Value::Native(prim_buffer_substring_range), "Return the text between START and END positions.");
-    ns.intern_with_doc("buffer-list", Value::Native(prim_buffer_list), "Return a list of buffer names.");
+    ns.intern_with_doc(
+        "buffer-name",
+        Value::Native(prim_buffer_name),
+        "Return the name of the current buffer.",
+    );
+    ns.intern_private_with_doc(
+        "name",
+        Value::Native(prim_buffer_name),
+        "Return the name of the current buffer.",
+    );
+    ns.intern_with_doc(
+        "buffer-content",
+        Value::Native(prim_buffer_content),
+        "Return the contents of the current buffer as a string.",
+    );
+    ns.intern_private_with_doc(
+        "content",
+        Value::Native(prim_buffer_content),
+        "Return the contents of the current buffer as a string.",
+    );
+    ns.intern_with_doc(
+        "buffer-set-content",
+        Value::Native(prim_buffer_set_content),
+        "Set the contents of the current buffer.",
+    );
+    ns.intern_private_with_doc(
+        "set-content!",
+        Value::Native(prim_buffer_set_content),
+        "Set the contents of the current buffer.",
+    );
+    ns.intern_with_doc(
+        "buffer-modified?",
+        Value::Native(prim_buffer_modified),
+        "Return t if the current buffer has been modified.",
+    );
+    ns.intern_private_with_doc(
+        "modified?",
+        Value::Native(prim_buffer_modified),
+        "Return t if the current buffer has been modified.",
+    );
+    ns.intern_with_doc(
+        "buffer-file-path",
+        Value::Native(prim_buffer_file_path),
+        "Return the file path of the current buffer, or nil.",
+    );
+    ns.intern_private_with_doc(
+        "file-path",
+        Value::Native(prim_buffer_file_path),
+        "Return the file path of the current buffer, or nil.",
+    );
+    ns.intern_with_doc(
+        "buffer-line-count",
+        Value::Native(prim_buffer_line_count),
+        "Return the number of lines in the current buffer.",
+    );
+    ns.intern_private_with_doc(
+        "line-count",
+        Value::Native(prim_buffer_line_count),
+        "Return the number of lines in the current buffer.",
+    );
+    ns.intern_with_doc(
+        "buffer-current-line",
+        Value::Native(prim_buffer_current_line),
+        "Return the content of the current line.",
+    );
+    ns.intern_private_with_doc(
+        "current-line",
+        Value::Native(prim_buffer_current_line),
+        "Return the content of the current line.",
+    );
+    ns.intern_with_doc(
+        "buffer-line-at",
+        Value::Native(prim_buffer_line_at),
+        "Return the content of line N (0-indexed).",
+    );
+    ns.intern_private_with_doc(
+        "line-at",
+        Value::Native(prim_buffer_line_at),
+        "Return the content of line N (0-indexed).",
+    );
+    ns.intern_with_doc(
+        "buffer-insert!",
+        Value::Native(prim_buffer_insert),
+        "Insert text at the cursor position.",
+    );
+    ns.intern_private_with_doc(
+        "insert!",
+        Value::Native(prim_buffer_insert),
+        "Insert text at the cursor position.",
+    );
+    ns.intern_with_doc(
+        "buffer-replace-line!",
+        Value::Native(prim_buffer_replace_line),
+        "Replace the current line with new content.",
+    );
+    ns.intern_private_with_doc(
+        "replace-line!",
+        Value::Native(prim_buffer_replace_line),
+        "Replace the current line with new content.",
+    );
+    ns.intern_with_doc(
+        "buffer-narrowed?",
+        Value::Native(prim_buffer_narrowed),
+        "Return t if the current buffer is narrowed.",
+    );
+    ns.intern_private_with_doc(
+        "narrowed?",
+        Value::Native(prim_buffer_narrowed),
+        "Return t if the current buffer is narrowed.",
+    );
+    ns.intern_with_doc(
+        "narrow-to-region",
+        Value::Native(prim_narrow_to_region),
+        "Restrict editing to lines START through END.",
+    );
+    ns.intern_with_doc(
+        "widen",
+        Value::Native(prim_widen),
+        "Remove restrictions from the current buffer.",
+    );
+    ns.intern_with_doc(
+        "buffer-substring",
+        Value::Native(prim_buffer_substring_range),
+        "Return the text between START and END positions.",
+    );
+    ns.intern_private_with_doc(
+        "substring-range",
+        Value::Native(prim_buffer_substring_range),
+        "Return the text between START and END positions.",
+    );
+    ns.intern_with_doc(
+        "buffer-list",
+        Value::Native(prim_buffer_list),
+        "Return a list of buffer names.",
+    );
     // Search primitives (belong to mora.buffer namespace)
     super::search::register(ns);
 }

@@ -1,6 +1,6 @@
-use crate::lisp::types::Value;
 use super::editor_state::*;
-use super::helpers::{extract_string, extract_int};
+use super::helpers::extract_string;
+use crate::lisp::types::Value;
 
 // ── which-key ──────────────────────────────────────────────────
 
@@ -117,38 +117,80 @@ fn prim_query_replace_pattern(args: &[Value]) -> Result<Value, String> {
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
     // which-key
-    ns.intern_with_doc("which-key-for-prefix", Value::Native(prim_which_key_for_prefix),
-        "Return vector of [key description] pairs for bindings under PREFIX.");
-    ns.intern_private_with_doc("for-prefix", Value::Native(prim_which_key_for_prefix),
-        "Return vector of [key description] pairs for bindings under PREFIX.");
-    ns.intern_with_doc("which-key-bindings", Value::Native(prim_which_key_bindings),
-        "Return all keybindings as a vector of [key action] pairs.");
-    ns.intern_private_with_doc("bindings", Value::Native(prim_which_key_bindings),
-        "Return all keybindings as a vector of [key action] pairs.");
+    ns.intern_with_doc(
+        "which-key-for-prefix",
+        Value::Native(prim_which_key_for_prefix),
+        "Return vector of [key description] pairs for bindings under PREFIX.",
+    );
+    ns.intern_private_with_doc(
+        "for-prefix",
+        Value::Native(prim_which_key_for_prefix),
+        "Return vector of [key description] pairs for bindings under PREFIX.",
+    );
+    ns.intern_with_doc(
+        "which-key-bindings",
+        Value::Native(prim_which_key_bindings),
+        "Return all keybindings as a vector of [key action] pairs.",
+    );
+    ns.intern_private_with_doc(
+        "bindings",
+        Value::Native(prim_which_key_bindings),
+        "Return all keybindings as a vector of [key action] pairs.",
+    );
 
     // line-reminder
-    ns.intern_with_doc("line-reminder-get-modified", Value::Native(prim_line_reminder_get_modified),
-        "Return vector of modified line numbers (0-indexed).");
-    ns.intern_private_with_doc("get-modified", Value::Native(prim_line_reminder_get_modified),
-        "Return vector of modified line numbers (0-indexed).");
-    ns.intern_with_doc("line-reminder-clear", Value::Native(prim_line_reminder_clear),
-        "Clear modified line tracking.");
-    ns.intern_private_with_doc("clear", Value::Native(prim_line_reminder_clear),
-        "Clear modified line tracking.");
+    ns.intern_with_doc(
+        "line-reminder-get-modified",
+        Value::Native(prim_line_reminder_get_modified),
+        "Return vector of modified line numbers (0-indexed).",
+    );
+    ns.intern_private_with_doc(
+        "get-modified",
+        Value::Native(prim_line_reminder_get_modified),
+        "Return vector of modified line numbers (0-indexed).",
+    );
+    ns.intern_with_doc(
+        "line-reminder-clear",
+        Value::Native(prim_line_reminder_clear),
+        "Clear modified line tracking.",
+    );
+    ns.intern_private_with_doc(
+        "clear",
+        Value::Native(prim_line_reminder_clear),
+        "Clear modified line tracking.",
+    );
 
     // focus-mode
-    ns.intern_with_doc("focus-mode-toggle", Value::Native(prim_focus_mode_toggle),
-        "Toggle focus mode on/off.");
-    ns.intern_private_with_doc("toggle", Value::Native(prim_focus_mode_toggle),
-        "Toggle focus mode on/off.");
-    ns.intern_with_doc("focus-mode?", Value::Native(prim_focus_mode_p),
-        "Return t if focus mode is active.");
-    ns.intern_private_with_doc("active?", Value::Native(prim_focus_mode_p),
-        "Return t if focus mode is active.");
+    ns.intern_with_doc(
+        "focus-mode-toggle",
+        Value::Native(prim_focus_mode_toggle),
+        "Toggle focus mode on/off.",
+    );
+    ns.intern_private_with_doc(
+        "toggle",
+        Value::Native(prim_focus_mode_toggle),
+        "Toggle focus mode on/off.",
+    );
+    ns.intern_with_doc(
+        "focus-mode?",
+        Value::Native(prim_focus_mode_p),
+        "Return t if focus mode is active.",
+    );
+    ns.intern_private_with_doc(
+        "active?",
+        Value::Native(prim_focus_mode_p),
+        "Return t if focus mode is active.",
+    );
 
     // visual-regexp
-    ns.intern_with_doc("query-replace-pattern", Value::Native(prim_query_replace_pattern),
-        "Replace all occurrences of OLD with NEW in buffer.");
-    ns.intern_private_with_doc("replace", Value::Native(prim_query_replace_pattern),
-        "Replace all occurrences of OLD with NEW in buffer.");
+    ns.intern_with_doc(
+        "query-replace-pattern",
+        Value::Native(prim_query_replace_pattern),
+        "Replace all occurrences of OLD with NEW in buffer.",
+    );
+    ns.intern_private_with_doc(
+        "replace",
+        Value::Native(prim_query_replace_pattern),
+        "Replace all occurrences of OLD with NEW in buffer.",
+    );
 }

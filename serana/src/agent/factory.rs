@@ -70,6 +70,7 @@ impl AgentFactory {
     pub fn build(&self, llm: Box<dyn LlmClient>) -> HermesAgent {
         HermesAgent::with_tools(llm, self.build_tools())
             .with_prompt_config(self.runtime_config.prompt_config())
+            .with_retry_config(self.runtime_config.retry_config.clone())
     }
 }
 

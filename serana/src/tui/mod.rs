@@ -143,7 +143,10 @@ pub fn run(workspace: PathBuf, model: String, provider: String, config: Config) 
     let cancel_token = CancelToken::new();
     let agent_cancel_token = cancel_token.clone();
 
-    let runtime_config = AgentRuntimeConfig::hermes(workspace_for_agent).with_skills(skill_prompts);
+    let retry_cfg = active_config.read().expect("config poisoned").retry.clone();
+    let runtime_config = AgentRuntimeConfig::hermes(workspace_for_agent)
+        .with_skills(skill_prompts)
+        .with_retry_config(retry_cfg);
     let factory = AgentFactory::hermes(runtime_config);
     let agent = Arc::new(
         factory

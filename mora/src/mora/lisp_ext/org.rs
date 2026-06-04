@@ -6,7 +6,7 @@ use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
 
 use super::editor_state::{with_editor_state, with_editor_state_mut};
-use super::helpers::{extract_int, extract_string};
+use super::helpers::extract_string;
 
 // ── Thread-local org state ───────────────────────────────────
 

@@ -25,11 +25,7 @@ pub enum DisplayCmd {
     /// Hide the popup menu
     HidePopup,
     /// Show a tooltip
-    ShowTooltip {
-        text: String,
-        x: u16,
-        y: u16,
-    },
+    ShowTooltip { text: String, x: u16, y: u16 },
     /// Hide the tooltip
     HideTooltip,
     /// Set the theme (color scheme name)

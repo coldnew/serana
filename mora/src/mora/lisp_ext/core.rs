@@ -41,7 +41,7 @@ impl MoraLispBridge {
         let editor_ns = eval.ns.find_or_create("mora.editor");
         let window_ns = eval.ns.find_or_create("mora.window");
         let hook_ns = eval.ns.find_or_create("mora.hook");
-        let keymap_ns = eval.ns.find_or_create("mora.keymap");
+        let _keymap_ns = eval.ns.find_or_create("mora.keymap");
         let overlay_ns = eval.ns.find_or_create("mora.overlay");
         let shell_ns = eval.ns.find_or_create("mora.shell");
         let ui_ns = eval.ns.find_or_create("mora.ui");

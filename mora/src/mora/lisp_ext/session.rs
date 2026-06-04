@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use crate::lisp::types::Value;
 use super::editor_state::{with_editor_state, with_editor_state_mut};
 use super::helpers::extract_string;
+use crate::lisp::types::Value;
+use std::path::PathBuf;
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -221,12 +221,24 @@ fn prim_session_load_desktop(_args: &[Value]) -> Result<Value, String> {
 // ── registration ────────────────────────────────────────────────────────────
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("session-save", Value::Native(prim_session_save),
-        "Save current editor state to a file (default: ~/.mora/session.mora).");
-    ns.intern_with_doc("session-load", Value::Native(prim_session_load),
-        "Load editor state from a file (default: ~/.mora/session.mora).");
-    ns.intern_with_doc("session-save-desktop", Value::Native(prim_session_save_desktop),
-        "Save desktop (all buffers) to ~/.mora/desktop.mora.");
-    ns.intern_with_doc("session-load-desktop", Value::Native(prim_session_load_desktop),
-        "Load desktop from ~/.mora/desktop.mora.");
+    ns.intern_with_doc(
+        "session-save",
+        Value::Native(prim_session_save),
+        "Save current editor state to a file (default: ~/.mora/session.mora).",
+    );
+    ns.intern_with_doc(
+        "session-load",
+        Value::Native(prim_session_load),
+        "Load editor state from a file (default: ~/.mora/session.mora).",
+    );
+    ns.intern_with_doc(
+        "session-save-desktop",
+        Value::Native(prim_session_save_desktop),
+        "Save desktop (all buffers) to ~/.mora/desktop.mora.",
+    );
+    ns.intern_with_doc(
+        "session-load-desktop",
+        Value::Native(prim_session_load_desktop),
+        "Load desktop from ~/.mora/desktop.mora.",
+    );
 }

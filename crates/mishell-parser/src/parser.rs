@@ -308,7 +308,11 @@ impl Parser {
             Some(Token::Word(ref op)) if op.starts_with(':') => {
                 // Handle :- := :+ :?
                 let op_char = op.chars().nth(1);
-                let rest = if op.len() > 2 { op[2..].to_string() } else { String::new() };
+                let rest = if op.len() > 2 {
+                    op[2..].to_string()
+                } else {
+                    String::new()
+                };
 
                 match op_char {
                     Some('-') => {
@@ -417,7 +421,11 @@ impl Parser {
             }
             Some(Token::Word(ref op)) if op.starts_with('/') || op == "/" => {
                 // ${var/pattern/replacement}
-                let op_suffix = if op.len() > 1 { op[1..].to_string() } else { String::new() };
+                let op_suffix = if op.len() > 1 {
+                    op[1..].to_string()
+                } else {
+                    String::new()
+                };
                 let is_all = op.starts_with("//");
                 self.advance();
                 let rest = self.read_until_brace()?;
@@ -457,18 +465,18 @@ impl Parser {
             }
             Some(Token::Word(ref op)) if op.starts_with(':') => {
                 // ${var:start:length} - substring
-                let rest = if op.len() > 1 { op[1..].to_string() } else { String::new() };
+                let rest = if op.len() > 1 {
+                    op[1..].to_string()
+                } else {
+                    String::new()
+                };
                 self.advance();
                 let more = self.read_until_brace()?;
                 self.expect(&Token::RightBrace)?;
                 let full = format!("{}{}", rest, more);
 
                 let parts: Vec<&str> = full.splitn(2, ':').collect();
-                let start: usize = parts
-                    .first()
-                    .unwrap_or(&"0")
-                    .parse()
-                    .unwrap_or(0);
+                let start: usize = parts.first().unwrap_or(&"0").parse().unwrap_or(0);
                 let length = parts.get(1).and_then(|s| s.parse().ok());
 
                 Ok(WordPart::ParamExpansion {
@@ -625,8 +633,7 @@ impl Parser {
             self.skip_sep();
             self.expect(&Token::Then)?;
             self.skip_sep();
-            let elif_body =
-                self.parse_body_until(&[&Token::Elif, &Token::Else, &Token::Fi])?;
+            let elif_body = self.parse_body_until(&[&Token::Elif, &Token::Else, &Token::Fi])?;
             self.skip_sep();
             elif_branches.push(ElifBranch {
                 condition: elif_condition,
@@ -762,10 +769,7 @@ impl Parser {
 
             // Parse body until ;; or esac
             let mut body = Vec::new();
-            while !self.at_end()
-                && !self.check(&Token::Esac)
-                && !self.is_case_terminator()
-            {
+            while !self.at_end() && !self.check(&Token::Esac) && !self.is_case_terminator() {
                 self.skip_sep();
                 if self.check(&Token::Esac) || self.is_case_terminator() {
                     break;
@@ -875,9 +879,7 @@ impl Parser {
 
     fn parse_return(&mut self) -> Result<CommandBody> {
         self.advance(); // consume 'return'
-        let value = if !self.at_end()
-            && !self.is_command_terminator()
-            && !self.check(&Token::Semi)
+        let value = if !self.at_end() && !self.is_command_terminator() && !self.check(&Token::Semi)
         {
             Some(self.parse_word()?)
         } else {
@@ -1284,15 +1286,13 @@ mod tests {
         let mut parser = Parser::new("echo ${x:-default}");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                match &cmd.words[1].parts[0] {
-                    WordPart::ParamExpansion { name, op } => {
-                        assert_eq!(name, "x");
-                        assert_eq!(*op, ParamOp::UseDefault("default".to_string()));
-                    }
-                    other => panic!("Expected ParamExpansion, got {:?}", other),
+            CommandBody::Simple(cmd) => match &cmd.words[1].parts[0] {
+                WordPart::ParamExpansion { name, op } => {
+                    assert_eq!(name, "x");
+                    assert_eq!(*op, ParamOp::UseDefault("default".to_string()));
                 }
-            }
+                other => panic!("Expected ParamExpansion, got {:?}", other),
+            },
             _ => panic!("Expected simple command"),
         }
     }
@@ -1302,15 +1302,13 @@ mod tests {
         let mut parser = Parser::new("echo ${#var}");
         let commands = parser.parse().unwrap();
         match &commands[0].body {
-            CommandBody::Simple(cmd) => {
-                match &cmd.words[1].parts[0] {
-                    WordPart::ParamExpansion { name, op } => {
-                        assert_eq!(name, "var");
-                        assert_eq!(*op, ParamOp::StringLength);
-                    }
-                    other => panic!("Expected ParamExpansion, got {:?}", other),
+            CommandBody::Simple(cmd) => match &cmd.words[1].parts[0] {
+                WordPart::ParamExpansion { name, op } => {
+                    assert_eq!(name, "var");
+                    assert_eq!(*op, ParamOp::StringLength);
                 }
-            }
+                other => panic!("Expected ParamExpansion, got {:?}", other),
+            },
             _ => panic!("Expected simple command"),
         }
     }

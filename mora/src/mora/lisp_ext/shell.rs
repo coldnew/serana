@@ -2,7 +2,7 @@ use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
 
 use super::editor_state::with_editor_state_mut;
-use super::helpers::{extract_int, extract_string};
+use super::helpers::extract_string;
 
 fn prim_shell_command(args: &[Value]) -> Result<Value, String> {
     let cmd = extract_string(args, 0)?;
@@ -54,8 +54,24 @@ fn prim_shell_capture(args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut Namespace) {
-    ns.intern_with_doc("shell-command", Value::Native(prim_shell_command), "Execute COMMAND in a shell and return output.");
-    ns.intern_private_with_doc("command", Value::Native(prim_shell_command), "Execute COMMAND in a shell and return output.");
-    ns.intern_with_doc("shell-capture", Value::Native(prim_shell_capture), "Execute COMMAND and return its stdout as a string.");
-    ns.intern_private_with_doc("capture", Value::Native(prim_shell_capture), "Execute COMMAND and return its stdout as a string.");
+    ns.intern_with_doc(
+        "shell-command",
+        Value::Native(prim_shell_command),
+        "Execute COMMAND in a shell and return output.",
+    );
+    ns.intern_private_with_doc(
+        "command",
+        Value::Native(prim_shell_command),
+        "Execute COMMAND in a shell and return output.",
+    );
+    ns.intern_with_doc(
+        "shell-capture",
+        Value::Native(prim_shell_capture),
+        "Execute COMMAND and return its stdout as a string.",
+    );
+    ns.intern_private_with_doc(
+        "capture",
+        Value::Native(prim_shell_capture),
+        "Execute COMMAND and return its stdout as a string.",
+    );
 }

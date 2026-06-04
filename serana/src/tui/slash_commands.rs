@@ -73,6 +73,14 @@ pub enum SlashResult {
     Export(Option<String>),
     /// Resume a session (show session picker).
     Resume,
+    /// Fork the current session.
+    Fork,
+    /// List session tree (children of current session).
+    SessionTree,
+    /// Start a new session (clear and create fresh).
+    NewSession,
+    /// Logout from a provider.
+    Logout(String),
     /// Unknown command.
     Unknown(String),
 }
@@ -100,16 +108,18 @@ pub struct CustomCommand {
 }
 
 /// Substitute {{1}}, {{2}}, ..., {{N}} placeholders in a template with
-/// whitespace-delimited arguments. {{0}} is the full args string.
+/// whitespace-delimited arguments.  {{0}} is the full args string.
 /// Unmatched placeholders are left as-is.
 fn substitute_template_args(template: &str, args: &str) -> String {
     let parts: Vec<&str> = args.split_whitespace().collect();
     let mut result = template.to_string();
 
+    // Replace {{0}} with full args
     if result.contains("{{0}}") {
         result = result.replace("{{0}}", args);
     }
 
+    // Replace {{1}}..{{N}} with individual parts
     for (i, part) in parts.iter().enumerate() {
         let placeholder = format!("{{{{{}}}}}", i + 1);
         if result.contains(&placeholder) {
@@ -357,6 +367,33 @@ impl SlashCommandRegistry {
                 }
             }),
         });
+        self.register(SlashCommand {
+            name: "fork",
+            description: "Fork the current session",
+            handler: Box::new(|_| SlashResult::Fork),
+        });
+        self.register(SlashCommand {
+            name: "tree",
+            description: "Show session tree (forks of current session)",
+            handler: Box::new(|_| SlashResult::SessionTree),
+        });
+        self.register(SlashCommand {
+            name: "new",
+            description: "Start a new session",
+            handler: Box::new(|_| SlashResult::NewSession),
+        });
+        self.register(SlashCommand {
+            name: "logout",
+            description: "Remove provider auth. Usage: /logout <provider>",
+            handler: Box::new(|args| {
+                let provider = args.trim();
+                if provider.is_empty() {
+                    SlashResult::Display("Usage: /logout <provider>".to_string())
+                } else {
+                    SlashResult::Logout(provider.to_string())
+                }
+            }),
+        });
     }
 
     fn register(&mut self, cmd: SlashCommand) {
@@ -381,7 +418,7 @@ impl SlashCommandRegistry {
             return Some((cmd.handler)(args));
         }
 
-        // Check custom commands with {{N}} argument substitution.
+        // Check custom commands (with {{N}} argument substitution)
         if let Some(custom) = self.custom_commands.iter().find(|c| c.name == cmd_name) {
             let expanded = substitute_template_args(&custom.prompt, args);
             return Some(SlashResult::Display(format!(
@@ -432,6 +469,7 @@ impl SlashCommandRegistry {
             }
         }
 
+        // Also load prompt templates from .serana/prompts/*.md
         let home_prompts = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".serana")
@@ -448,6 +486,7 @@ impl SlashCommandRegistry {
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown")
                             .to_string();
+                        // Skip if already registered as a command
                         if self.custom_commands.iter().any(|c| c.name == name) {
                             continue;
                         }
@@ -665,19 +704,28 @@ mod tests {
 
     #[test]
     fn template_arg_substitution() {
+        // Basic positional args
         assert_eq!(
             substitute_template_args("Hello {{1}} and {{2}}", "world friend"),
             "Hello world and friend"
         );
+
+        // {{0}} = full args
         assert_eq!(
             substitute_template_args("Echo: {{0}}", "all of this"),
             "Echo: all of this"
         );
+
+        // Unmatched placeholder left as-is
         assert_eq!(
             substitute_template_args("Need {{1}} and {{5}}", "one"),
             "Need one and {{5}}"
         );
+
+        // No args, no placeholders → identity
         assert_eq!(substitute_template_args("static text", ""), "static text");
+
+        // Empty template
         assert_eq!(substitute_template_args("", "args"), "");
     }
 }

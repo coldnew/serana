@@ -127,7 +127,11 @@ impl OverlayStore {
     }
 
     pub fn overlays_in(&self, start: usize, end: usize) -> Vec<&Overlay> {
-        let mut result: Vec<&Overlay> = self.overlays.iter().filter(|o| o.overlaps(start, end)).collect();
+        let mut result: Vec<&Overlay> = self
+            .overlays
+            .iter()
+            .filter(|o| o.overlaps(start, end))
+            .collect();
         result.sort_by_key(|o| -o.priority);
         result
     }
@@ -190,10 +194,13 @@ impl OverlayStore {
     }
 
     pub fn is_range_read_only(&self, start: usize, end: usize) -> bool {
-        self.overlays.iter().any(|o| o.read_only && o.overlaps(start, end))
+        self.overlays
+            .iter()
+            .any(|o| o.read_only && o.overlaps(start, end))
     }
     pub fn clear_by_category(&mut self, category: &str) {
-        self.overlays.retain(|o| o.category.as_deref() != Some(category));
+        self.overlays
+            .retain(|o| o.category.as_deref() != Some(category));
     }
 
     pub fn all(&self) -> &[Overlay] {

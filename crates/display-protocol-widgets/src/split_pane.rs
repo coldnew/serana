@@ -1,5 +1,5 @@
-use display_protocol::{Orientation, SplitPaneNode, Style, UiNode};
 use crate::palette;
+use display_protocol::{Orientation, SplitPaneNode, Style, UiNode};
 
 /// A split pane with two children separated by a divider.
 ///
@@ -46,8 +46,14 @@ impl SplitPane {
         }
     }
 
-    pub fn ratio(mut self, r: f32) -> Self { self.ratio = r.clamp(0.0, 1.0); self }
-    pub fn divider_color(mut self, c: display_protocol::Color) -> Self { self.divider_color = Some(c); self }
+    pub fn ratio(mut self, r: f32) -> Self {
+        self.ratio = r.clamp(0.0, 1.0);
+        self
+    }
+    pub fn divider_color(mut self, c: display_protocol::Color) -> Self {
+        self.divider_color = Some(c);
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let mut divider_style = Style::default();
@@ -68,5 +74,7 @@ impl SplitPane {
 }
 
 impl From<SplitPane> for UiNode {
-    fn from(sp: SplitPane) -> Self { sp.build() }
+    fn from(sp: SplitPane) -> Self {
+        sp.build()
+    }
 }

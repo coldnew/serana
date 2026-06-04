@@ -1,21 +1,65 @@
-use crate::lisp::types::Value;
-use super::editor_state::*;
-use super::helpers::{extract_string, extract_int};
 use super::super::undo_tree::Snapshot;
+use super::editor_state::*;
+use super::helpers::extract_int;
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
     ns.intern_with_doc("undo", Value::Native(prim_undo), "Undo the last change.");
-    ns.intern_with_doc("redo", Value::Native(prim_redo), "Redo the last undone change.");
-    ns.intern_with_doc("undo-boundary", Value::Native(prim_undo_boundary), "Push an undo boundary (snapshot current state).");
-    ns.intern_private_with_doc("boundary", Value::Native(prim_undo_boundary), "Push an undo boundary (snapshot current state).");
-    ns.intern_with_doc("undo-enabled?", Value::Native(prim_undo_enabled), "Return t if undo is enabled.");
-    ns.intern_private_with_doc("enabled?", Value::Native(prim_undo_enabled), "Return t if undo is enabled.");
-    ns.intern_with_doc("undo-tree-branches", Value::Native(prim_undo_tree_branches), "Return the number of branches at the current undo tree point.");
-    ns.intern_with_doc("undo-tree-switch-branch", Value::Native(prim_undo_tree_switch_branch), "Switch to branch N at the current undo tree point.");
-    ns.intern_with_doc("undo-tree-visualize", Value::Native(prim_undo_tree_visualize), "Return a string representation of the undo tree.");
-    ns.intern_with_doc("undo-tree-node-count", Value::Native(prim_undo_tree_node_count), "Return the total number of nodes in the undo tree.");
-    ns.intern_with_doc("undo-tree-can-undo?", Value::Native(prim_undo_tree_can_undo), "Return t if undo is possible from the current position.");
-    ns.intern_with_doc("undo-tree-can-redo?", Value::Native(prim_undo_tree_can_redo), "Return t if redo is possible from the current position.");
+    ns.intern_with_doc(
+        "redo",
+        Value::Native(prim_redo),
+        "Redo the last undone change.",
+    );
+    ns.intern_with_doc(
+        "undo-boundary",
+        Value::Native(prim_undo_boundary),
+        "Push an undo boundary (snapshot current state).",
+    );
+    ns.intern_private_with_doc(
+        "boundary",
+        Value::Native(prim_undo_boundary),
+        "Push an undo boundary (snapshot current state).",
+    );
+    ns.intern_with_doc(
+        "undo-enabled?",
+        Value::Native(prim_undo_enabled),
+        "Return t if undo is enabled.",
+    );
+    ns.intern_private_with_doc(
+        "enabled?",
+        Value::Native(prim_undo_enabled),
+        "Return t if undo is enabled.",
+    );
+    ns.intern_with_doc(
+        "undo-tree-branches",
+        Value::Native(prim_undo_tree_branches),
+        "Return the number of branches at the current undo tree point.",
+    );
+    ns.intern_with_doc(
+        "undo-tree-switch-branch",
+        Value::Native(prim_undo_tree_switch_branch),
+        "Switch to branch N at the current undo tree point.",
+    );
+    ns.intern_with_doc(
+        "undo-tree-visualize",
+        Value::Native(prim_undo_tree_visualize),
+        "Return a string representation of the undo tree.",
+    );
+    ns.intern_with_doc(
+        "undo-tree-node-count",
+        Value::Native(prim_undo_tree_node_count),
+        "Return the total number of nodes in the undo tree.",
+    );
+    ns.intern_with_doc(
+        "undo-tree-can-undo?",
+        Value::Native(prim_undo_tree_can_undo),
+        "Return t if undo is possible from the current position.",
+    );
+    ns.intern_with_doc(
+        "undo-tree-can-redo?",
+        Value::Native(prim_undo_tree_can_redo),
+        "Return t if redo is possible from the current position.",
+    );
 }
 
 /// (undo) → undo last change

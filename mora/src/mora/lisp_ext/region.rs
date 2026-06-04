@@ -1,18 +1,58 @@
-use crate::lisp::types::Value;
 use super::editor_state::*;
-use super::helpers::{extract_string, extract_int};
+use super::helpers::extract_int;
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("region-beginning", Value::Native(prim_region_beginning), "Return the position of the beginning of the region.");
-    ns.intern_private_with_doc("beginning", Value::Native(prim_region_beginning), "Return the position of the beginning of the region.");
-    ns.intern_with_doc("region-end", Value::Native(prim_region_end), "Return the position of the end of the region.");
-    ns.intern_private_with_doc("end", Value::Native(prim_region_end), "Return the position of the end of the region.");
-    ns.intern_with_doc("region-active?", Value::Native(prim_region_active), "Return t if the region is currently active.");
-    ns.intern_private_with_doc("active?", Value::Native(prim_region_active), "Return t if the region is currently active.");
-    ns.intern_with_doc("delete-region", Value::Native(prim_delete_region), "Delete the text between the mark and the cursor.");
-    ns.intern_private_with_doc("delete", Value::Native(prim_delete_region), "Delete the text between the mark and the cursor.");
-    ns.intern_with_doc("buffer-substring", Value::Native(prim_buffer_substring), "Return the contents of the region as a string.");
-    ns.intern_private_with_doc("substring", Value::Native(prim_buffer_substring), "Return the contents of the region as a string.");
+    ns.intern_with_doc(
+        "region-beginning",
+        Value::Native(prim_region_beginning),
+        "Return the position of the beginning of the region.",
+    );
+    ns.intern_private_with_doc(
+        "beginning",
+        Value::Native(prim_region_beginning),
+        "Return the position of the beginning of the region.",
+    );
+    ns.intern_with_doc(
+        "region-end",
+        Value::Native(prim_region_end),
+        "Return the position of the end of the region.",
+    );
+    ns.intern_private_with_doc(
+        "end",
+        Value::Native(prim_region_end),
+        "Return the position of the end of the region.",
+    );
+    ns.intern_with_doc(
+        "region-active?",
+        Value::Native(prim_region_active),
+        "Return t if the region is currently active.",
+    );
+    ns.intern_private_with_doc(
+        "active?",
+        Value::Native(prim_region_active),
+        "Return t if the region is currently active.",
+    );
+    ns.intern_with_doc(
+        "delete-region",
+        Value::Native(prim_delete_region),
+        "Delete the text between the mark and the cursor.",
+    );
+    ns.intern_private_with_doc(
+        "delete",
+        Value::Native(prim_delete_region),
+        "Delete the text between the mark and the cursor.",
+    );
+    ns.intern_with_doc(
+        "buffer-substring",
+        Value::Native(prim_buffer_substring),
+        "Return the contents of the region as a string.",
+    );
+    ns.intern_private_with_doc(
+        "substring",
+        Value::Native(prim_buffer_substring),
+        "Return the contents of the region as a string.",
+    );
 }
 
 /// (region-beginning) → position of region start
@@ -70,7 +110,10 @@ fn prim_delete_region(_args: &[Value]) -> Result<Value, String> {
             let start_row = mark_row.min(state.cursor_row);
             let end_row = mark_row.max(state.cursor_row);
             let (start_col, end_col) = if mark_row == state.cursor_row {
-                (mark_col.min(state.cursor_col), mark_col.max(state.cursor_col))
+                (
+                    mark_col.min(state.cursor_col),
+                    mark_col.max(state.cursor_col),
+                )
             } else if mark_row < state.cursor_row {
                 (mark_col, state.cursor_col)
             } else {
@@ -99,7 +142,9 @@ fn prim_delete_region(_args: &[Value]) -> Result<Value, String> {
                         ""
                     };
                     let merged = format!("{}{}", prefix, suffix);
-                    state.lines.splice(start_row..=end_row, std::iter::once(merged));
+                    state
+                        .lines
+                        .splice(start_row..=end_row, std::iter::once(merged));
                 }
             }
             state.cursor_row = start_row;

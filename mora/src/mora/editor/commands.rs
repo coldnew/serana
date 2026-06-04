@@ -1382,6 +1382,38 @@ impl MoraEditor {
             return;
         }
 
+        if matches!(
+            self.mode,
+            EditorMode::Command | EditorMode::SearchForward | EditorMode::SearchBackward
+        ) && self.minibuffer_prompt() != "M-x "
+        {
+            let action = match self.mode {
+                EditorMode::Command => {
+                    if trimmed == "wq" || trimmed == "x" {
+                        if self.buffer.path.is_some() {
+                            let _ = self.buffer.save();
+                        }
+                        self.quit_requested = true;
+                        self.mode = EditorMode::Normal;
+                        self.clear_minibuffer();
+                        return;
+                    }
+                    keymap::parse_command(&input)
+                }
+                EditorMode::SearchForward => KeyAction::FindForward(input.clone()),
+                EditorMode::SearchBackward => KeyAction::FindBackward(input.clone()),
+                _ => KeyAction::None,
+            };
+            self.execute_action(action);
+            if self.mode != EditorMode::Command
+                && self.mode != EditorMode::SearchForward
+                && self.mode != EditorMode::SearchBackward
+            {
+                self.clear_minibuffer();
+            }
+            return;
+        }
+
         // Handle M-x commands that need special treatment
         match trimmed {
             "iedit" | "multi-cursor-edit" => {
@@ -1644,31 +1676,6 @@ impl MoraEditor {
                 self.clear_minibuffer();
                 return;
             }
-        }
-
-        let action = match self.mode {
-            EditorMode::Command => {
-                if trimmed == "wq" || trimmed == "x" {
-                    if self.buffer.path.is_some() {
-                        let _ = self.buffer.save();
-                    }
-                    self.quit_requested = true;
-                    self.mode = EditorMode::Normal;
-                    self.clear_minibuffer();
-                    return;
-                }
-                keymap::parse_command(&input)
-            }
-            EditorMode::SearchForward => KeyAction::FindForward(input.clone()),
-            EditorMode::SearchBackward => KeyAction::FindBackward(input.clone()),
-            _ => KeyAction::None,
-        };
-        self.execute_action(action);
-        if self.mode != EditorMode::Command
-            && self.mode != EditorMode::SearchForward
-            && self.mode != EditorMode::SearchBackward
-        {
-            self.clear_minibuffer();
         }
     }
 
@@ -2309,36 +2316,6 @@ impl MoraEditor {
         }
     }
 
-    /// Line-reminder: get git diff changed line numbers for current file.
-    /// Returns a set of (line_number, change_type) where type is '+', '-', or '~'.
-    fn get_git_diff_lines(&self) -> Vec<(usize, char)> {
-        let path = match &self.buffer.path {
-            Some(p) => p.to_string_lossy().to_string(),
-            None => return Vec::new(),
-        };
-        let output = std::process::Command::new("git")
-            .args(["diff", "-U0", "--", &path])
-            .output();
-        let mut changed = Vec::new();
-        if let Ok(out) = output {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            for line in stdout.lines() {
-                // Parse @@ -old,count +new,count @@
-                if line.starts_with("@@") {
-                    if let Some(plus_part) = line.split('+').nth(1) {
-                        if let Some(num_str) = plus_part.split(|c: char| !c.is_ascii_digit()).next()
-                        {
-                            if let Ok(num) = num_str.parse::<usize>() {
-                                changed.push((num, '+'));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        changed
-    }
-
     fn run_ripgrep(&mut self, pattern: &str) {
         let output = std::process::Command::new("rg")
             .args([
@@ -2397,7 +2374,7 @@ impl MoraEditor {
 
     fn run_git_commit_with_message(&mut self, msg: &str) {
         // Stage all and commit
-        let add_output = self.run_git_command(&["add", "-A"]);
+        let _add_output = self.run_git_command(&["add", "-A"]);
         let commit_output = self.run_git_command(&["commit", "-m", msg]);
         if commit_output.contains("nothing to commit") || commit_output.contains("no changes added")
         {

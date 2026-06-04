@@ -164,7 +164,8 @@ fn layout_node(
             let pad = &b.padding;
             let border_h: u16 = if b.border.has_any() { 1 } else { 0 };
 
-            let inner_w = b.width
+            let inner_w = b
+                .width
                 .unwrap_or(available_width)
                 .saturating_sub(pad.horizontal_total() + border_h * 2);
             let inner_h = b.height.unwrap_or(available_height);
@@ -201,7 +202,10 @@ fn layout_node(
 
         UiNode::Row(f) => {
             let pad = &f.padding;
-            let avail_w = f.width.unwrap_or(available_width).saturating_sub(pad.horizontal_total());
+            let avail_w = f
+                .width
+                .unwrap_or(available_width)
+                .saturating_sub(pad.horizontal_total());
             let avail_h = f.height.unwrap_or(available_height);
 
             result.x = offset_x;
@@ -223,7 +227,11 @@ fn layout_node(
                 }
             }
 
-            let gap_total = if child_count > 1 { f.gap * (child_count as u16 - 1) } else { 0 };
+            let gap_total = if child_count > 1 {
+                f.gap * (child_count as u16 - 1)
+            } else {
+                0
+            };
             let remaining = (avail_w as f32 - gap_total as f32 - fixed_total).max(0.0);
 
             let mut cx = offset_x + pad.left as f32;
@@ -246,14 +254,21 @@ fn layout_node(
             }
 
             if f.height.is_none() {
-                let max_h = result.children.iter().map(|c| c.height).fold(0.0_f32, f32::max);
+                let max_h = result
+                    .children
+                    .iter()
+                    .map(|c| c.height)
+                    .fold(0.0_f32, f32::max);
                 result.height = max_h + pad.vertical_total() as f32;
             }
         }
 
         UiNode::Column(f) => {
             let pad = &f.padding;
-            let avail_w = f.width.unwrap_or(available_width).saturating_sub(pad.horizontal_total());
+            let avail_w = f
+                .width
+                .unwrap_or(available_width)
+                .saturating_sub(pad.horizontal_total());
             let avail_h = f.height.unwrap_or(available_height);
 
             result.x = offset_x;
@@ -589,7 +604,9 @@ fn measure_child_fixed_width(node: &UiNode) -> (f32, f32) {
         UiNode::Text(t) => (text_width(&t.content) as f32, 0.0),
         UiNode::Span(s) => (text_width(&s.content) as f32, 0.0),
         UiNode::Box(b) => (b.width.map(|w| w as f32).unwrap_or(0.0), 0.0),
-        UiNode::Row(f) | UiNode::Column(f) => (f.width.map(|w| w as f32).unwrap_or(0.0), f.flex_grow),
+        UiNode::Row(f) | UiNode::Column(f) => {
+            (f.width.map(|w| w as f32).unwrap_or(0.0), f.flex_grow)
+        }
         UiNode::Divider(_) => (0.0, 1.0), // flex-grow by default
         UiNode::ProgressBar(p) => (p.width as f32, 0.0),
         UiNode::List(_) => (0.0, 1.0),
@@ -597,7 +614,11 @@ fn measure_child_fixed_width(node: &UiNode) -> (f32, f32) {
         UiNode::Table(_) => (0.0, 1.0),
         UiNode::ScrollView(_) => (0.0, 1.0),
         UiNode::Show { when, child } => {
-            if *when { measure_child_fixed_width(child) } else { (0.0, 0.0) }
+            if *when {
+                measure_child_fixed_width(child)
+            } else {
+                (0.0, 0.0)
+            }
         }
         UiNode::For { .. } => (0.0, 1.0),
         UiNode::Keyed { child, .. } => measure_child_fixed_width(child),
@@ -661,7 +682,9 @@ pub fn char_display_width(ch: char) -> usize {
 
 /// Wrap text into lines that fit within the given width.
 pub fn wrap_text(text: &str, width: u16) -> Vec<String> {
-    if width == 0 { return vec![text.to_string()]; }
+    if width == 0 {
+        return vec![text.to_string()];
+    }
 
     let mut lines = Vec::new();
     let mut current_line = String::new();
@@ -706,10 +729,7 @@ mod tests {
 
     #[test]
     fn test_column_layout() {
-        let node = UiNode::column(vec![
-            UiNode::text("Line 1"),
-            UiNode::text("Line 2"),
-        ]);
+        let node = UiNode::column(vec![UiNode::text("Line 1"), UiNode::text("Line 2")]);
         let layout = compute_layout(&node, 80, 24);
         assert_eq!(layout.children.len(), 2);
         assert_eq!(layout.children[0].y, 0.0);
@@ -718,8 +738,7 @@ mod tests {
 
     #[test]
     fn test_box_with_padding() {
-        let node = UiNode::boxed(vec![UiNode::text("Content")])
-            .padding(Padding::all(1));
+        let node = UiNode::boxed(vec![UiNode::text("Content")]).padding(Padding::all(1));
         let layout = compute_layout(&node, 80, 24);
         assert_eq!(layout.children.len(), 1);
         // Child should be offset by padding
@@ -733,7 +752,8 @@ mod tests {
             UiNode::text("A"),
             UiNode::text("B"),
             UiNode::text("C"),
-        ]).gap(1);
+        ])
+        .gap(1);
         let layout = compute_layout(&node, 80, 24);
         assert_eq!(layout.children.len(), 3);
         assert_eq!(layout.children[0].x, 0.0);

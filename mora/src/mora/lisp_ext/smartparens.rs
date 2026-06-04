@@ -1,18 +1,30 @@
+use super::editor_state::with_editor_state_mut;
+use super::helpers::extract_string;
 use crate::lisp::types::Value;
-use super::editor_state::{with_editor_state, with_editor_state_mut};
-use super::helpers::{extract_string, extract_int};
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
     ns.intern_with_doc("smartparens-wrap", Value::Native(prim_smartparens_wrap),
         "(smartparens-wrap OPEN CLOSE) — Wrap region between mark and cursor with OPEN/CLOSE chars.");
-    ns.intern_with_doc("smartparens-insert-pair", Value::Native(prim_smartparens_insert_pair),
-        "(smartparens-insert-pair OPEN CLOSE) — Insert paired chars, place cursor between them.");
-    ns.intern_with_doc("smartparens-forward-slurp", Value::Native(prim_smartparens_forward_slurp),
-        "(smartparens-forward-slurp) — Absorb next s-expression into current pair.");
-    ns.intern_with_doc("smartparens-backward-slurp", Value::Native(prim_smartparens_backward_slurp),
-        "(smartparens-backward-slurp) — Absorb previous s-expression into current pair.");
-    ns.intern_with_doc("smartparens-unwrap", Value::Native(prim_smartparens_unwrap),
-        "(smartparens-unwrap) — Remove surrounding pair, keep inner content.");
+    ns.intern_with_doc(
+        "smartparens-insert-pair",
+        Value::Native(prim_smartparens_insert_pair),
+        "(smartparens-insert-pair OPEN CLOSE) — Insert paired chars, place cursor between them.",
+    );
+    ns.intern_with_doc(
+        "smartparens-forward-slurp",
+        Value::Native(prim_smartparens_forward_slurp),
+        "(smartparens-forward-slurp) — Absorb next s-expression into current pair.",
+    );
+    ns.intern_with_doc(
+        "smartparens-backward-slurp",
+        Value::Native(prim_smartparens_backward_slurp),
+        "(smartparens-backward-slurp) — Absorb previous s-expression into current pair.",
+    );
+    ns.intern_with_doc(
+        "smartparens-unwrap",
+        Value::Native(prim_smartparens_unwrap),
+        "(smartparens-unwrap) — Remove surrounding pair, keep inner content.",
+    );
 }
 
 /// (smartparens-wrap OPEN CLOSE) — Wrap region (between mark and cursor) with OPEN/CLOSE chars.
@@ -24,11 +36,17 @@ fn prim_smartparens_wrap(args: &[Value]) -> Result<Value, String> {
         let cursor = (state.cursor_row, state.cursor_col);
 
         // Normalize: ensure start <= end
-        let (start, end) = if mark < cursor { (mark, cursor) } else { (cursor, mark) };
+        let (start, end) = if mark < cursor {
+            (mark, cursor)
+        } else {
+            (cursor, mark)
+        };
 
         if start.0 == end.0 {
             // Single-line wrap
-            let line = state.lines.get(start.0)
+            let line = state
+                .lines
+                .get(start.0)
                 .ok_or_else(|| "cursor out of range".to_string())?;
             let before = &line[..start.1.min(line.len())];
             let inner = &line[start.1.min(line.len())..end.1.min(line.len())];
@@ -36,13 +54,17 @@ fn prim_smartparens_wrap(args: &[Value]) -> Result<Value, String> {
             state.lines[start.0] = format!("{}{}{}{}{}", before, open, inner, close, after);
         } else {
             // Multi-line wrap: insert open at start, close at end
-            let first_line = state.lines.get(start.0)
+            let first_line = state
+                .lines
+                .get(start.0)
                 .ok_or_else(|| "cursor out of range".to_string())?;
             let before = &first_line[..start.1.min(first_line.len())];
             let after_start = &first_line[start.1.min(first_line.len())..];
             state.lines[start.0] = format!("{}{}{}", before, open, after_start);
 
-            let last_line = state.lines.get(end.0)
+            let last_line = state
+                .lines
+                .get(end.0)
                 .ok_or_else(|| "cursor out of range".to_string())?;
             let before_end = &last_line[..end.1.min(last_line.len())];
             let after = &last_line[end.1.min(last_line.len())..];
@@ -61,7 +83,9 @@ fn prim_smartparens_insert_pair(args: &[Value]) -> Result<Value, String> {
     with_editor_state_mut(|state| {
         let row = state.cursor_row;
         let col = state.cursor_col;
-        let line = state.lines.get_mut(row)
+        let line = state
+            .lines
+            .get_mut(row)
             .ok_or_else(|| "cursor out of range".to_string())?;
         let insert_pos = col.min(line.len());
         let combined = format!("{}{}", open, close);
@@ -77,7 +101,9 @@ fn prim_smartparens_insert_pair(args: &[Value]) -> Result<Value, String> {
 fn prim_smartparens_forward_slurp(_args: &[Value]) -> Result<Value, String> {
     with_editor_state_mut(|state| {
         let row = state.cursor_row;
-        let line = state.lines.get_mut(row)
+        let line = state
+            .lines
+            .get_mut(row)
             .ok_or_else(|| "cursor out of range".to_string())?;
 
         // Find the closing pair char (one of ) ] } or a paired quote) after cursor
@@ -132,7 +158,9 @@ fn prim_smartparens_forward_slurp(_args: &[Value]) -> Result<Value, String> {
 fn prim_smartparens_backward_slurp(_args: &[Value]) -> Result<Value, String> {
     with_editor_state_mut(|state| {
         let row = state.cursor_row;
-        let line = state.lines.get_mut(row)
+        let line = state
+            .lines
+            .get_mut(row)
             .ok_or_else(|| "cursor out of range".to_string())?;
 
         // Find the opening pair char (one of ( [ { ) before cursor
@@ -187,7 +215,9 @@ fn prim_smartparens_unwrap(_args: &[Value]) -> Result<Value, String> {
     with_editor_state_mut(|state| {
         let row = state.cursor_row;
         let col = state.cursor_col;
-        let line = state.lines.get(row)
+        let line = state
+            .lines
+            .get(row)
             .ok_or_else(|| "cursor out of range".to_string())?;
 
         let pairs: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
@@ -196,7 +226,9 @@ fn prim_smartparens_unwrap(_args: &[Value]) -> Result<Value, String> {
         let mut found_pair = None;
         let mut depth = 0;
         for (i, ch) in line.char_indices().rev() {
-            if i >= col { continue; }
+            if i >= col {
+                continue;
+            }
             for &(open, close) in &pairs {
                 if ch == close {
                     depth += 1;
@@ -209,19 +241,25 @@ fn prim_smartparens_unwrap(_args: &[Value]) -> Result<Value, String> {
                     depth -= 1;
                 }
             }
-            if found_pair.is_some() { break; }
+            if found_pair.is_some() {
+                break;
+            }
         }
 
-        let (open_pos, _open_ch, close_ch) = found_pair
-            .ok_or_else(|| "no surrounding pair found".to_string())?;
+        let (open_pos, _open_ch, close_ch) =
+            found_pair.ok_or_else(|| "no surrounding pair found".to_string())?;
 
         // Find matching closing char forward from open_pos
         let mut close_pos = None;
         let mut fwd_depth = 0;
         for (i, ch) in line.char_indices() {
-            if i <= open_pos { continue; }
+            if i <= open_pos {
+                continue;
+            }
             for &(o, c) in &pairs {
-                if ch == o { fwd_depth += 1; }
+                if ch == o {
+                    fwd_depth += 1;
+                }
                 if ch == c {
                     if fwd_depth == 0 {
                         if ch == close_ch {
@@ -234,7 +272,9 @@ fn prim_smartparens_unwrap(_args: &[Value]) -> Result<Value, String> {
                     }
                 }
             }
-            if close_pos.is_some() { break; }
+            if close_pos.is_some() {
+                break;
+            }
         }
 
         let close_pos = close_pos.ok_or_else(|| "matching close not found".to_string())?;

@@ -1,50 +1,95 @@
-use crate::lisp::types::Value;
 use super::editor_state::with_editor_state_mut;
+use crate::lisp::types::Value;
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
     // expand-region
     ns.intern_with_doc("expand-region", Value::Native(prim_expand_region),
         "Expand selection by semantic units. Each call expands further: word → line → paragraph → buffer.");
-    ns.intern_private_with_doc("expand", Value::Native(prim_expand_region),
-        "Expand selection by semantic units.");
-    ns.intern_with_doc("contract-region", Value::Native(prim_contract_region),
-        "Contract selection back one level.");
-    ns.intern_private_with_doc("contract", Value::Native(prim_contract_region),
-        "Contract selection back one level.");
+    ns.intern_private_with_doc(
+        "expand",
+        Value::Native(prim_expand_region),
+        "Expand selection by semantic units.",
+    );
+    ns.intern_with_doc(
+        "contract-region",
+        Value::Native(prim_contract_region),
+        "Contract selection back one level.",
+    );
+    ns.intern_private_with_doc(
+        "contract",
+        Value::Native(prim_contract_region),
+        "Contract selection back one level.",
+    );
 
     // goto-last-change
-    ns.intern_with_doc("goto-last-change", Value::Native(prim_goto_last_change),
-        "Jump to last edit position using edit history.");
-    ns.intern_private_with_doc("last-change", Value::Native(prim_goto_last_change),
-        "Jump to last edit position.");
+    ns.intern_with_doc(
+        "goto-last-change",
+        Value::Native(prim_goto_last_change),
+        "Jump to last edit position using edit history.",
+    );
+    ns.intern_private_with_doc(
+        "last-change",
+        Value::Native(prim_goto_last_change),
+        "Jump to last edit position.",
+    );
 
     // hungry-delete
-    ns.intern_with_doc("hungry-delete-backward", Value::Native(prim_hungry_delete_backward),
-        "Delete all whitespace backward until non-whitespace.");
-    ns.intern_private_with_doc("hungry-back", Value::Native(prim_hungry_delete_backward),
-        "Delete all whitespace backward.");
-    ns.intern_with_doc("hungry-delete-forward", Value::Native(prim_hungry_delete_forward),
-        "Delete all whitespace forward until non-whitespace.");
-    ns.intern_private_with_doc("hungry-forward", Value::Native(prim_hungry_delete_forward),
-        "Delete all whitespace forward.");
+    ns.intern_with_doc(
+        "hungry-delete-backward",
+        Value::Native(prim_hungry_delete_backward),
+        "Delete all whitespace backward until non-whitespace.",
+    );
+    ns.intern_private_with_doc(
+        "hungry-back",
+        Value::Native(prim_hungry_delete_backward),
+        "Delete all whitespace backward.",
+    );
+    ns.intern_with_doc(
+        "hungry-delete-forward",
+        Value::Native(prim_hungry_delete_forward),
+        "Delete all whitespace forward until non-whitespace.",
+    );
+    ns.intern_private_with_doc(
+        "hungry-forward",
+        Value::Native(prim_hungry_delete_forward),
+        "Delete all whitespace forward.",
+    );
 
     // cleanup-buffer
-    ns.intern_with_doc("cleanup-buffer", Value::Native(prim_cleanup_buffer),
-        "Delete trailing whitespace, untabify the buffer.");
-    ns.intern_private_with_doc("cleanup", Value::Native(prim_cleanup_buffer),
-        "Delete trailing whitespace, untabify.");
+    ns.intern_with_doc(
+        "cleanup-buffer",
+        Value::Native(prim_cleanup_buffer),
+        "Delete trailing whitespace, untabify the buffer.",
+    );
+    ns.intern_private_with_doc(
+        "cleanup",
+        Value::Native(prim_cleanup_buffer),
+        "Delete trailing whitespace, untabify.",
+    );
 
     // insert-empty-line
-    ns.intern_with_doc("insert-empty-line", Value::Native(prim_insert_empty_line),
-        "Insert empty line after current line, move cursor there.");
-    ns.intern_private_with_doc("empty-line", Value::Native(prim_insert_empty_line),
-        "Insert empty line after current line.");
+    ns.intern_with_doc(
+        "insert-empty-line",
+        Value::Native(prim_insert_empty_line),
+        "Insert empty line after current line, move cursor there.",
+    );
+    ns.intern_private_with_doc(
+        "empty-line",
+        Value::Native(prim_insert_empty_line),
+        "Insert empty line after current line.",
+    );
 
     // copy-and-comment
-    ns.intern_with_doc("copy-and-comment", Value::Native(prim_copy_and_comment),
-        "Copy region text to kill ring and comment out original lines.");
-    ns.intern_private_with_doc("copy-comment", Value::Native(prim_copy_and_comment),
-        "Copy region text and comment out original.");
+    ns.intern_with_doc(
+        "copy-and-comment",
+        Value::Native(prim_copy_and_comment),
+        "Copy region text to kill ring and comment out original lines.",
+    );
+    ns.intern_private_with_doc(
+        "copy-comment",
+        Value::Native(prim_copy_and_comment),
+        "Copy region text and comment out original.",
+    );
 }
 
 /// (expand-region) — Expand selection by semantic units.
@@ -289,13 +334,12 @@ fn prim_copy_and_comment(_args: &[Value]) -> Result<Value, String> {
         let cur_col = state.cursor_col;
 
         // Determine range
-        let (start_row, start_col, end_row, end_col) = if mark_row < cur_row
-            || (mark_row == cur_row && mark_col <= cur_col)
-        {
-            (mark_row, mark_col, cur_row, cur_col)
-        } else {
-            (cur_row, cur_col, mark_row, mark_col)
-        };
+        let (start_row, start_col, end_row, end_col) =
+            if mark_row < cur_row || (mark_row == cur_row && mark_col <= cur_col) {
+                (mark_row, mark_col, cur_row, cur_col)
+            } else {
+                (cur_row, cur_col, mark_row, mark_col)
+            };
 
         // Collect the text
         let mut region_text = String::new();

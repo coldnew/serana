@@ -1,32 +1,10 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::collections::HashMap;
 
 use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
-pub mod string;
 pub mod core;
 pub mod math;
-
-
-macro_rules! builtin_fn {
-    ($name:expr, $func:expr) => {{
-        let sym = Symbol {
-            ns: Some(Arc::new("mora.core".to_string())),
-            name: Arc::new($name.to_string()),
-        };
-        Var::new(
-            sym,
-            Value::Fn(crate::lisp::types::FnValue {
-                name: Some($name.to_string()),
-                params: vec![],
-                body: Arc::new(vec![]),
-                closure: Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new())),
-                is_macro: false,
-                meta: None,
-            }),
-        )
-    }};
-}
+pub mod string;
 
 pub fn register_builtins(ns: &mut Namespace) {
     core::register(ns);
@@ -54,7 +32,11 @@ pub fn register_builtins(ns: &mut Namespace) {
     register_native(ns, "button", native_ui_button);
 }
 
-pub(crate) fn register_native(ns: &mut Namespace, name: &str, func: fn(&[Value]) -> Result<Value, String>) {
+pub(crate) fn register_native(
+    ns: &mut Namespace,
+    name: &str,
+    func: fn(&[Value]) -> Result<Value, String>,
+) {
     ns.intern(name, Value::Native(func));
 }
 
@@ -67,10 +49,6 @@ static NATIVE_REGISTRY: OnceLock<Mutex<HashMap<String, NativeFn>>> = OnceLock::n
 
 fn get_registry() -> &'static Mutex<HashMap<String, NativeFn>> {
     NATIVE_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn register_native_global(name: &str, func: NativeFn) {
-    get_registry().lock().insert(name.to_string(), func);
 }
 
 pub fn call_native(name: &str, args: &[Value]) -> Result<Value, String> {
@@ -129,8 +107,16 @@ fn native_gc_deref(args: &[Value]) -> Result<Value, String> {
 // --- UI DSL (Reagent-like hiccup) ---
 
 const STYLE_KEYS: &[&str] = &[
-    "bold", "italic", "underline", "dim", "strikethrough",
-    "reverse", "blink", "fg", "color", "bg",
+    "bold",
+    "italic",
+    "underline",
+    "dim",
+    "strikethrough",
+    "reverse",
+    "blink",
+    "fg",
+    "color",
+    "bg",
 ];
 
 fn style_key(kw: &str) -> Value {
@@ -153,10 +139,6 @@ fn extract_style_from_map(map: &HashMap<Value, Value>) -> Option<Value> {
     }
 }
 
-fn is_props_map(arg: &Value) -> bool {
-    matches!(arg, Value::Map(_))
-}
-
 fn get_map(arg: &Value) -> Option<&HashMap<Value, Value>> {
     match arg {
         Value::Map(m) => Some(m.as_ref()),
@@ -164,42 +146,32 @@ fn get_map(arg: &Value) -> Option<&HashMap<Value, Value>> {
     }
 }
 
-fn map_get_str(map: &HashMap<Value, Value>, key: &str) -> Option<String> {
-    map.get(&style_key(key)).and_then(|v| match v {
-        Value::String(s) => Some(s.to_string()),
-        _ => None,
-    })
-}
-
-fn map_get_f64(map: &HashMap<Value, Value>, key: &str) -> Option<f64> {
-    map.get(&style_key(key)).and_then(|v| match v {
-        Value::Float(f) => Some(*f),
-        Value::Int(i) => Some(*i as f64),
-        _ => None,
-    })
-}
-
-fn map_get_bool(map: &HashMap<Value, Value>, key: &str) -> Option<bool> {
-    map.get(&style_key(key)).and_then(|v| match v {
-        Value::Bool(b) => Some(*b),
-        _ => None,
-    })
-}
-
-fn map_get_u16(map: &HashMap<Value, Value>, key: &str) -> Option<u16> {
-    map.get(&style_key(key)).and_then(|v| match v {
-        Value::Int(i) => Some(*i as u16),
-        _ => None,
-    })
-}
-
 fn extract_common_props(map: &HashMap<Value, Value>) -> Vec<(Value, Value)> {
     let mut props = Vec::new();
-    for &k in &["gap", "align", "justify", "padding", "width", "height",
-                 "flex-grow", "flex-shrink", "border", "title",
-                 "min-width", "min-height", "max-width", "max-height",
-                 "char", "value", "max", "show-percent", "marker",
-                 "scroll-top", "on-click", "on-change"] {
+    for &k in &[
+        "gap",
+        "align",
+        "justify",
+        "padding",
+        "width",
+        "height",
+        "flex-grow",
+        "flex-shrink",
+        "border",
+        "title",
+        "min-width",
+        "min-height",
+        "max-width",
+        "max-height",
+        "char",
+        "value",
+        "max",
+        "show-percent",
+        "marker",
+        "scroll-top",
+        "on-click",
+        "on-change",
+    ] {
         let key = style_key(k);
         if let Some(val) = map.get(&key) {
             props.push((key, val.clone()));
@@ -208,11 +180,14 @@ fn extract_common_props(map: &HashMap<Value, Value>) -> Vec<(Value, Value)> {
     props
 }
 
-fn make_node(typ: &str, content: Option<String>, style: Option<Value>,
-              props: Option<Value>, children: Option<Vec<Value>>) -> Value {
-    let mut pairs = vec![
-        (Value::keyword("type"), Value::keyword(typ)),
-    ];
+fn make_node(
+    typ: &str,
+    content: Option<String>,
+    style: Option<Value>,
+    props: Option<Value>,
+    children: Option<Vec<Value>>,
+) -> Value {
+    let mut pairs = vec![(Value::keyword("type"), Value::keyword(typ))];
     if let Some(c) = content {
         pairs.push((Value::keyword("content"), Value::string(c)));
     }
@@ -362,12 +337,26 @@ fn native_ui_divider(args: &[Value]) -> Result<Value, String> {
 
     if let Some(map) = get_map(&args[0]) {
         let props = extract_common_props(map);
-        Ok(make_node("divider", None, None,
-            if props.is_empty() { None } else { Some(Value::map(props)) }, None))
+        Ok(make_node(
+            "divider",
+            None,
+            None,
+            if props.is_empty() {
+                None
+            } else {
+                Some(Value::map(props))
+            },
+            None,
+        ))
     } else {
         let ch = args[0].to_string().chars().next().unwrap_or('─');
-        Ok(make_node("divider", None, None,
-            Some(Value::map(vec![(Value::keyword("char"), Value::Char(ch))])), None))
+        Ok(make_node(
+            "divider",
+            None,
+            None,
+            Some(Value::map(vec![(Value::keyword("char"), Value::Char(ch))])),
+            None,
+        ))
     }
 }
 
@@ -384,8 +373,17 @@ fn native_ui_progress(args: &[Value]) -> Result<Value, String> {
         if let Some(s) = style {
             all_props.push((Value::keyword("style"), s));
         }
-        Ok(make_node("progress", None, None,
-            if all_props.is_empty() { None } else { Some(Value::map(all_props)) }, None))
+        Ok(make_node(
+            "progress",
+            None,
+            None,
+            if all_props.is_empty() {
+                None
+            } else {
+                Some(Value::map(all_props))
+            },
+            None,
+        ))
     } else {
         Ok(make_node("progress", None, None, None, None))
     }
@@ -402,7 +400,14 @@ fn native_ui_list(args: &[Value]) -> Result<Value, String> {
         if let Some(s) = style {
             p.push((Value::keyword("style"), s));
         }
-        (if p.is_empty() { None } else { Some(Value::map(p)) }, args[1..].to_vec())
+        (
+            if p.is_empty() {
+                None
+            } else {
+                Some(Value::map(p))
+            },
+            args[1..].to_vec(),
+        )
     } else {
         (None, args.to_vec())
     };
@@ -422,7 +427,7 @@ fn native_ui_show(args: &[Value]) -> Result<Value, String> {
         _ => true,
     };
 
-    let mut pairs = vec![
+    let pairs = vec![
         (Value::keyword("type"), Value::keyword("show")),
         (Value::keyword("when"), Value::Bool(when)),
         (Value::keyword("child"), args[1].clone()),
@@ -446,7 +451,7 @@ fn native_ui_for_each(args: &[Value]) -> Result<Value, String> {
     };
 
     // Store fn and coll as props, actual mapping happens at conversion time
-    let mut pairs = vec![
+    let pairs = vec![
         (Value::keyword("type"), Value::keyword("for")),
         (Value::keyword("func"), func.clone()),
         (Value::keyword("coll"), coll.clone()),
@@ -462,7 +467,11 @@ fn native_ui_scroll_view(args: &[Value]) -> Result<Value, String> {
 
     if let Some(map) = get_map(&args[0]) {
         let common = extract_common_props(map);
-        let child = if args.len() > 1 { args[1].clone() } else { Value::Nil };
+        let child = if args.len() > 1 {
+            args[1].clone()
+        } else {
+            Value::Nil
+        };
         let mut pairs = vec![
             (Value::keyword("type"), Value::keyword("scroll-view")),
             (Value::keyword("child"), child),
@@ -472,7 +481,7 @@ fn native_ui_scroll_view(args: &[Value]) -> Result<Value, String> {
         }
         Ok(Value::map(pairs))
     } else {
-        let mut pairs = vec![
+        let pairs = vec![
             (Value::keyword("type"), Value::keyword("scroll-view")),
             (Value::keyword("child"), args[0].clone()),
         ];
@@ -511,7 +520,11 @@ fn native_ui_button(args: &[Value]) -> Result<Value, String> {
         }
     }
 
-    let props = if props_pairs.is_empty() { None } else { Some(Value::map(props_pairs)) };
+    let props = if props_pairs.is_empty() {
+        None
+    } else {
+        Some(Value::map(props_pairs))
+    };
     Ok(make_node("button", Some(label), style, props, None))
 }
 

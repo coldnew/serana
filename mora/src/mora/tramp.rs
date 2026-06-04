@@ -7,7 +7,6 @@
 ///
 /// Connections are cached and reused. SSH ControlMaster is used
 /// when available to multiplex sessions over a single connection.
-
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -37,7 +36,11 @@ impl RemotePath {
         let (host_part, path) = rest.rsplit_once(':')?;
 
         let (user, host, port) = if let Some((u, h)) = host_part.split_once('@') {
-            let user = if u.is_empty() { None } else { Some(u.to_string()) };
+            let user = if u.is_empty() {
+                None
+            } else {
+                Some(u.to_string())
+            };
             let (host, port) = parse_host_port(h);
             (user, host, port)
         } else {
@@ -103,7 +106,7 @@ fn parse_host_port(s: &str) -> (String, Option<u16>) {
 #[derive(Debug)]
 struct Connection {
     _target: String,
-    connected_at: Instant,
+    _connected_at: Instant,
     last_used: Instant,
 }
 
@@ -131,7 +134,7 @@ impl ConnectionPool {
                 target.to_string(),
                 Connection {
                     _target: target.to_string(),
-                    connected_at: now,
+                    _connected_at: now,
                     last_used: now,
                 },
             );
@@ -203,9 +206,7 @@ pub fn write_file(rp: &RemotePath, content: &str) -> Result<(), String> {
     cmd.arg(format!("tee -- '{}' > /dev/null", escape_shell(&rp.path)));
     cmd.stdin(std::process::Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("ssh spawn failed: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("ssh spawn failed: {e}"))?;
 
     use std::io::Write;
     if let Some(mut stdin) = child.stdin.take() {
@@ -214,9 +215,7 @@ pub fn write_file(rp: &RemotePath, content: &str) -> Result<(), String> {
             .map_err(|e| format!("write to ssh failed: {e}"))?;
     }
 
-    let status = child
-        .wait()
-        .map_err(|e| format!("ssh wait failed: {e}"))?;
+    let status = child.wait().map_err(|e| format!("ssh wait failed: {e}"))?;
     if !status.success() {
         return Err("remote write failed".to_string());
     }
@@ -229,11 +228,7 @@ pub fn shell_command(rp: &RemotePath, command: &str) -> Result<(String, i32), St
     let mut cmd = Command::new("ssh");
     cmd.args(rp.ssh_args());
     cmd.arg(rp.ssh_target());
-    cmd.arg(format!(
-        "cd '{}' && {}",
-        escape_shell(&rp.path),
-        command
-    ));
+    cmd.arg(format!("cd '{}' && {}", escape_shell(&rp.path), command));
 
     let output = cmd.output().map_err(|e| format!("ssh failed: {e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -280,7 +275,10 @@ pub fn list_directory(rp: &RemotePath) -> Result<Vec<String>, String> {
 pub fn file_exists(rp: &RemotePath) -> Result<bool, String> {
     let (_, code) = shell_command(
         rp,
-        &format!("test -e '{}' && echo yes || echo no", escape_shell(&rp.path)),
+        &format!(
+            "test -e '{}' && echo yes || echo no",
+            escape_shell(&rp.path)
+        ),
     )?;
     Ok(code == 0)
 }
@@ -305,10 +303,7 @@ pub fn file_mtime(rp: &RemotePath) -> Result<i64, String> {
 
 /// Create a remote directory (with -p).
 pub fn make_directory(rp: &RemotePath) -> Result<(), String> {
-    let (_, code) = shell_command(
-        rp,
-        &format!("mkdir -p -- '{}'", escape_shell(&rp.path)),
-    )?;
+    let (_, code) = shell_command(rp, &format!("mkdir -p -- '{}'", escape_shell(&rp.path)))?;
     if code != 0 {
         return Err(format!("failed to create remote directory: {}", rp.path));
     }
@@ -317,10 +312,7 @@ pub fn make_directory(rp: &RemotePath) -> Result<(), String> {
 
 /// Delete a remote file.
 pub fn delete_file(rp: &RemotePath) -> Result<(), String> {
-    let (_, code) = shell_command(
-        rp,
-        &format!("rm -- '{}'", escape_shell(&rp.path)),
-    )?;
+    let (_, code) = shell_command(rp, &format!("rm -- '{}'", escape_shell(&rp.path)))?;
     if code != 0 {
         return Err(format!("failed to delete remote file: {}", rp.path));
     }

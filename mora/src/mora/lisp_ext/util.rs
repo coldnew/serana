@@ -2,8 +2,8 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use crate::lisp::types::Value;
 use super::editor_state::{with_editor_state, with_editor_state_mut};
+use crate::lisp::types::Value;
 
 // ── Winner ring (thread-local window config stack) ───────────
 
@@ -57,7 +57,8 @@ fn word_before_cursor(lines: &[String], row: usize, col: usize) -> String {
     let col = col.min(line.len());
     let before = &line[..col];
     // Find the start of the word (alphanumeric + underscore)
-    let start = before.rfind(|c: char| !c.is_alphanumeric() && c != '_')
+    let start = before
+        .rfind(|c: char| !c.is_alphanumeric() && c != '_')
         .map(|i| i + 1)
         .unwrap_or(0);
     before[start..].to_string()
@@ -70,7 +71,12 @@ fn find_matching_words(lines: &[String], prefix: &str, exclude: &str) -> Vec<Str
     for line in lines {
         let mut chars = line.char_indices().peekable();
         while let Some((i, c)) = chars.next() {
-            if i == 0 || !line.as_bytes().get(i.wrapping_sub(1)).map_or(false, |b| b.is_ascii_alphanumeric() || *b == b'_') {
+            if i == 0
+                || !line
+                    .as_bytes()
+                    .get(i.wrapping_sub(1))
+                    .map_or(false, |b| b.is_ascii_alphanumeric() || *b == b'_')
+            {
                 if c.is_alphanumeric() || c == '_' {
                     let word_start = i;
                     let mut word_end = i + c.len_utf8();
@@ -83,7 +89,8 @@ fn find_matching_words(lines: &[String], prefix: &str, exclude: &str) -> Vec<Str
                         }
                     }
                     let word = &line[word_start..word_end];
-                    if word.starts_with(prefix) && word != exclude && seen.insert(word.to_string()) {
+                    if word.starts_with(prefix) && word != exclude && seen.insert(word.to_string())
+                    {
                         matches.push(word.to_string());
                     }
                 }
@@ -121,16 +128,27 @@ fn offset_to_pos(lines: &[String], offset: usize) -> (usize, usize) {
 /// Determine comment prefix based on file extension.
 fn comment_prefix(file_path: &Option<String>) -> &'static str {
     if let Some(path) = file_path {
-        if path.ends_with(".lisp") || path.ends_with(".lsp") || path.ends_with(".cl")
-            || path.ends_with(".el") || path.ends_with(".scm") || path.ends_with(".mora") {
+        if path.ends_with(".lisp")
+            || path.ends_with(".lsp")
+            || path.ends_with(".cl")
+            || path.ends_with(".el")
+            || path.ends_with(".scm")
+            || path.ends_with(".mora")
+        {
             return "; ";
         }
         if path.ends_with(".hs") {
             return "-- ";
         }
-        if path.ends_with(".py") || path.ends_with(".rb") || path.ends_with(".sh")
-            || path.ends_with(".bash") || path.ends_with(".zsh") || path.ends_with(".yml")
-            || path.ends_with(".yaml") || path.ends_with(".toml") {
+        if path.ends_with(".py")
+            || path.ends_with(".rb")
+            || path.ends_with(".sh")
+            || path.ends_with(".bash")
+            || path.ends_with(".zsh")
+            || path.ends_with(".yml")
+            || path.ends_with(".yaml")
+            || path.ends_with(".toml")
+        {
             return "# ";
         }
     }
@@ -139,7 +157,10 @@ fn comment_prefix(file_path: &Option<String>) -> &'static str {
 
 /// Create a 2-element vector [row, col].
 fn pos_value(row: usize, col: usize) -> Value {
-    Value::Vector(Arc::new(vec![Value::Int(row as i64), Value::Int(col as i64)]))
+    Value::Vector(Arc::new(vec![
+        Value::Int(row as i64),
+        Value::Int(col as i64),
+    ]))
 }
 
 // ── Dabbrev expand ──────────────────────────────────────────
@@ -221,9 +242,13 @@ fn prim_symbol_overlay_highlight(_args: &[Value]) -> Result<Value, String> {
             while let Some(col) = line[search_start..].find(&word) {
                 let abs_col = search_start + col;
                 // Verify word boundary
-                let before_ok = abs_col == 0 || !line.as_bytes()[abs_col - 1].is_ascii_alphanumeric() && line.as_bytes()[abs_col - 1] != b'_';
+                let before_ok = abs_col == 0
+                    || !line.as_bytes()[abs_col - 1].is_ascii_alphanumeric()
+                        && line.as_bytes()[abs_col - 1] != b'_';
                 let end = abs_col + word.len();
-                let after_ok = end >= line.len() || !line.as_bytes()[end].is_ascii_alphanumeric() && line.as_bytes()[end] != b'_';
+                let after_ok = end >= line.len()
+                    || !line.as_bytes()[end].is_ascii_alphanumeric()
+                        && line.as_bytes()[end] != b'_';
 
                 if before_ok && after_ok {
                     let start_offset = pos_to_offset(&state.lines, row, abs_col);
@@ -330,9 +355,8 @@ fn prim_symbol_overlay_jump_prev(_args: &[Value]) -> Result<Value, String> {
 
 /// (winner-push) — Push current window config onto winner ring.
 fn prim_winner_push(_args: &[Value]) -> Result<Value, String> {
-    let (row, col, wc) = with_editor_state(|state| {
-        (state.cursor_row, state.cursor_col, state.window_count)
-    });
+    let (row, col, wc) =
+        with_editor_state(|state| (state.cursor_row, state.cursor_col, state.window_count));
     winner_push_entry(WinnerEntry {
         cursor_row: row,
         cursor_col: col,
@@ -344,9 +368,8 @@ fn prim_winner_push(_args: &[Value]) -> Result<Value, String> {
 /// (winner-undo) — Restore previous window config.
 fn prim_winner_undo(_args: &[Value]) -> Result<Value, String> {
     // Push current state onto redo ring first
-    let (row, col, wc) = with_editor_state(|state| {
-        (state.cursor_row, state.cursor_col, state.window_count)
-    });
+    let (row, col, wc) =
+        with_editor_state(|state| (state.cursor_row, state.cursor_col, state.window_count));
     winner_push_redo_entry(WinnerEntry {
         cursor_row: row,
         cursor_col: col,
@@ -369,9 +392,8 @@ fn prim_winner_undo(_args: &[Value]) -> Result<Value, String> {
 /// (winner-redo) — Re-apply next window config.
 fn prim_winner_redo(_args: &[Value]) -> Result<Value, String> {
     // Push current state onto undo ring first
-    let (row, col, wc) = with_editor_state(|state| {
-        (state.cursor_row, state.cursor_col, state.window_count)
-    });
+    let (row, col, wc) =
+        with_editor_state(|state| (state.cursor_row, state.cursor_col, state.window_count));
     winner_push_entry(WinnerEntry {
         cursor_row: row,
         cursor_col: col,
@@ -502,7 +524,9 @@ thread_local! {
 }
 
 /// Get column range from mark and cursor, normalized.
-fn rect_col_range(state: &super::editor_state::EditorState) -> Result<(usize, usize, usize, usize), String> {
+fn rect_col_range(
+    state: &super::editor_state::EditorState,
+) -> Result<(usize, usize, usize, usize), String> {
     let mark = state.mark_pos.ok_or("No mark set")?;
     let start_row = mark.0.min(state.cursor_row);
     let end_row = mark.0.max(state.cursor_row);
@@ -594,70 +618,154 @@ pub fn register(ns: &mut crate::lisp::ns::Namespace) {
     // dabbrev
     ns.intern_with_doc("dabbrev-expand", Value::Native(prim_dabbrev_expand),
         "Expand word at cursor to match a word elsewhere in buffer. Repeat to cycle through matches.");
-    ns.intern_private_with_doc("expand", Value::Native(prim_dabbrev_expand),
-        "Expand word at cursor.");
-    ns.intern_with_doc("dabbrev-reset", Value::Native(prim_dabbrev_reset),
-        "Reset dabbrev expansion state.");
-    ns.intern_private_with_doc("reset", Value::Native(prim_dabbrev_reset),
-        "Reset dabbrev state.");
+    ns.intern_private_with_doc(
+        "expand",
+        Value::Native(prim_dabbrev_expand),
+        "Expand word at cursor.",
+    );
+    ns.intern_with_doc(
+        "dabbrev-reset",
+        Value::Native(prim_dabbrev_reset),
+        "Reset dabbrev expansion state.",
+    );
+    ns.intern_private_with_doc(
+        "reset",
+        Value::Native(prim_dabbrev_reset),
+        "Reset dabbrev state.",
+    );
 
     // symbol-overlay
-    ns.intern_with_doc("symbol-overlay-highlight", Value::Native(prim_symbol_overlay_highlight),
-        "Highlight all occurrences of word at cursor.");
-    ns.intern_private_with_doc("highlight", Value::Native(prim_symbol_overlay_highlight),
-        "Highlight all occurrences of word at cursor.");
-    ns.intern_with_doc("symbol-overlay-remove", Value::Native(prim_symbol_overlay_remove),
-        "Remove all symbol overlay highlights.");
-    ns.intern_private_with_doc("remove", Value::Native(prim_symbol_overlay_remove),
-        "Remove symbol overlays.");
-    ns.intern_with_doc("symbol-overlay-jump-next", Value::Native(prim_symbol_overlay_jump_next),
-        "Jump to next highlighted symbol.");
-    ns.intern_private_with_doc("jump-next", Value::Native(prim_symbol_overlay_jump_next),
-        "Jump to next symbol.");
-    ns.intern_with_doc("symbol-overlay-jump-prev", Value::Native(prim_symbol_overlay_jump_prev),
-        "Jump to previous highlighted symbol.");
-    ns.intern_private_with_doc("jump-prev", Value::Native(prim_symbol_overlay_jump_prev),
-        "Jump to previous symbol.");
+    ns.intern_with_doc(
+        "symbol-overlay-highlight",
+        Value::Native(prim_symbol_overlay_highlight),
+        "Highlight all occurrences of word at cursor.",
+    );
+    ns.intern_private_with_doc(
+        "highlight",
+        Value::Native(prim_symbol_overlay_highlight),
+        "Highlight all occurrences of word at cursor.",
+    );
+    ns.intern_with_doc(
+        "symbol-overlay-remove",
+        Value::Native(prim_symbol_overlay_remove),
+        "Remove all symbol overlay highlights.",
+    );
+    ns.intern_private_with_doc(
+        "remove",
+        Value::Native(prim_symbol_overlay_remove),
+        "Remove symbol overlays.",
+    );
+    ns.intern_with_doc(
+        "symbol-overlay-jump-next",
+        Value::Native(prim_symbol_overlay_jump_next),
+        "Jump to next highlighted symbol.",
+    );
+    ns.intern_private_with_doc(
+        "jump-next",
+        Value::Native(prim_symbol_overlay_jump_next),
+        "Jump to next symbol.",
+    );
+    ns.intern_with_doc(
+        "symbol-overlay-jump-prev",
+        Value::Native(prim_symbol_overlay_jump_prev),
+        "Jump to previous highlighted symbol.",
+    );
+    ns.intern_private_with_doc(
+        "jump-prev",
+        Value::Native(prim_symbol_overlay_jump_prev),
+        "Jump to previous symbol.",
+    );
 
     // winner-mode
-    ns.intern_with_doc("winner-push", Value::Native(prim_winner_push),
-        "Push current window configuration onto winner ring.");
-    ns.intern_private_with_doc("push", Value::Native(prim_winner_push),
-        "Push window config.");
-    ns.intern_with_doc("winner-undo", Value::Native(prim_winner_undo),
-        "Restore previous window configuration from winner ring.");
-    ns.intern_private_with_doc("undo", Value::Native(prim_winner_undo),
-        "Undo window config.");
-    ns.intern_with_doc("winner-redo", Value::Native(prim_winner_redo),
-        "Re-apply next window configuration from winner ring.");
-    ns.intern_private_with_doc("redo", Value::Native(prim_winner_redo),
-        "Redo window config.");
+    ns.intern_with_doc(
+        "winner-push",
+        Value::Native(prim_winner_push),
+        "Push current window configuration onto winner ring.",
+    );
+    ns.intern_private_with_doc(
+        "push",
+        Value::Native(prim_winner_push),
+        "Push window config.",
+    );
+    ns.intern_with_doc(
+        "winner-undo",
+        Value::Native(prim_winner_undo),
+        "Restore previous window configuration from winner ring.",
+    );
+    ns.intern_private_with_doc(
+        "undo",
+        Value::Native(prim_winner_undo),
+        "Undo window config.",
+    );
+    ns.intern_with_doc(
+        "winner-redo",
+        Value::Native(prim_winner_redo),
+        "Re-apply next window configuration from winner ring.",
+    );
+    ns.intern_private_with_doc(
+        "redo",
+        Value::Native(prim_winner_redo),
+        "Redo window config.",
+    );
 
     // comment-dwim
-    ns.intern_with_doc("comment-region", Value::Native(prim_comment_region),
-        "Comment out lines between mark and cursor.");
-    ns.intern_private_with_doc("region", Value::Native(prim_comment_region),
-        "Comment out region.");
-    ns.intern_with_doc("uncomment-region", Value::Native(prim_uncomment_region),
-        "Remove comment prefix from lines between mark and cursor.");
-    ns.intern_private_with_doc("uncomment", Value::Native(prim_uncomment_region),
-        "Uncomment region.");
+    ns.intern_with_doc(
+        "comment-region",
+        Value::Native(prim_comment_region),
+        "Comment out lines between mark and cursor.",
+    );
+    ns.intern_private_with_doc(
+        "region",
+        Value::Native(prim_comment_region),
+        "Comment out region.",
+    );
+    ns.intern_with_doc(
+        "uncomment-region",
+        Value::Native(prim_uncomment_region),
+        "Remove comment prefix from lines between mark and cursor.",
+    );
+    ns.intern_private_with_doc(
+        "uncomment",
+        Value::Native(prim_uncomment_region),
+        "Uncomment region.",
+    );
     ns.intern_with_doc("comment-toggle", Value::Native(prim_comment_toggle),
         "Toggle comment on region: comment if any line is uncommented, uncomment if all are commented.");
-    ns.intern_private_with_doc("toggle", Value::Native(prim_comment_toggle),
-        "Toggle comment on region.");
+    ns.intern_private_with_doc(
+        "toggle",
+        Value::Native(prim_comment_toggle),
+        "Toggle comment on region.",
+    );
 
     // rectangle
-    ns.intern_with_doc("rectangle-kill", Value::Native(prim_rectangle_kill),
-        "Kill text in rectangle between mark and cursor.");
-    ns.intern_private_with_doc("kill", Value::Native(prim_rectangle_kill),
-        "Kill rectangle.");
-    ns.intern_with_doc("rectangle-yank", Value::Native(prim_rectangle_yank),
-        "Yank killed rectangle at cursor position.");
-    ns.intern_private_with_doc("yank", Value::Native(prim_rectangle_yank),
-        "Yank rectangle.");
-    ns.intern_with_doc("rectangle-copy", Value::Native(prim_rectangle_copy),
-        "Copy rectangle to kill ring without deleting.");
-    ns.intern_private_with_doc("copy", Value::Native(prim_rectangle_copy),
-        "Copy rectangle.");
+    ns.intern_with_doc(
+        "rectangle-kill",
+        Value::Native(prim_rectangle_kill),
+        "Kill text in rectangle between mark and cursor.",
+    );
+    ns.intern_private_with_doc(
+        "kill",
+        Value::Native(prim_rectangle_kill),
+        "Kill rectangle.",
+    );
+    ns.intern_with_doc(
+        "rectangle-yank",
+        Value::Native(prim_rectangle_yank),
+        "Yank killed rectangle at cursor position.",
+    );
+    ns.intern_private_with_doc(
+        "yank",
+        Value::Native(prim_rectangle_yank),
+        "Yank rectangle.",
+    );
+    ns.intern_with_doc(
+        "rectangle-copy",
+        Value::Native(prim_rectangle_copy),
+        "Copy rectangle to kill ring without deleting.",
+    );
+    ns.intern_private_with_doc(
+        "copy",
+        Value::Native(prim_rectangle_copy),
+        "Copy rectangle.",
+    );
 }

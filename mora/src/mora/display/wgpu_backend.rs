@@ -9,11 +9,11 @@ use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::keyboard::ModifiersState;
+use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::window::{Window, WindowId};
 
-use super::backend::{DisplayBackend, InputEvent, CellBuffer};
+use super::backend::{CellBuffer, DisplayBackend, InputEvent};
 use super::event::{MoraKeyCode, MoraKeyEvent, MoraKeyModifiers};
 use super::style::{MoraColor, MoraStyle};
 
@@ -375,24 +375,51 @@ impl WgpuBackend {
                     let y2 = y + cell_height;
                     let mut any_row_dirty = false;
                     for &d in dirty_row {
-                        if d { any_row_dirty = true; break; }
+                        if d {
+                            any_row_dirty = true;
+                            break;
+                        }
                     }
-                    if !any_row_dirty { return; }
-                    for (col, (vert_group, cell)) in
-                        vert_row.chunks_exact_mut(6).zip(cell_row.iter()).enumerate()
+                    if !any_row_dirty {
+                        return;
+                    }
+                    for (col, (vert_group, cell)) in vert_row
+                        .chunks_exact_mut(6)
+                        .zip(cell_row.iter())
+                        .enumerate()
                     {
-                        if !dirty_row[col] { continue; }
+                        if !dirty_row[col] {
+                            continue;
+                        }
                         let x = col as f32 * cell_width;
                         let x2 = x + cell_width;
                         let (_fg, bg) = resolve_colors(cell.style);
                         let bg_color = bg.unwrap_or(MoraColor::new(30, 30, 30));
                         let c = color_to_linear(bg_color);
-                        vert_group[0] = RectVertex { position: [x, y], color: c };
-                        vert_group[1] = RectVertex { position: [x2, y], color: c };
-                        vert_group[2] = RectVertex { position: [x, y2], color: c };
-                        vert_group[3] = RectVertex { position: [x2, y], color: c };
-                        vert_group[4] = RectVertex { position: [x2, y2], color: c };
-                        vert_group[5] = RectVertex { position: [x, y2], color: c };
+                        vert_group[0] = RectVertex {
+                            position: [x, y],
+                            color: c,
+                        };
+                        vert_group[1] = RectVertex {
+                            position: [x2, y],
+                            color: c,
+                        };
+                        vert_group[2] = RectVertex {
+                            position: [x, y2],
+                            color: c,
+                        };
+                        vert_group[3] = RectVertex {
+                            position: [x2, y],
+                            color: c,
+                        };
+                        vert_group[4] = RectVertex {
+                            position: [x2, y2],
+                            color: c,
+                        };
+                        vert_group[5] = RectVertex {
+                            position: [x, y2],
+                            color: c,
+                        };
                     }
                 });
             self.dirty_cells.iter_mut().for_each(|d| *d = false);
@@ -418,7 +445,7 @@ impl WgpuBackend {
         // Render rect pass
         if let Some(vbuf) = &self.rect_vertex_buffer {
             let total_verts = (self.rows as usize * self.cols as usize * 6) as u32;
-            let cursor_verts = if self.cursor_visible { 6 } else { 0 };
+            let _cursor_verts = if self.cursor_visible { 6 } else { 0 };
 
             // Append cursor vertices via persistent buffer
             let cursor_verts = if self.cursor_visible { 6 } else { 0 };
@@ -429,12 +456,30 @@ impl WgpuBackend {
                 let cy2 = cy + self.cell_height;
                 let cc = color_to_linear(MoraColor::new(200, 200, 200));
                 let cursor_data: [RectVertex; 6] = [
-                    RectVertex { position: [cx, cy], color: cc },
-                    RectVertex { position: [cx2, cy], color: cc },
-                    RectVertex { position: [cx, cy2], color: cc },
-                    RectVertex { position: [cx2, cy], color: cc },
-                    RectVertex { position: [cx2, cy2], color: cc },
-                    RectVertex { position: [cx, cy2], color: cc },
+                    RectVertex {
+                        position: [cx, cy],
+                        color: cc,
+                    },
+                    RectVertex {
+                        position: [cx2, cy],
+                        color: cc,
+                    },
+                    RectVertex {
+                        position: [cx, cy2],
+                        color: cc,
+                    },
+                    RectVertex {
+                        position: [cx2, cy],
+                        color: cc,
+                    },
+                    RectVertex {
+                        position: [cx2, cy2],
+                        color: cc,
+                    },
+                    RectVertex {
+                        position: [cx, cy2],
+                        color: cc,
+                    },
                 ];
                 let cursor_bytes: &[u8] = bytemuck::cast_slice(&cursor_data);
                 match &self.cursor_vertex_buffer {
@@ -498,7 +543,13 @@ impl WgpuBackend {
         }
 
         if self.needs_text_reshape {
-            if let (Some(font_system), Some(atlas), Some(text_renderer), Some(swash_cache), Some(viewport)) = (
+            if let (
+                Some(font_system),
+                Some(atlas),
+                Some(text_renderer),
+                Some(swash_cache),
+                Some(viewport),
+            ) = (
                 &mut self.font_system,
                 &mut self.atlas,
                 &mut self.text_renderer,
@@ -567,9 +618,9 @@ impl WgpuBackend {
                 let default_attrs = glyphon::Attrs::new().family(glyphon::Family::Monospace);
                 buffer.set_rich_text(
                     font_system,
-                    attrs_list.iter().map(|(range, attrs)| {
-                        (&full_text[range.clone()], attrs.clone())
-                    }),
+                    attrs_list
+                        .iter()
+                        .map(|(range, attrs)| (&full_text[range.clone()], attrs.clone())),
                     &default_attrs,
                     glyphon::Shaping::Advanced,
                     None,
@@ -580,7 +631,11 @@ impl WgpuBackend {
                 let height = self.rows as f32 * self.cell_height;
                 let scale = {
                     let shared = self.shared.borrow();
-                    shared.window.as_ref().map(|w| w.scale_factor() as f32).unwrap_or(1.0)
+                    shared
+                        .window
+                        .as_ref()
+                        .map(|w| w.scale_factor() as f32)
+                        .unwrap_or(1.0)
                 };
 
                 let text_area = glyphon::TextArea {
@@ -600,16 +655,23 @@ impl WgpuBackend {
 
                 let (win_w, win_h) = {
                     let shared = self.shared.borrow();
-                    shared.window.as_ref().map(|w| {
-                        let s = w.inner_size();
-                        (s.width, s.height)
-                    }).unwrap_or((800, 600))
+                    shared
+                        .window
+                        .as_ref()
+                        .map(|w| {
+                            let s = w.inner_size();
+                            (s.width, s.height)
+                        })
+                        .unwrap_or((800, 600))
                 };
 
-                viewport.update(queue, glyphon::Resolution {
-                    width: win_w,
-                    height: win_h,
-                });
+                viewport.update(
+                    queue,
+                    glyphon::Resolution {
+                        width: win_w,
+                        height: win_h,
+                    },
+                );
 
                 if let Err(e) = text_renderer.prepare(
                     device,
@@ -645,11 +707,9 @@ impl WgpuBackend {
             }
         } else {
             // Text unchanged — just render the already-prepared text
-            if let (Some(atlas), Some(text_renderer), Some(viewport)) = (
-                &self.atlas,
-                &self.text_renderer,
-                &self.viewport,
-            ) {
+            if let (Some(atlas), Some(text_renderer), Some(viewport)) =
+                (&self.atlas, &self.text_renderer, &self.viewport)
+            {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Text Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -787,9 +847,19 @@ impl WgpuBackend {
 
         let device = self.device.as_ref().unwrap();
         let size = window.inner_size();
-        let surface = self.instance.as_ref().unwrap().create_surface(window).unwrap();
+        let surface = self
+            .instance
+            .as_ref()
+            .unwrap()
+            .create_surface(window)
+            .unwrap();
         let caps = surface.get_capabilities(self.adapter.as_ref().unwrap());
-        let format = caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(caps.formats[0]);
+        let format = caps
+            .formats
+            .iter()
+            .find(|f| f.is_srgb())
+            .copied()
+            .unwrap_or(caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -1115,7 +1185,10 @@ impl DisplayBackend for WgpuBackend {
                     (0..buf.width)
                         .map(|x| {
                             let cell = buf.get(x, y);
-                            CellData { ch: cell.ch, style: cell.style }
+                            CellData {
+                                ch: cell.ch,
+                                style: cell.style,
+                            }
                         })
                         .collect()
                 })
@@ -1123,13 +1196,17 @@ impl DisplayBackend for WgpuBackend {
             let total = self.rows as usize * self.cols as usize;
             self.dirty_cells = vec![true; total];
             self.rect_vertices = vec![
-                RectVertex { position: [0.0, 0.0], color: [0.0, 0.0, 0.0, 1.0] };
+                RectVertex {
+                    position: [0.0, 0.0],
+                    color: [0.0, 0.0, 0.0, 1.0]
+                };
                 total * 6
             ];
             self.rect_vertex_buffer = None;
         } else {
             let cols = self.cols as usize;
-            self.dirty_cells.par_chunks_mut(cols)
+            self.dirty_cells
+                .par_chunks_mut(cols)
                 .zip(self.cells.par_iter_mut())
                 .enumerate()
                 .for_each(|(row, (dirty_row, cell_row))| {
@@ -1137,7 +1214,10 @@ impl DisplayBackend for WgpuBackend {
                         let buf_cell = buf.get(col as u16, row as u16);
                         let old = &cell_row[col];
                         if old.ch != buf_cell.ch || old.style != buf_cell.style {
-                            cell_row[col] = CellData { ch: buf_cell.ch, style: buf_cell.style };
+                            cell_row[col] = CellData {
+                                ch: buf_cell.ch,
+                                style: buf_cell.style,
+                            };
                             dirty_row[col] = true;
                         } else {
                             dirty_row[col] = false;

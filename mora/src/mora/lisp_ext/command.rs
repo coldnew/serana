@@ -70,8 +70,7 @@ pub fn resolve_command_name(name: &str) -> Option<String> {
 }
 
 pub fn command_doc(name: &str) -> Option<String> {
-    resolve_command_name(name)
-        .and_then(|name| command_entry(&name).and_then(|entry| entry.doc))
+    resolve_command_name(name).and_then(|name| command_entry(&name).and_then(|entry| entry.doc))
 }
 
 fn prim_command_register(args: &[Value]) -> Result<Value, String> {
@@ -141,10 +140,34 @@ fn prim_describe_function(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Nil)
 }
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("register!", Value::Native(prim_command_register), "Register NAME as an interactive command with FUNC.");
-    ns.intern_with_doc("execute!", Value::Native(prim_command_execute), "Execute the command NAME.");
-    ns.intern_with_doc("exists?", Value::Native(prim_command_exists), "Return t if the command NAME exists.");
-    ns.intern_with_doc("names", Value::Native(prim_command_names), "Return a vector of all command names.");
-    ns.intern_with_doc("doc", Value::Native(prim_command_doc), "Return the doc string for command NAME.");
-    ns.intern_with_doc("describe-function", Value::Native(prim_describe_function), "Return the doc string for the function NAME.");
+    ns.intern_with_doc(
+        "register!",
+        Value::Native(prim_command_register),
+        "Register NAME as an interactive command with FUNC.",
+    );
+    ns.intern_with_doc(
+        "execute!",
+        Value::Native(prim_command_execute),
+        "Execute the command NAME.",
+    );
+    ns.intern_with_doc(
+        "exists?",
+        Value::Native(prim_command_exists),
+        "Return t if the command NAME exists.",
+    );
+    ns.intern_with_doc(
+        "names",
+        Value::Native(prim_command_names),
+        "Return a vector of all command names.",
+    );
+    ns.intern_with_doc(
+        "doc",
+        Value::Native(prim_command_doc),
+        "Return the doc string for command NAME.",
+    );
+    ns.intern_with_doc(
+        "describe-function",
+        Value::Native(prim_describe_function),
+        "Return the doc string for the function NAME.",
+    );
 }

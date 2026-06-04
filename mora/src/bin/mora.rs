@@ -6,7 +6,7 @@ use mora_bin::lisp;
 use mora_bin::mora::editor_core::MoraCore;
 use mora_bin::mora::font::DEFAULT_FONT;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::path::Path;
 
 #[derive(Parser)]
@@ -238,103 +238,6 @@ fn run_editor_wgpu(file: Option<String>) -> anyhow::Result<()> {
         })
         .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    Ok(())
-}
-
-fn run_server(file: Option<String>, port: u16) -> anyhow::Result<()> {
-    let width: u16 = 120;
-    let height: u16 = 40;
-    let addr = format!("127.0.0.1:{}", port);
-
-    let mut core = match &file {
-        Some(path) => {
-            MoraCore::open(Path::new(path), width, height).map_err(|e| anyhow::anyhow!(e))?
-        }
-        None => MoraCore::new(width, height),
-    };
-
-    init_lisp_state(&core);
-    core.editor.lisp_bridge.load_init_file();
-
-    eprintln!("mora-server listening on {}", addr);
-    let listener = TcpListener::bind(&addr)?;
-
-    for stream in listener.incoming() {
-        let mut stream = stream?;
-        eprintln!("Client connected: {}", stream.peer_addr()?);
-
-        let mut reader = BufReader::new(stream.try_clone()?);
-
-        let hello = WireMessage::ServerHello {
-            version: PROTOCOL_VERSION,
-            width,
-            height,
-        };
-        stream.write_all(&hello.to_json_line().unwrap())?;
-        stream.flush()?;
-
-        let frame = core.render_ui_frame();
-        stream.write_all(&WireMessage::Frame(frame).to_json_line().unwrap())?;
-        stream.flush()?;
-
-        let mut line = String::new();
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) => {
-                    eprintln!("Client disconnected");
-                    break;
-                }
-                Ok(_) => {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    match WireMessage::from_json_line(trimmed.as_bytes()) {
-                        Ok(WireMessage::Input(event)) => {
-                            let cmds = core.handle_input(event);
-                            for cmd in &cmds {
-                                match cmd {
-                                    DisplayCmd::Quit => {
-                                        let _ = stream.write_all(
-                                            &WireMessage::Cmd(DisplayCmd::Quit)
-                                                .to_json_line()
-                                                .unwrap(),
-                                        );
-                                        let _ = stream.flush();
-                                        return Ok(());
-                                    }
-                                    other => {
-                                        let _ = stream.write_all(
-                                            &WireMessage::Cmd(other.clone())
-                                                .to_json_line()
-                                                .unwrap(),
-                                        );
-                                    }
-                                }
-                            }
-                            let _ = stream.flush();
-                            let frame = core.render_ui_frame();
-                            stream.write_all(&WireMessage::Frame(frame).to_json_line().unwrap())?;
-                            stream.flush()?;
-                        }
-                        Ok(WireMessage::ClientHello { version }) => {
-                            eprintln!("Client protocol version: {}", version);
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!("Protocol error: {} (raw: {:?})", e, trimmed);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Read error: {}", e);
-                    break;
-                }
-            }
-        }
-        eprintln!("Waiting for next client...");
-    }
     Ok(())
 }
 

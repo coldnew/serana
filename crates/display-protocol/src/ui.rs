@@ -1,5 +1,5 @@
+use crate::types::{Color, Selection, Style, StyledLine};
 use serde::{Deserialize, Serialize};
-use crate::types::{Color, Style, StyledLine, Selection};
 
 /// A declarative UI node — the building block of the component tree.
 ///
@@ -42,7 +42,6 @@ pub enum UiNode {
     Keyed { key: String, child: Box<UiNode> },
 
     // ── Editor / IDE / Agent widgets ──
-
     /// Single-line text input with cursor.
     Input(InputNode),
     /// Multi-line text editor with cursor, selection, scrolling.
@@ -57,7 +56,6 @@ pub enum UiNode {
     StatusBar(StatusBarNode),
 
     // ── WGPU-only widgets (TUI leaves rect blank) ──
-
     /// Canvas for custom pixel-level drawing.
     /// TUI: reserves the rect but leaves it blank.
     /// WGPU: renders the frame data (images, graphs, rich content).
@@ -332,21 +330,50 @@ pub struct Padding {
 }
 
 impl Padding {
-    pub const ZERO: Self = Self { top: 0, right: 0, bottom: 0, left: 0 };
+    pub const ZERO: Self = Self {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+    };
     pub const fn all(v: u16) -> Self {
-        Self { top: v, right: v, bottom: v, left: v }
+        Self {
+            top: v,
+            right: v,
+            bottom: v,
+            left: v,
+        }
     }
     pub const fn horizontal(v: u16) -> Self {
-        Self { top: 0, right: v, bottom: 0, left: v }
+        Self {
+            top: 0,
+            right: v,
+            bottom: 0,
+            left: v,
+        }
     }
     pub const fn vertical(v: u16) -> Self {
-        Self { top: v, right: 0, bottom: v, left: 0 }
+        Self {
+            top: v,
+            right: 0,
+            bottom: v,
+            left: 0,
+        }
     }
     pub const fn new(top: u16, right: u16, bottom: u16, left: u16) -> Self {
-        Self { top, right, bottom, left }
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
     }
-    pub fn horizontal_total(&self) -> u16 { self.left + self.right }
-    pub fn vertical_total(&self) -> u16 { self.top + self.bottom }
+    pub fn horizontal_total(&self) -> u16 {
+        self.left + self.right
+    }
+    pub fn vertical_total(&self) -> u16 {
+        self.top + self.bottom
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -359,9 +386,21 @@ pub struct Border {
 }
 
 impl Border {
-    pub const NONE: Self = Self { top: false, right: false, bottom: false, left: false, style: None };
+    pub const NONE: Self = Self {
+        top: false,
+        right: false,
+        bottom: false,
+        left: false,
+        style: None,
+    };
     pub const fn all(style: Option<Style>) -> Self {
-        Self { top: true, right: true, bottom: true, left: true, style }
+        Self {
+            top: true,
+            right: true,
+            bottom: true,
+            left: true,
+            style,
+        }
     }
     pub fn has_any(&self) -> bool {
         self.top || self.right || self.bottom || self.left
@@ -616,12 +655,18 @@ pub enum MenuAnchor {
 }
 
 impl Default for MenuAnchor {
-    fn default() -> Self { Self::AtCursor }
+    fn default() -> Self {
+        Self::AtCursor
+    }
 }
 
 impl MenuNode {
     pub fn new(items: Vec<MenuItem>) -> Self {
-        Self { items, selected: 0, anchor: MenuAnchor::default() }
+        Self {
+            items,
+            selected: 0,
+            anchor: MenuAnchor::default(),
+        }
     }
 
     pub fn with_anchor(mut self, anchor: MenuAnchor) -> Self {
@@ -647,11 +692,17 @@ pub struct FocusOrder {
 
 impl FocusOrder {
     pub fn focusable(tab_index: i32) -> Self {
-        Self { tab_index, focusable: true }
+        Self {
+            tab_index,
+            focusable: true,
+        }
     }
 
     pub fn not_focusable() -> Self {
-        Self { tab_index: -1, focusable: false }
+        Self {
+            tab_index: -1,
+            focusable: false,
+        }
     }
 }
 
@@ -676,7 +727,10 @@ impl UiNode {
     }
 
     pub fn span(content: impl Into<String>, style: Style) -> Self {
-        UiNode::Span(SpanNode { content: content.into(), style })
+        UiNode::Span(SpanNode {
+            content: content.into(),
+            style,
+        })
     }
 
     pub fn boxed(children: Vec<UiNode>) -> Self {
@@ -726,7 +780,10 @@ impl UiNode {
     }
 
     pub fn divider() -> Self {
-        UiNode::Divider(DividerNode { style: Style::default(), char: None })
+        UiNode::Divider(DividerNode {
+            style: Style::default(),
+            char: None,
+        })
     }
 
     pub fn progress(value: f32, max: f32) -> Self {
@@ -749,7 +806,10 @@ impl UiNode {
     }
 
     pub fn show(when: bool, child: impl Into<UiNode>) -> Self {
-        UiNode::Show { when, child: Box::new(child.into()) }
+        UiNode::Show {
+            when,
+            child: Box::new(child.into()),
+        }
     }
 
     pub fn for_each<T>(items: impl IntoIterator<Item = T>, mut f: impl FnMut(T) -> UiNode) -> Self {
@@ -798,7 +858,6 @@ impl UiNode {
     pub fn textarea_plain(lines: Vec<String>) -> Self {
         Self::textarea(lines.into_iter().map(StyledLine::plain).collect())
     }
-
 
     pub fn tab_bar(items: Vec<TabItem>) -> Self {
         UiNode::TabBar(TabBarNode {
@@ -913,13 +972,19 @@ impl UiNode {
     }
     pub fn reverse(self) -> Self {
         match self {
-            UiNode::Text(mut t) => { t.style = t.style.reverse(); UiNode::Text(t) }
+            UiNode::Text(mut t) => {
+                t.style = t.style.reverse();
+                UiNode::Text(t)
+            }
             other => other,
         }
     }
     pub fn strikethrough(self) -> Self {
         match self {
-            UiNode::Text(mut t) => { t.style = t.style.strikethrough(); UiNode::Text(t) }
+            UiNode::Text(mut t) => {
+                t.style = t.style.strikethrough();
+                UiNode::Text(t)
+            }
             other => other,
         }
     }
@@ -1115,132 +1180,355 @@ impl std::fmt::Display for UiNode {
 // ── Builder pattern methods on node types ──
 
 impl TextNode {
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn bold(mut self) -> Self { self.style = self.style.bold(); self }
-    pub fn italic(mut self) -> Self { self.style = self.style.italic(); self }
-    pub fn underline(mut self) -> Self { self.style = self.style.underline(); self }
-    pub fn dim(mut self) -> Self { self.style = self.style.dim(); self }
-    pub fn color(mut self, color: Color) -> Self { self.style.fg = Some(color); self }
-    pub fn bg(mut self, color: Color) -> Self { self.style.bg = Some(color); self }
-    pub fn wrap(mut self, wrap: Wrap) -> Self { self.wrap = wrap; self }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn bold(mut self) -> Self {
+        self.style = self.style.bold();
+        self
+    }
+    pub fn italic(mut self) -> Self {
+        self.style = self.style.italic();
+        self
+    }
+    pub fn underline(mut self) -> Self {
+        self.style = self.style.underline();
+        self
+    }
+    pub fn dim(mut self) -> Self {
+        self.style = self.style.dim();
+        self
+    }
+    pub fn color(mut self, color: Color) -> Self {
+        self.style.fg = Some(color);
+        self
+    }
+    pub fn bg(mut self, color: Color) -> Self {
+        self.style.bg = Some(color);
+        self
+    }
+    pub fn wrap(mut self, wrap: Wrap) -> Self {
+        self.wrap = wrap;
+        self
+    }
 }
 
 impl BoxNode {
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn padding(mut self, padding: Padding) -> Self { self.padding = padding; self }
-    pub fn border(mut self, border: Border) -> Self { self.border = border; self }
-    pub fn title(mut self, title: impl Into<String>) -> Self { self.title = Some(title.into()); self }
-    pub fn width(mut self, w: u16) -> Self { self.width = Some(w); self }
-    pub fn height(mut self, h: u16) -> Self { self.height = Some(h); self }
-    pub fn min_width(mut self, w: u16) -> Self { self.min_width = Some(w); self }
-    pub fn min_height(mut self, h: u16) -> Self { self.min_height = Some(h); self }
-    pub fn max_width(mut self, w: u16) -> Self { self.max_width = Some(w); self }
-    pub fn max_height(mut self, h: u16) -> Self { self.max_height = Some(h); self }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn padding(mut self, padding: Padding) -> Self {
+        self.padding = padding;
+        self
+    }
+    pub fn border(mut self, border: Border) -> Self {
+        self.border = border;
+        self
+    }
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+    pub fn width(mut self, w: u16) -> Self {
+        self.width = Some(w);
+        self
+    }
+    pub fn height(mut self, h: u16) -> Self {
+        self.height = Some(h);
+        self
+    }
+    pub fn min_width(mut self, w: u16) -> Self {
+        self.min_width = Some(w);
+        self
+    }
+    pub fn min_height(mut self, h: u16) -> Self {
+        self.min_height = Some(h);
+        self
+    }
+    pub fn max_width(mut self, w: u16) -> Self {
+        self.max_width = Some(w);
+        self
+    }
+    pub fn max_height(mut self, h: u16) -> Self {
+        self.max_height = Some(h);
+        self
+    }
 }
 
 impl FlexNode {
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn gap(mut self, gap: u16) -> Self { self.gap = gap; self }
-    pub fn align(mut self, align: Align) -> Self { self.align = align; self }
-    pub fn justify(mut self, justify: Justify) -> Self { self.justify = justify; self }
-    pub fn padding(mut self, padding: Padding) -> Self { self.padding = padding; self }
-    pub fn width(mut self, w: u16) -> Self { self.width = Some(w); self }
-    pub fn height(mut self, h: u16) -> Self { self.height = Some(h); self }
-    pub fn flex_grow(mut self, grow: f32) -> Self { self.flex_grow = grow; self }
-    pub fn flex_shrink(mut self, shrink: f32) -> Self { self.flex_shrink = shrink; self }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn gap(mut self, gap: u16) -> Self {
+        self.gap = gap;
+        self
+    }
+    pub fn align(mut self, align: Align) -> Self {
+        self.align = align;
+        self
+    }
+    pub fn justify(mut self, justify: Justify) -> Self {
+        self.justify = justify;
+        self
+    }
+    pub fn padding(mut self, padding: Padding) -> Self {
+        self.padding = padding;
+        self
+    }
+    pub fn width(mut self, w: u16) -> Self {
+        self.width = Some(w);
+        self
+    }
+    pub fn height(mut self, h: u16) -> Self {
+        self.height = Some(h);
+        self
+    }
+    pub fn flex_grow(mut self, grow: f32) -> Self {
+        self.flex_grow = grow;
+        self
+    }
+    pub fn flex_shrink(mut self, shrink: f32) -> Self {
+        self.flex_shrink = shrink;
+        self
+    }
 }
 
 impl ProgressNode {
-    pub fn width(mut self, w: u16) -> Self { self.width = w; self }
-    pub fn filled_style(mut self, style: Style) -> Self { self.filled_style = style; self }
-    pub fn empty_style(mut self, style: Style) -> Self { self.empty_style = style; self }
-    pub fn show_percent(mut self, show: bool) -> Self { self.show_percent = show; self }
+    pub fn width(mut self, w: u16) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn filled_style(mut self, style: Style) -> Self {
+        self.filled_style = style;
+        self
+    }
+    pub fn empty_style(mut self, style: Style) -> Self {
+        self.empty_style = style;
+        self
+    }
+    pub fn show_percent(mut self, show: bool) -> Self {
+        self.show_percent = show;
+        self
+    }
 }
 
 impl ListNode {
-    pub fn marker(mut self, marker: ListMarker) -> Self { self.marker = marker; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn marker(mut self, marker: ListMarker) -> Self {
+        self.marker = marker;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 }
 
 impl DividerNode {
-    pub fn char(mut self, c: char) -> Self { self.char = Some(c); self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn char(mut self, c: char) -> Self {
+        self.char = Some(c);
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 }
 
 impl TableNode {
-    pub fn border(mut self, border: bool) -> Self { self.border = border; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn header_style(mut self, style: Style) -> Self { self.header_style = style; self }
+    pub fn border(mut self, border: bool) -> Self {
+        self.border = border;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn header_style(mut self, style: Style) -> Self {
+        self.header_style = style;
+        self
+    }
 }
 
 impl InputNode {
-    pub fn placeholder(mut self, p: impl Into<String>) -> Self { self.placeholder = p.into(); self }
-    pub fn cursor_pos(mut self, pos: u16) -> Self { self.cursor = pos; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn width(mut self, w: u16) -> Self { self.width = Some(w); self }
-    pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
+    pub fn placeholder(mut self, p: impl Into<String>) -> Self {
+        self.placeholder = p.into();
+        self
+    }
+    pub fn cursor_pos(mut self, pos: u16) -> Self {
+        self.cursor = pos;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn width(mut self, w: u16) -> Self {
+        self.width = Some(w);
+        self
+    }
+    pub fn focused(mut self, f: bool) -> Self {
+        self.focused = f;
+        self
+    }
 }
 
 impl TextAreaNode {
-    pub fn cursor(mut self, line: u16, col: u16) -> Self { self.cursor_line = line; self.cursor_col = col; self }
-    pub fn selection(mut self, sel: Selection) -> Self { self.selection = Some(sel); self }
-    pub fn clear_selection(mut self) -> Self { self.selection = None; self }
-    pub fn scroll(mut self, top: u16, left: u16) -> Self { self.scroll_top = top; self.scroll_left = left; self }
-    pub fn height(mut self, h: u16) -> Self { self.height = h; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn selection_style(mut self, style: Style) -> Self { self.selection_style = style; self }
-    pub fn gutter(mut self, show: bool) -> Self { self.gutter = show; self }
-    pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
+    pub fn cursor(mut self, line: u16, col: u16) -> Self {
+        self.cursor_line = line;
+        self.cursor_col = col;
+        self
+    }
+    pub fn selection(mut self, sel: Selection) -> Self {
+        self.selection = Some(sel);
+        self
+    }
+    pub fn clear_selection(mut self) -> Self {
+        self.selection = None;
+        self
+    }
+    pub fn scroll(mut self, top: u16, left: u16) -> Self {
+        self.scroll_top = top;
+        self.scroll_left = left;
+        self
+    }
+    pub fn height(mut self, h: u16) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn selection_style(mut self, style: Style) -> Self {
+        self.selection_style = style;
+        self
+    }
+    pub fn gutter(mut self, show: bool) -> Self {
+        self.gutter = show;
+        self
+    }
+    pub fn focused(mut self, f: bool) -> Self {
+        self.focused = f;
+        self
+    }
 }
 
 impl TabBarNode {
-    pub fn active(mut self, idx: usize) -> Self { self.active = idx; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn active_style(mut self, style: Style) -> Self { self.active_style = style; self }
+    pub fn active(mut self, idx: usize) -> Self {
+        self.active = idx;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn active_style(mut self, style: Style) -> Self {
+        self.active_style = style;
+        self
+    }
 }
 
 impl TabItem {
     pub fn new(title: impl Into<String>) -> Self {
-        Self { title: title.into(), icon: None, modified: false }
+        Self {
+            title: title.into(),
+            icon: None,
+            modified: false,
+        }
     }
-    pub fn icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
-    pub fn modified(mut self, m: bool) -> Self { self.modified = m; self }
+    pub fn icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+    pub fn modified(mut self, m: bool) -> Self {
+        self.modified = m;
+        self
+    }
 }
 
 impl TreeViewNode {
-    pub fn selected(mut self, idx: Option<usize>) -> Self { self.selected = idx; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
-    pub fn selected_style(mut self, style: Style) -> Self { self.selected_style = style; self }
-    pub fn indent(mut self, indent: u16) -> Self { self.indent = indent; self }
+    pub fn selected(mut self, idx: Option<usize>) -> Self {
+        self.selected = idx;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn selected_style(mut self, style: Style) -> Self {
+        self.selected_style = style;
+        self
+    }
+    pub fn indent(mut self, indent: u16) -> Self {
+        self.indent = indent;
+        self
+    }
 }
 
 impl TreeItem {
     pub fn new(label: impl Into<String>) -> Self {
-        Self { label: label.into(), icon: None, children: Vec::new(), expanded: false }
+        Self {
+            label: label.into(),
+            icon: None,
+            children: Vec::new(),
+            expanded: false,
+        }
     }
-    pub fn children(mut self, children: Vec<TreeItem>) -> Self { self.children = children; self }
-    pub fn expanded(mut self, e: bool) -> Self { self.expanded = e; self }
-    pub fn icon(mut self, icon: impl Into<String>) -> Self { self.icon = Some(icon.into()); self }
+    pub fn children(mut self, children: Vec<TreeItem>) -> Self {
+        self.children = children;
+        self
+    }
+    pub fn expanded(mut self, e: bool) -> Self {
+        self.expanded = e;
+        self
+    }
+    pub fn icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
     /// Recursively count visible items (expanded children only).
     pub fn visible_count(&self) -> usize {
         1 + if self.expanded {
-            self.children.iter().map(|c| c.visible_count()).sum::<usize>()
-        } else { 0 }
+            self.children
+                .iter()
+                .map(|c| c.visible_count())
+                .sum::<usize>()
+        } else {
+            0
+        }
     }
 }
 
 impl SplitPaneNode {
-    pub fn ratio(mut self, r: f32) -> Self { self.ratio = r.clamp(0.0, 1.0); self }
-    pub fn divider_style(mut self, style: Style) -> Self { self.divider_style = style; self }
+    pub fn ratio(mut self, r: f32) -> Self {
+        self.ratio = r.clamp(0.0, 1.0);
+        self
+    }
+    pub fn divider_style(mut self, style: Style) -> Self {
+        self.divider_style = style;
+        self
+    }
 }
 
 impl CanvasNode {
-    pub fn bg(mut self, bg: Color) -> Self { self.bg = bg; self }
+    pub fn bg(mut self, bg: Color) -> Self {
+        self.bg = bg;
+        self
+    }
 }
 
 impl OverlayNode {
-    pub fn z_index(mut self, z: i32) -> Self { self.z_index = z; self }
-    pub fn style(mut self, style: Style) -> Self { self.style = style; self }
+    pub fn z_index(mut self, z: i32) -> Self {
+        self.z_index = z;
+        self
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 }
 
 impl ScrollNode {
@@ -1258,69 +1546,117 @@ impl ScrollNode {
         }
     }
 
-    pub fn scroll_y(mut self, y: u32) -> Self { self.scroll_y = y; self }
-    pub fn scroll_x(mut self, x: u32) -> Self { self.scroll_x = x; self }
-    pub fn viewport(mut self, w: u16, h: u16) -> Self { self.viewport_width = w; self.viewport_height = h; self }
-    pub fn content_size(mut self, w: u32, h: u32) -> Self { self.content_width = Some(w); self.content_height = Some(h); self }
-    pub fn virtual_scroll(mut self, on: bool) -> Self { self.virtual_scroll = on; self }
-    pub fn scroll_policy(mut self, p: ScrollPolicy) -> Self { self.scroll_policy = p; self }
+    pub fn scroll_y(mut self, y: u32) -> Self {
+        self.scroll_y = y;
+        self
+    }
+    pub fn scroll_x(mut self, x: u32) -> Self {
+        self.scroll_x = x;
+        self
+    }
+    pub fn viewport(mut self, w: u16, h: u16) -> Self {
+        self.viewport_width = w;
+        self.viewport_height = h;
+        self
+    }
+    pub fn content_size(mut self, w: u32, h: u32) -> Self {
+        self.content_width = Some(w);
+        self.content_height = Some(h);
+        self
+    }
+    pub fn virtual_scroll(mut self, on: bool) -> Self {
+        self.virtual_scroll = on;
+        self
+    }
+    pub fn scroll_policy(mut self, p: ScrollPolicy) -> Self {
+        self.scroll_policy = p;
+        self
+    }
 }
 // ── Into<UiNode> conversions ──
 
 impl From<&str> for UiNode {
-    fn from(s: &str) -> Self { UiNode::text(s) }
+    fn from(s: &str) -> Self {
+        UiNode::text(s)
+    }
 }
 
 impl From<String> for UiNode {
-    fn from(s: String) -> Self { UiNode::text(s) }
+    fn from(s: String) -> Self {
+        UiNode::text(s)
+    }
 }
 
 impl From<TextNode> for UiNode {
-    fn from(t: TextNode) -> Self { UiNode::Text(t) }
+    fn from(t: TextNode) -> Self {
+        UiNode::Text(t)
+    }
 }
 
 impl From<BoxNode> for UiNode {
-    fn from(b: BoxNode) -> Self { UiNode::Box(b) }
+    fn from(b: BoxNode) -> Self {
+        UiNode::Box(b)
+    }
 }
 
 impl From<FlexNode> for UiNode {
-    fn from(f: FlexNode) -> Self { UiNode::Row(f) }
+    fn from(f: FlexNode) -> Self {
+        UiNode::Row(f)
+    }
 }
 
 impl From<InputNode> for UiNode {
-    fn from(i: InputNode) -> Self { UiNode::Input(i) }
+    fn from(i: InputNode) -> Self {
+        UiNode::Input(i)
+    }
 }
 
 impl From<TextAreaNode> for UiNode {
-    fn from(t: TextAreaNode) -> Self { UiNode::TextArea(t) }
+    fn from(t: TextAreaNode) -> Self {
+        UiNode::TextArea(t)
+    }
 }
 
 impl From<TabBarNode> for UiNode {
-    fn from(t: TabBarNode) -> Self { UiNode::TabBar(t) }
+    fn from(t: TabBarNode) -> Self {
+        UiNode::TabBar(t)
+    }
 }
 
 impl From<TreeViewNode> for UiNode {
-    fn from(t: TreeViewNode) -> Self { UiNode::TreeView(t) }
+    fn from(t: TreeViewNode) -> Self {
+        UiNode::TreeView(t)
+    }
 }
 
 impl From<SplitPaneNode> for UiNode {
-    fn from(s: SplitPaneNode) -> Self { UiNode::SplitPane(s) }
+    fn from(s: SplitPaneNode) -> Self {
+        UiNode::SplitPane(s)
+    }
 }
 
 impl From<CanvasNode> for UiNode {
-    fn from(c: CanvasNode) -> Self { UiNode::Canvas(c) }
+    fn from(c: CanvasNode) -> Self {
+        UiNode::Canvas(c)
+    }
 }
 
 impl From<OverlayNode> for UiNode {
-    fn from(o: OverlayNode) -> Self { UiNode::Overlay(o) }
+    fn from(o: OverlayNode) -> Self {
+        UiNode::Overlay(o)
+    }
 }
 
 impl From<StatusBarNode> for UiNode {
-    fn from(s: StatusBarNode) -> Self { UiNode::StatusBar(s) }
+    fn from(s: StatusBarNode) -> Self {
+        UiNode::StatusBar(s)
+    }
 }
 
 impl Default for UiNode {
-    fn default() -> Self { UiNode::None }
+    fn default() -> Self {
+        UiNode::None
+    }
 }
 
 // ── Tests ──

@@ -152,7 +152,10 @@ pub fn day() -> ThemeColors {
 }
 
 /// Convert ThemeColors to display-protocol Colors for syntax highlighting.
-pub fn syntax_color_for_kind(t: &ThemeColors, kind: crate::mora::syntax::HighlightKind) -> MoraColor {
+pub fn syntax_color_for_kind(
+    t: &ThemeColors,
+    kind: crate::mora::syntax::HighlightKind,
+) -> MoraColor {
     use crate::mora::syntax::HighlightKind;
     match kind {
         HighlightKind::Keyword => t.keyword,

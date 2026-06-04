@@ -32,7 +32,7 @@ impl Error {
             other => format!("{}", other),
         }
     }
- }
+}
 
 pub struct MoraLisp {
     evaluator: eval::Evaluator,

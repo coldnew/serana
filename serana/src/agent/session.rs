@@ -30,6 +30,7 @@ pub struct SessionMeta {
     pub compressed_from: Option<SessionId>,
     pub compression_count: u32,
     pub title: Option<String>,
+    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +120,19 @@ impl SessionStore {
             END;
             "#,
         )?;
+
+        // Migration: add parent_id column if missing (existing DBs)
+        let has_parent_id: bool = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='parent_id'")?
+            .query_row([], |row| row.get::<_, i32>(0))
+            .map(|n| n > 0)
+            .unwrap_or(false);
+        if !has_parent_id {
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN parent_id TEXT REFERENCES sessions(id)",
+                [],
+            )?;
+        }
         Ok(())
     }
 
@@ -141,6 +155,7 @@ impl SessionStore {
                 compressed_from: None,
                 compression_count: 0,
                 title: None,
+                parent_id: None,
             },
             messages: Vec::new(),
             tool_calls: Vec::new(),
@@ -177,7 +192,7 @@ impl SessionStore {
     pub fn load_session(&self, id: &str) -> crate::core::Result<Option<Session>> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let meta = match conn.query_row(
-            "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title FROM sessions WHERE id = ?1",
+            "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title, parent_id FROM sessions WHERE id = ?1",
             [id],
             read_meta,
         ) {
@@ -292,10 +307,56 @@ impl SessionStore {
     pub fn list_recent_sessions(&self, limit: usize) -> crate::core::Result<Vec<SessionMeta>> {
         let conn = rusqlite::Connection::open(&self.db_path)?;
         let mut stmt = conn.prepare(
-            "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title FROM sessions ORDER BY updated_at DESC LIMIT ?1",
+            "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title, parent_id FROM sessions ORDER BY updated_at DESC LIMIT ?1",
         )?;
         let sessions = stmt
             .query_map([limit as i64], read_meta)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(sessions)
+    }
+
+    /// Fork a session: create a new session that copies messages up to the given
+    /// message index (or all messages if None) and links to the source via parent_id.
+    pub fn fork_session(
+        &self,
+        source_id: &str,
+        up_to_message: Option<usize>,
+    ) -> crate::core::Result<Session> {
+        let source = self
+            .load_session(source_id)?
+            .ok_or_else(|| anyhow::anyhow!("Source session not found: {}", source_id))?;
+
+        let mut new_session = self.create_session()?;
+
+        // Set parent_id
+        let conn = rusqlite::Connection::open(&self.db_path)?;
+        conn.execute(
+            "UPDATE sessions SET parent_id = ?1 WHERE id = ?2",
+            rusqlite::params![source_id, new_session.meta.id],
+        )?;
+        new_session.meta.parent_id = Some(source_id.to_string());
+
+        // Copy messages up to the limit
+        let messages_to_copy = match up_to_message {
+            Some(n) => &source.messages[..n.min(source.messages.len())],
+            None => &source.messages,
+        };
+
+        for msg in messages_to_copy {
+            self.save_message(&new_session.meta.id, &msg.role, &msg.content)?;
+        }
+
+        Ok(new_session)
+    }
+
+    /// List child sessions (forks) of a given session.
+    pub fn list_children(&self, parent_id: &str) -> crate::core::Result<Vec<SessionMeta>> {
+        let conn = rusqlite::Connection::open(&self.db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, created_at, updated_at, message_count, tool_call_count, compressed_from, compression_count, title, parent_id FROM sessions WHERE parent_id = ?1 ORDER BY updated_at DESC",
+        )?;
+        let sessions = stmt
+            .query_map([parent_id], read_meta)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(sessions)
     }
@@ -311,6 +372,7 @@ fn read_meta(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionMeta> {
         compressed_from: row.get(5)?,
         compression_count: row.get(6)?,
         title: row.get(7)?,
+        parent_id: row.get(8).ok(),
     })
 }
 

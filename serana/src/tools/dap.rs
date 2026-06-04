@@ -14,7 +14,7 @@ use crate::core::{Result, Tool};
 
 /// A DAP session managing a debug adapter subprocess.
 pub struct DapSession {
-    child: Mutex<Child>,
+    _child: Mutex<Child>,
     writer: Mutex<tokio::process::ChildStdin>,
     reader_rx: Mutex<mpsc::Receiver<String>>,
     _reader_handle: tokio::task::JoinHandle<()>,
@@ -47,7 +47,7 @@ impl DapSession {
         });
 
         let session = Self {
-            child: Mutex::new(child),
+            _child: Mutex::new(child),
             writer: Mutex::new(stdin),
             reader_rx: Mutex::new(rx),
             _reader_handle: reader_handle,

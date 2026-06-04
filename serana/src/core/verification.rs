@@ -45,7 +45,6 @@ impl VerificationSystem {
 
         let build_success = build_output.status.success();
         let mut errors = Vec::new();
-        let mut output = String::new();
 
         if !build_success {
             let stderr = String::from_utf8_lossy(&build_output.stderr);
@@ -70,7 +69,7 @@ impl VerificationSystem {
 
         let stdout = String::from_utf8_lossy(&test_output.stdout);
         let stderr = String::from_utf8_lossy(&test_output.stderr);
-        output = format!("{}\n{}", stdout, stderr);
+        let output = format!("{}\n{}", stdout, stderr);
 
         let tests_passed = parse_test_count(&output, "passed");
         let tests_failed = parse_test_count(&output, "failed");

@@ -1,7 +1,5 @@
 use clap::Parser;
-use display_protocol::{
-    DisplayCmd, FrameUpdate, WireMessage, PROTOCOL_VERSION,
-};
+use display_protocol::{DisplayCmd, FrameUpdate, WireMessage, PROTOCOL_VERSION};
 use display_tui::TuiTerminal;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;

@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use crate::lisp::types::Value;
 use super::editor_state::with_editor_state;
 use super::helpers::extract_string;
+use crate::lisp::types::Value;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -124,8 +124,8 @@ fn prim_project_name(_args: &[Value]) -> Result<Value, String> {
 
 /// (project-files) → vector of all files in project (max depth 5).
 fn prim_project_files(_args: &[Value]) -> Result<Value, String> {
-    let root = resolve_project_root()
-        .ok_or_else(|| "project-files: no project root found".to_string())?;
+    let root =
+        resolve_project_root().ok_or_else(|| "project-files: no project root found".to_string())?;
     let mut files = Vec::new();
     walk_dir(&root, &mut files, 0, 5);
     files.sort();
@@ -164,11 +164,17 @@ fn prim_project_shell_command(args: &[Value]) -> Result<Value, String> {
 /// (project-grep PATTERN) → search for pattern in project files via grep -rn.
 fn prim_project_grep(args: &[Value]) -> Result<Value, String> {
     let pattern = extract_string(args, 0)?;
-    let root = resolve_project_root()
-        .ok_or_else(|| "project-grep: no project root found".to_string())?;
+    let root =
+        resolve_project_root().ok_or_else(|| "project-grep: no project root found".to_string())?;
     let output = std::process::Command::new("grep")
-        .args(["-rn", "--exclude-dir=.git", "--exclude-dir=node_modules",
-               "--exclude-dir=target", &pattern, "."])
+        .args([
+            "-rn",
+            "--exclude-dir=.git",
+            "--exclude-dir=node_modules",
+            "--exclude-dir=target",
+            &pattern,
+            ".",
+        ])
         .current_dir(&root)
         .output()
         .map_err(|e| format!("project-grep: failed to run: {}", e))?;
@@ -184,16 +190,34 @@ fn prim_project_grep(args: &[Value]) -> Result<Value, String> {
 // ── registration ────────────────────────────────────────────────────────────
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("project-root", Value::Native(prim_project_root),
-        "Return the current project root directory, or nil.");
-    ns.intern_with_doc("project-name", Value::Native(prim_project_name),
-        "Return the current project name (basename of root).");
-    ns.intern_with_doc("project-files", Value::Native(prim_project_files),
-        "Return a vector of all files in the project (max depth 5).");
-    ns.intern_with_doc("project-find-file", Value::Native(prim_project_find_file),
-        "Find a file by name in the project. Return full path or nil.");
-    ns.intern_with_doc("project-shell-command", Value::Native(prim_project_shell_command),
-        "Run a shell command in the project root. Return stdout.");
-    ns.intern_with_doc("project-grep", Value::Native(prim_project_grep),
-        "Search for PATTERN in project files using grep. Return matches or nil.");
+    ns.intern_with_doc(
+        "project-root",
+        Value::Native(prim_project_root),
+        "Return the current project root directory, or nil.",
+    );
+    ns.intern_with_doc(
+        "project-name",
+        Value::Native(prim_project_name),
+        "Return the current project name (basename of root).",
+    );
+    ns.intern_with_doc(
+        "project-files",
+        Value::Native(prim_project_files),
+        "Return a vector of all files in the project (max depth 5).",
+    );
+    ns.intern_with_doc(
+        "project-find-file",
+        Value::Native(prim_project_find_file),
+        "Find a file by name in the project. Return full path or nil.",
+    );
+    ns.intern_with_doc(
+        "project-shell-command",
+        Value::Native(prim_project_shell_command),
+        "Run a shell command in the project root. Return stdout.",
+    );
+    ns.intern_with_doc(
+        "project-grep",
+        Value::Native(prim_project_grep),
+        "Search for PATTERN in project files using grep. Return matches or nil.",
+    );
 }

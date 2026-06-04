@@ -11,14 +11,11 @@
 ///   pink     — non-heads allowed, heads continue
 ///   red      — non-heads allowed then exit, heads continue
 ///   blue     — non-heads allowed then exit, heads exit
-
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::lisp::types::Value;
 
-use super::editor_state::{with_editor_state, with_editor_state_mut};
 use super::helpers::extract_string;
 
 // ── Types ────────────────────────────────────────────────────
@@ -70,7 +67,7 @@ enum HeadBehavior {
 /// What happens when a non-head key is pressed.
 #[derive(Debug, Clone, PartialEq)]
 enum NonHeadBehavior {
-    Block,    // key press ignored
+    Block, // key press ignored
     AllowAndContinue,
     AllowAndExit,
 }
@@ -160,9 +157,10 @@ fn format_hint(hydra: &Hydra) -> String {
     }
 
     // Add exit hint
-    let has_explicit_exit = hydra.heads.iter().any(|h| {
-        head_behavior(hydra, h) == HeadBehavior::Exit
-    });
+    let has_explicit_exit = hydra
+        .heads
+        .iter()
+        .any(|h| head_behavior(hydra, h) == HeadBehavior::Exit);
     if !has_explicit_exit {
         parts.push("[q] quit".to_string());
     }
@@ -229,13 +227,11 @@ fn prim_defhydra(args: &[Value]) -> Result<Value, String> {
 
                 let head_color = if v.len() >= 5 {
                     match &v[3] {
-                        Value::Keyword(k) if k.name.as_str() == "color" => {
-                            match &v[4] {
-                                Value::Keyword(c) => Some(HydraColor::from_str(c.name.as_str())),
-                                Value::String(s) => Some(HydraColor::from_str(s)),
-                                _ => None,
-                            }
-                        }
+                        Value::Keyword(k) if k.name.as_str() == "color" => match &v[4] {
+                            Value::Keyword(c) => Some(HydraColor::from_str(c.name.as_str())),
+                            Value::String(s) => Some(HydraColor::from_str(s)),
+                            _ => None,
+                        },
                         _ => None,
                     }
                 } else {
@@ -257,10 +253,13 @@ fn prim_defhydra(args: &[Value]) -> Result<Value, String> {
                     _ => continue,
                 };
                 let action = v[1].clone();
-                let hint = v.get(2).and_then(|v| match v {
-                    Value::String(s) => Some(s.to_string()),
-                    _ => None,
-                }).unwrap_or_default();
+                let hint = v
+                    .get(2)
+                    .and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
                 heads.push(HydraHead {
                     key,
                     action,
@@ -333,11 +332,9 @@ fn prim_hydra_call_head(args: &[Value]) -> Result<Value, String> {
             // Execute the action
             let result = match &head.action {
                 Value::Nil => Value::Nil,
-                Value::Fn(f) => {
-                    crate::lisp::eval::with_evaluator(|eval| {
-                        eval.call_fn(f.clone(), vec![]).map_err(|e| e.to_string())
-                    })?
-                }
+                Value::Fn(f) => crate::lisp::eval::with_evaluator(|eval| {
+                    eval.call_fn(f.clone(), vec![]).map_err(|e| e.to_string())
+                })?,
                 Value::Native(f) => f(&[])?,
                 Value::Symbol(_) | Value::String(_) => {
                     // Execute as command name (placeholder)
@@ -354,10 +351,7 @@ fn prim_hydra_call_head(args: &[Value]) -> Result<Value, String> {
                 set_active(None);
             }
 
-            Ok(Value::vector(vec![
-                result,
-                Value::Bool(should_continue),
-            ]))
+            Ok(Value::vector(vec![result, Value::Bool(should_continue)]))
         }
         None => {
             // Not a head — check non-head behavior
@@ -373,17 +367,11 @@ fn prim_hydra_call_head(args: &[Value]) -> Result<Value, String> {
                 }
                 NonHeadBehavior::AllowAndContinue => {
                     set_active(Some(name.clone()));
-                    Ok(Value::vector(vec![
-                        Value::Nil,
-                        Value::Bool(true),
-                    ]))
+                    Ok(Value::vector(vec![Value::Nil, Value::Bool(true)]))
                 }
                 NonHeadBehavior::AllowAndExit => {
                     set_active(None);
-                    Ok(Value::vector(vec![
-                        Value::Nil,
-                        Value::Bool(false),
-                    ]))
+                    Ok(Value::vector(vec![Value::Nil, Value::Bool(false)]))
                 }
             }
         }
@@ -396,20 +384,23 @@ fn prim_hydra_define(args: &[Value]) -> Result<Value, String> {
     let name = extract_string(args, 0)?;
 
     let body_color = match &args.get(1) {
-        Some(Value::Map(map)) => {
-            map.get(&Value::keyword("color"))
-                .and_then(|v| match v {
-                    Value::Keyword(k) => Some(HydraColor::from_str(k.name.as_str())),
-                    Value::String(s) => Some(HydraColor::from_str(s)),
-                    _ => None,
-                })
-                .unwrap_or(HydraColor::Red)
-        }
+        Some(Value::Map(map)) => map
+            .get(&Value::keyword("color"))
+            .and_then(|v| match v {
+                Value::Keyword(k) => Some(HydraColor::from_str(k.name.as_str())),
+                Value::String(s) => Some(HydraColor::from_str(s)),
+                _ => None,
+            })
+            .unwrap_or(HydraColor::Red),
         _ => HydraColor::Red,
     };
 
-    let docstring = args.get(2)
-        .and_then(|v| match v { Value::String(s) => Some(s.to_string()), _ => None })
+    let docstring = args
+        .get(2)
+        .and_then(|v| match v {
+            Value::String(s) => Some(s.to_string()),
+            _ => None,
+        })
         .unwrap_or_default();
 
     let heads_val = args.get(3).ok_or("hydra-define requires heads vector")?;
@@ -429,10 +420,13 @@ fn prim_hydra_define(args: &[Value]) -> Result<Value, String> {
                     _ => continue,
                 };
                 let action = v[1].clone();
-                let hint = v.get(2).and_then(|v| match v {
-                    Value::String(s) => Some(s.to_string()),
-                    _ => None,
-                }).unwrap_or_default();
+                let hint = v
+                    .get(2)
+                    .and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
                 let head_color = if v.len() >= 5 {
                     match (&v[3], &v[4]) {
                         (Value::Keyword(k), Value::Keyword(c)) if k.name.as_str() == "color" => {
@@ -446,7 +440,12 @@ fn prim_hydra_define(args: &[Value]) -> Result<Value, String> {
                 } else {
                     None
                 };
-                heads.push(HydraHead { key, action, hint, color: head_color });
+                heads.push(HydraHead {
+                    key,
+                    action,
+                    hint,
+                    color: head_color,
+                });
             }
             _ => {}
         }
@@ -472,32 +471,42 @@ fn prim_hydra_info(args: &[Value]) -> Result<Value, String> {
     let name = extract_string(args, 0)?;
     let hydra = get_hydra(&name).ok_or_else(|| format!("hydra not found: {}", name))?;
 
-    let head_pairs: Vec<(Value, Value)> = hydra.heads.iter().map(|h| {
-        let info = Value::vector(vec![
-            Value::string(&h.key),
-            Value::string(&h.hint),
-            Value::string(match &h.color {
-                Some(HydraColor::Red) => "red",
-                Some(HydraColor::Blue) => "blue",
-                None => "inherit",
-                _ => "inherit",
-            }),
-        ]);
-        (Value::string(&h.key), info)
-    }).collect();
+    let _head_pairs: Vec<(Value, Value)> = hydra
+        .heads
+        .iter()
+        .map(|h| {
+            let info = Value::vector(vec![
+                Value::string(&h.key),
+                Value::string(&h.hint),
+                Value::string(match &h.color {
+                    Some(HydraColor::Red) => "red",
+                    Some(HydraColor::Blue) => "blue",
+                    None => "inherit",
+                    _ => "inherit",
+                }),
+            ]);
+            (Value::string(&h.key), info)
+        })
+        .collect();
 
-    let mut pairs = vec![
+    let pairs = vec![
         (Value::keyword("name"), Value::string(&hydra.name)),
         (Value::keyword("docstring"), Value::string(&hydra.docstring)),
-        (Value::keyword("color"), Value::string(match hydra.body_color {
-            HydraColor::Amaranth => "amaranth",
-            HydraColor::Teal => "teal",
-            HydraColor::Pink => "pink",
-            HydraColor::Red => "red",
-            HydraColor::Blue => "blue",
-        })),
+        (
+            Value::keyword("color"),
+            Value::string(match hydra.body_color {
+                HydraColor::Amaranth => "amaranth",
+                HydraColor::Teal => "teal",
+                HydraColor::Pink => "pink",
+                HydraColor::Red => "red",
+                HydraColor::Blue => "blue",
+            }),
+        ),
         (Value::keyword("hint"), Value::string(format_hint(&hydra))),
-        (Value::keyword("head-count"), Value::Int(hydra.heads.len() as i64)),
+        (
+            Value::keyword("head-count"),
+            Value::Int(hydra.heads.len() as i64),
+        ),
     ];
 
     Ok(Value::map(pairs))
@@ -506,30 +515,54 @@ fn prim_hydra_info(args: &[Value]) -> Result<Value, String> {
 // ── Registration ─────────────────────────────────────────────
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("defhydra", Value::Native(prim_defhydra),
-        "Define a hydra: (defhydra NAME {:color COLOR} DOCSTRING (KEY ACTION HINT) ...)");
-    ns.intern_with_doc("hydra-hint", Value::Native(prim_hydra_hint),
-        "Return the hint string for hydra NAME.");
-    ns.intern_with_doc("hydra-exit", Value::Native(prim_hydra_exit),
-        "Exit the currently active hydra.");
-    ns.intern_with_doc("hydra-active?", Value::Native(prim_hydra_active),
-        "Return name of active hydra, or nil.");
-    ns.intern_with_doc("hydra-names", Value::Native(prim_hydra_names),
-        "Return vector of all defined hydra names.");
-    ns.intern_with_doc("hydra-call-head", Value::Native(prim_hydra_call_head),
-        "Execute head KEY in hydra NAME. Returns [result continue?].");
-    ns.intern_with_doc("hydra-define", Value::Native(prim_hydra_define),
-        "Define hydra from a vector of heads: (hydra-NAME {:color COLOR} DOC HEADS).");
-    ns.intern_with_doc("hydra-info", Value::Native(prim_hydra_info),
-        "Return info map for hydra NAME.");
+    ns.intern_with_doc(
+        "defhydra",
+        Value::Native(prim_defhydra),
+        "Define a hydra: (defhydra NAME {:color COLOR} DOCSTRING (KEY ACTION HINT) ...)",
+    );
+    ns.intern_with_doc(
+        "hydra-hint",
+        Value::Native(prim_hydra_hint),
+        "Return the hint string for hydra NAME.",
+    );
+    ns.intern_with_doc(
+        "hydra-exit",
+        Value::Native(prim_hydra_exit),
+        "Exit the currently active hydra.",
+    );
+    ns.intern_with_doc(
+        "hydra-active?",
+        Value::Native(prim_hydra_active),
+        "Return name of active hydra, or nil.",
+    );
+    ns.intern_with_doc(
+        "hydra-names",
+        Value::Native(prim_hydra_names),
+        "Return vector of all defined hydra names.",
+    );
+    ns.intern_with_doc(
+        "hydra-call-head",
+        Value::Native(prim_hydra_call_head),
+        "Execute head KEY in hydra NAME. Returns [result continue?].",
+    );
+    ns.intern_with_doc(
+        "hydra-define",
+        Value::Native(prim_hydra_define),
+        "Define hydra from a vector of heads: (hydra-NAME {:color COLOR} DOC HEADS).",
+    );
+    ns.intern_with_doc(
+        "hydra-info",
+        Value::Native(prim_hydra_info),
+        "Return info map for hydra NAME.",
+    );
 }
 
 // ── Tests ────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::editor_state::*;
+    use super::*;
 
     fn setup() {
         set_editor_state(EditorState::new());
@@ -550,7 +583,11 @@ mod tests {
         setup();
         let mut bridge = make_bridge();
 
-        bridge.eval(r#"(hydra-define "zoom" {:color "pink"} "zoom" [["g" nil "in"] ["l" nil "out"]])"#).unwrap();
+        bridge
+            .eval(
+                r#"(hydra-define "zoom" {:color "pink"} "zoom" [["g" nil "in"] ["l" nil "out"]])"#,
+            )
+            .unwrap();
 
         let hint = bridge.eval("(hydra-hint \"zoom\")").unwrap();
         match hint {
@@ -627,9 +664,18 @@ mod tests {
         let info = bridge.eval("(hydra-info \"test\")").unwrap();
         match info {
             Value::Map(m) => {
-                assert_eq!(m.get(&Value::keyword("name")).unwrap(), &Value::string("test"));
-                assert_eq!(m.get(&Value::keyword("color")).unwrap(), &Value::string("red"));
-                assert_eq!(m.get(&Value::keyword("head-count")).unwrap(), &Value::Int(2));
+                assert_eq!(
+                    m.get(&Value::keyword("name")).unwrap(),
+                    &Value::string("test")
+                );
+                assert_eq!(
+                    m.get(&Value::keyword("color")).unwrap(),
+                    &Value::string("red")
+                );
+                assert_eq!(
+                    m.get(&Value::keyword("head-count")).unwrap(),
+                    &Value::Int(2)
+                );
             }
             _ => panic!("expected map"),
         }
@@ -643,7 +689,9 @@ mod tests {
 
         assert_eq!(bridge.eval("(hydra-active?)").unwrap(), Value::Nil);
 
-        bridge.eval(r#"(hydra-define "nav2" {:color "pink"} "nav" [["h" nil "left"]])"#).unwrap();
+        bridge
+            .eval(r#"(hydra-define "nav2" {:color "pink"} "nav" [["h" nil "left"]])"#)
+            .unwrap();
         bridge.eval("(hydra-call-head \"nav2\" \"h\")").unwrap();
         assert!(bridge.eval("(hydra-active?)").unwrap() != Value::Nil);
 
@@ -658,8 +706,12 @@ mod tests {
         setup();
         let mut bridge = make_bridge();
 
-        bridge.eval(r#"(hydra-define "foo" {:color "red"} "foo" [["a" nil "alpha"]])"#).unwrap();
-        bridge.eval(r#"(hydra-define "bar" {:color "blue"} "bar" [["b" nil "beta"]])"#).unwrap();
+        bridge
+            .eval(r#"(hydra-define "foo" {:color "red"} "foo" [["a" nil "alpha"]])"#)
+            .unwrap();
+        bridge
+            .eval(r#"(hydra-define "bar" {:color "blue"} "bar" [["b" nil "beta"]])"#)
+            .unwrap();
 
         let names = bridge.eval("(hydra-names)").unwrap();
         match names {

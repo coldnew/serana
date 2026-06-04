@@ -1,6 +1,5 @@
 use display_protocol::{SpanNode, Style, UiNode};
 
-
 /// An inline styled span of text.
 ///
 /// Unlike `Text` (a block-level leaf), `Span` is designed for inline
@@ -33,21 +32,44 @@ impl Span {
         }
     }
 
-    pub fn fg(mut self, c: display_protocol::Color) -> Self { self.fg = Some(c); self }
-    pub fn bold(mut self) -> Self { self.bold = true; self }
-    pub fn italic(mut self) -> Self { self.italic = true; self }
-    pub fn underline(mut self) -> Self { self.underline = true; self }
-    pub fn dim(mut self) -> Self { self.dim = true; self }
+    pub fn fg(mut self, c: display_protocol::Color) -> Self {
+        self.fg = Some(c);
+        self
+    }
+    pub fn bold(mut self) -> Self {
+        self.bold = true;
+        self
+    }
+    pub fn italic(mut self) -> Self {
+        self.italic = true;
+        self
+    }
+    pub fn underline(mut self) -> Self {
+        self.underline = true;
+        self
+    }
+    pub fn dim(mut self) -> Self {
+        self.dim = true;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let mut style = Style::default();
         if let Some(fg) = self.fg {
             style = style.fg(fg);
         }
-        if self.bold { style = style.bold(); }
-        if self.italic { style = style.italic(); }
-        if self.underline { style = style.underline(); }
-        if self.dim { style = style.dim(); }
+        if self.bold {
+            style = style.bold();
+        }
+        if self.italic {
+            style = style.italic();
+        }
+        if self.underline {
+            style = style.underline();
+        }
+        if self.dim {
+            style = style.dim();
+        }
 
         UiNode::Span(SpanNode {
             content: self.content,
@@ -57,5 +79,7 @@ impl Span {
 }
 
 impl From<Span> for UiNode {
-    fn from(s: Span) -> Self { s.build() }
+    fn from(s: Span) -> Self {
+        s.build()
+    }
 }

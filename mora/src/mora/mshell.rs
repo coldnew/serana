@@ -60,8 +60,10 @@ impl MshellState {
         self.working_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
 
         if self.output_lines.is_empty() {
-            self.output_lines.push("Welcome to Mshell. Type a command and press Enter.".to_string());
-            self.output_lines.push("Use cd /ssh:user@host:/path for remote shells (TRAMP).".to_string());
+            self.output_lines
+                .push("Welcome to Mshell. Type a command and press Enter.".to_string());
+            self.output_lines
+                .push("Use cd /ssh:user@host:/path for remote shells (TRAMP).".to_string());
             self.output_lines.push(String::new());
         }
     }
@@ -78,7 +80,11 @@ impl MshellState {
     pub fn prompt(&self) -> String {
         if let Some(ref rp) = self.remote_path {
             // Remote prompt: user@host:/path $  or  host:/path $
-            let user_at = rp.user.as_ref().map(|u| format!("{u}@")).unwrap_or_default();
+            let user_at = rp
+                .user
+                .as_ref()
+                .map(|u| format!("{u}@"))
+                .unwrap_or_default();
             let port = rp.port.map(|p| format!("#{p}")).unwrap_or_default();
             format!("{}{}{}:{} $ ", user_at, rp.host, port, rp.path)
         } else {
@@ -120,7 +126,8 @@ impl MshellState {
         }
 
         // Show the command
-        self.output_lines.push(format!("{}{}", self.prompt(), trimmed));
+        self.output_lines
+            .push(format!("{}{}", self.prompt(), trimmed));
 
         // Handle cd specially
         if trimmed == "cd" || trimmed.starts_with("cd ") {
@@ -161,7 +168,8 @@ impl MshellState {
         // Handle disconnect (TRAMP)
         if trimmed == "disconnect" && self.remote_path.is_some() {
             self.remote_path = None;
-            self.output_lines.push("Disconnected from remote host.".to_string());
+            self.output_lines
+                .push("Disconnected from remote host.".to_string());
             return;
         }
 
@@ -180,10 +188,15 @@ impl MshellState {
     }
 
     fn execute_local(&mut self, cmd: &str) {
-        match Command::new("sh").arg("-c").arg(cmd).current_dir(&self.working_dir).output() {
+        match Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .current_dir(&self.working_dir)
+            .output()
+        {
             Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = strip_ansi(&String::from_utf8_lossy(&output.stdout));
+                let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
                 for line in stdout.lines() {
                     self.output_lines.push(line.to_string());
                 }
@@ -224,14 +237,17 @@ impl MshellState {
         // Check for TRAMP path: /method:user@host:/path or /method:user@host#port:/path
         if let Some(rp) = RemotePath::parse(path_str) {
             // Test connectivity
-            self.output_lines.push(format!("Connecting to {}...", rp.ssh_target()));
+            self.output_lines
+                .push(format!("Connecting to {}...", rp.ssh_target()));
             match super::tramp::ping(&rp) {
                 Ok(true) => {
-                    self.output_lines.push(format!("Connected to {}.", rp.ssh_target()));
+                    self.output_lines
+                        .push(format!("Connected to {}.", rp.ssh_target()));
                     self.remote_path = Some(rp);
                 }
                 Ok(false) => {
-                    self.output_lines.push(format!("cd: cannot connect to {}", rp.ssh_target()));
+                    self.output_lines
+                        .push(format!("cd: cannot connect to {}", rp.ssh_target()));
                 }
                 Err(e) => {
                     self.output_lines.push(format!("cd: {e}"));
@@ -242,7 +258,9 @@ impl MshellState {
 
         // Local cd
         let target = if path_str.starts_with('~') {
-            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("/"));
             if path_str == "~" {
                 home
             } else {
@@ -265,14 +283,15 @@ impl MshellState {
                 self.output_lines.push(format!("cd: {}", e));
             }
         } else {
-            self.output_lines.push(format!("cd: no such directory: {}", path_str));
+            self.output_lines
+                .push(format!("cd: no such directory: {}", path_str));
         }
     }
 
     /// Handle a key event while mshell is active.
     /// Returns true if the event was consumed.
     pub fn handle_key(&mut self, key: &super::display::event::MoraKeyEvent) -> bool {
-        use super::display::event::{MoraKeyCode as KC, MoraKeyModifiers as KM};
+        use super::display::event::MoraKeyCode as KC;
 
         match key.code {
             KC::Enter => {
@@ -420,4 +439,39 @@ fn word_forward(s: &str, pos: usize) -> usize {
         i += 1;
     }
     i
+}
+
+/// Strip ANSI escape sequences from a string.
+/// This handles colors, cursor movement, and other terminal escape codes.
+fn strip_ansi(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Skip the escape sequence
+            if let Some(next) = chars.next() {
+                if next == '[' {
+                    // CSI sequence: ESC[...m (or other letter)
+                    for c in chars.by_ref() {
+                        if c.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                } else if next == ']' {
+                    // OSC sequence: ESC]...ST
+                    for c in chars.by_ref() {
+                        if c == '\x07' || c == '\\' {
+                            break;
+                        }
+                    }
+                }
+                // Skip other escape sequences
+            }
+        } else if ch == '\r' {
+            // Skip carriage returns (part of \r\n)
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }

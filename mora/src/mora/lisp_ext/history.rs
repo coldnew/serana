@@ -1,8 +1,8 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use crate::lisp::types::Value;
 use super::editor_state::*;
 use super::helpers::extract_string;
+use crate::lisp::types::Value;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 // ── recentf: thread-local storage ──────────────────────────────────────────
 
@@ -30,7 +30,13 @@ fn prim_savehist_save(_args: &[Value]) -> Result<Value, String> {
         let val_str: String = match val {
             Value::String(s) => s.to_string(),
             Value::Int(n) => n.to_string(),
-            Value::Bool(b) => if *b { "t".to_string() } else { "nil".to_string() },
+            Value::Bool(b) => {
+                if *b {
+                    "t".to_string()
+                } else {
+                    "nil".to_string()
+                }
+            }
             Value::Nil => "nil".to_string(),
             other => format!("{}", other),
         };
@@ -103,7 +109,11 @@ fn prim_recentf_add(args: &[Value]) -> Result<Value, String> {
 
 fn prim_recentf_list(_args: &[Value]) -> Result<Value, String> {
     let paths = RECENT_FILES.with(|files| {
-        files.borrow().iter().map(|s| Value::string(s.clone())).collect()
+        files
+            .borrow()
+            .iter()
+            .map(|s| Value::string(s.clone()))
+            .collect()
     });
     Ok(Value::vector(paths))
 }
@@ -116,9 +126,7 @@ fn prim_recentf_clear(_args: &[Value]) -> Result<Value, String> {
 }
 
 fn prim_recentf_save(_args: &[Value]) -> Result<Value, String> {
-    let content = RECENT_FILES.with(|files| {
-        files.borrow().join("\n")
-    });
+    let content = RECENT_FILES.with(|files| files.borrow().join("\n"));
     let path = history_dir().join("recentf.dat");
     if let Some(parent) = path.parent() {
         if !parent.exists() {
@@ -151,19 +159,40 @@ fn prim_recentf_load(_args: &[Value]) -> Result<Value, String> {
 // ── registration ───────────────────────────────────────────────────────────
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("savehist-save", Value::Native(prim_savehist_save),
-        "Save current minibuffer/keybinding vars to ~/.mora/history.dat.");
-    ns.intern_with_doc("savehist-load", Value::Native(prim_savehist_load),
-        "Load saved vars from ~/.mora/history.dat.");
+    ns.intern_with_doc(
+        "savehist-save",
+        Value::Native(prim_savehist_save),
+        "Save current minibuffer/keybinding vars to ~/.mora/history.dat.",
+    );
+    ns.intern_with_doc(
+        "savehist-load",
+        Value::Native(prim_savehist_load),
+        "Load saved vars from ~/.mora/history.dat.",
+    );
 
-    ns.intern_with_doc("recentf-add", Value::Native(prim_recentf_add),
-        "Add a file path to the recent files list.");
-    ns.intern_with_doc("recentf-list", Value::Native(prim_recentf_list),
-        "Return vector of recent file paths.");
-    ns.intern_with_doc("recentf-clear", Value::Native(prim_recentf_clear),
-        "Clear the recent files list.");
-    ns.intern_with_doc("recentf-save", Value::Native(prim_recentf_save),
-        "Save recent files to ~/.mora/recentf.dat.");
-    ns.intern_with_doc("recentf-load", Value::Native(prim_recentf_load),
-        "Load recent files from ~/.mora/recentf.dat.");
+    ns.intern_with_doc(
+        "recentf-add",
+        Value::Native(prim_recentf_add),
+        "Add a file path to the recent files list.",
+    );
+    ns.intern_with_doc(
+        "recentf-list",
+        Value::Native(prim_recentf_list),
+        "Return vector of recent file paths.",
+    );
+    ns.intern_with_doc(
+        "recentf-clear",
+        Value::Native(prim_recentf_clear),
+        "Clear the recent files list.",
+    );
+    ns.intern_with_doc(
+        "recentf-save",
+        Value::Native(prim_recentf_save),
+        "Save recent files to ~/.mora/recentf.dat.",
+    );
+    ns.intern_with_doc(
+        "recentf-load",
+        Value::Native(prim_recentf_load),
+        "Load recent files from ~/.mora/recentf.dat.",
+    );
 }

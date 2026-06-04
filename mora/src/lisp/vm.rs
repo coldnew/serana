@@ -75,7 +75,10 @@ impl BytecodeCompiler {
             Value::Nil => self.ops.push(Op::PushNil),
             Value::Bool(true) => self.ops.push(Op::PushTrue),
             Value::Bool(false) => self.ops.push(Op::PushFalse),
-            Value::Int(_) | Value::Float(_) | Value::String(_) | Value::Char(_)
+            Value::Int(_)
+            | Value::Float(_)
+            | Value::String(_)
+            | Value::Char(_)
             | Value::Keyword(_) => {
                 let idx = self.add_constant(form.clone());
                 self.ops.push(Op::PushConst(idx));
@@ -172,11 +175,17 @@ impl BytecodeCompiler {
 
     fn compile_def(&mut self, list: &[Value]) -> Result<(), CompilerError> {
         if list.len() < 2 {
-            return Err(CompilerError::InvalidForm("def requires at least a name".into()));
+            return Err(CompilerError::InvalidForm(
+                "def requires at least a name".into(),
+            ));
         }
         let name = match &list[1] {
             Value::Symbol(s) => self.symbol_to_string(s),
-            _ => return Err(CompilerError::InvalidForm("def name must be a symbol".into())),
+            _ => {
+                return Err(CompilerError::InvalidForm(
+                    "def name must be a symbol".into(),
+                ))
+            }
         };
         if list.len() >= 3 {
             self.compile_expr(&list[2], false)?;
@@ -205,7 +214,9 @@ impl BytecodeCompiler {
 
     fn compile_if(&mut self, list: &[Value], tail: bool) -> Result<(), CompilerError> {
         if list.len() < 3 {
-            return Err(CompilerError::InvalidForm("if requires at least test and then".into()));
+            return Err(CompilerError::InvalidForm(
+                "if requires at least test and then".into(),
+            ));
         }
         self.compile_expr(&list[1], false)?; // condition
 
@@ -242,23 +253,35 @@ impl BytecodeCompiler {
 
     fn compile_let(&mut self, list: &[Value], tail: bool) -> Result<(), CompilerError> {
         if list.len() < 3 {
-            return Err(CompilerError::InvalidForm("let requires bindings and body".into()));
+            return Err(CompilerError::InvalidForm(
+                "let requires bindings and body".into(),
+            ));
         }
         let bindings = match &list[1] {
             Value::Vector(v) => v,
-            _ => return Err(CompilerError::InvalidForm("let bindings must be a vector".into())),
+            _ => {
+                return Err(CompilerError::InvalidForm(
+                    "let bindings must be a vector".into(),
+                ))
+            }
         };
         if bindings.len() % 2 != 0 {
-            return Err(CompilerError::InvalidForm("let bindings must have even count".into()));
+            return Err(CompilerError::InvalidForm(
+                "let bindings must have even count".into(),
+            ));
         }
 
         self.local_scope.push(HashMap::new());
-        let base_local = self.next_local;
+        let _base_local = self.next_local;
 
         for chunk in bindings.chunks(2) {
             let name = match &chunk[0] {
                 Value::Symbol(s) => s.name.to_string(),
-                _ => return Err(CompilerError::InvalidForm("let binding name must be symbol".into())),
+                _ => {
+                    return Err(CompilerError::InvalidForm(
+                        "let binding name must be symbol".into(),
+                    ))
+                }
             };
             self.compile_expr(&chunk[1], false)?;
             let local_idx = self.next_local;
@@ -284,7 +307,9 @@ impl BytecodeCompiler {
 
     fn compile_fn(&mut self, list: &[Value]) -> Result<(), CompilerError> {
         if list.len() < 3 {
-            return Err(CompilerError::InvalidForm("fn requires params and body".into()));
+            return Err(CompilerError::InvalidForm(
+                "fn requires params and body".into(),
+            ));
         }
         let params = self.parse_params(&list[1])?;
 
@@ -327,11 +352,11 @@ impl BytecodeCompiler {
         }
         body_compiler.ops.push(Op::Return);
 
-       // Merge child pools first (before moving ops)
-       self.merge_compiler(&body_compiler);
-       let body_constants = body_compiler.constants.clone();
-       let body_strings = body_compiler.strings.clone();
-       let body_native_fns = body_compiler.native_fns.clone();
+        // Merge child pools first (before moving ops)
+        self.merge_compiler(&body_compiler);
+        let body_constants = body_compiler.constants.clone();
+        let body_strings = body_compiler.strings.clone();
+        let body_native_fns = body_compiler.native_fns.clone();
 
         let fn_idx = self.functions.len() as u16;
         self.functions.push(CompiledFunction {
@@ -349,7 +374,9 @@ impl BytecodeCompiler {
 
     fn compile_defn(&mut self, list: &[Value]) -> Result<(), CompilerError> {
         if list.len() < 4 {
-            return Err(CompilerError::InvalidForm("defn requires name, params, and body".into()));
+            return Err(CompilerError::InvalidForm(
+                "defn requires name, params, and body".into(),
+            ));
         }
 
         let (name, interactive) = Self::parse_defn_name(&list[1]);
@@ -389,7 +416,8 @@ impl BytecodeCompiler {
             Value::Symbol(s) => (Self::symbol_to_string_static(s), false),
             Value::List(list) if !list.is_empty() => {
                 if let Value::Symbol(meta_sym) = &list[0] {
-                    if meta_sym.ns.is_none() && meta_sym.name.as_str() == "with-meta"
+                    if meta_sym.ns.is_none()
+                        && meta_sym.name.as_str() == "with-meta"
                         && list.len() == 3
                     {
                         if let Value::Symbol(actual_sym) = &list[1] {
@@ -416,7 +444,9 @@ impl BytecodeCompiler {
 
     fn compile_quote(&mut self, list: &[Value]) -> Result<(), CompilerError> {
         if list.len() < 2 {
-            return Err(CompilerError::InvalidForm("quote requires 1 argument".into()));
+            return Err(CompilerError::InvalidForm(
+                "quote requires 1 argument".into(),
+            ));
         }
         let idx = self.add_constant(list[1].clone());
         self.ops.push(Op::PushConst(idx));
@@ -425,7 +455,9 @@ impl BytecodeCompiler {
 
     fn compile_ns(&mut self, list: &[Value]) -> Result<(), CompilerError> {
         if list.len() < 2 {
-            return Err(CompilerError::InvalidForm("ns requires namespace name".into()));
+            return Err(CompilerError::InvalidForm(
+                "ns requires namespace name".into(),
+            ));
         }
         let name = match &list[1] {
             Value::Symbol(s) => self.symbol_to_string(s),
@@ -512,18 +544,16 @@ impl BytecodeCompiler {
                         params.push(Param::Rest(rest.clone()));
                         i += 2;
                     } else {
-                        return Err(CompilerError::InvalidForm("& must be followed by symbol".into()));
+                        return Err(CompilerError::InvalidForm(
+                            "& must be followed by symbol".into(),
+                        ));
                     }
                 }
                 Value::Symbol(s) => {
                     params.push(Param::Named(s.clone()));
                     i += 1;
                 }
-                _ => {
-                    return Err(CompilerError::InvalidForm(
-                        "param must be a symbol".into(),
-                    ))
-                }
+                _ => return Err(CompilerError::InvalidForm("param must be a symbol".into())),
             }
         }
         Ok(params)
@@ -793,13 +823,14 @@ impl BytecodeVm {
                 }
 
                 Op::MakeClosure(fn_idx) => {
-                    let compiled_fn = program
-                        .functions
-                        .get(fn_idx as usize)
-                        .cloned()
-                        .ok_or_else(|| {
-                            EvalError::Custom(format!("unknown function index: {}", fn_idx))
-                        })?;
+                    let compiled_fn =
+                        program
+                            .functions
+                            .get(fn_idx as usize)
+                            .cloned()
+                            .ok_or_else(|| {
+                                EvalError::Custom(format!("unknown function index: {}", fn_idx))
+                            })?;
 
                     // Build closure
                     let closure_env = HashMap::new();
@@ -893,11 +924,7 @@ impl BytecodeVm {
         Ok(self.stack.pop().unwrap_or(Value::Nil))
     }
 
-    fn resolve_symbol(
-        &self,
-        name: &str,
-        eval: &Evaluator,
-    ) -> Result<Value, EvalError> {
+    fn resolve_symbol(&self, name: &str, eval: &Evaluator) -> Result<Value, EvalError> {
         // Handle namespace-qualified symbols
         if let Some(slash_pos) = name.find('/') {
             let ns_name = &name[..slash_pos];
@@ -929,7 +956,10 @@ impl BytecodeVm {
         // Handle namespace-qualified names
         let current_ns = eval.ns.current_name();
         let (ns_name, var_name) = if let Some(slash_pos) = name.find('/') {
-            (name[..slash_pos].to_string(), name[slash_pos + 1..].to_string())
+            (
+                name[..slash_pos].to_string(),
+                name[slash_pos + 1..].to_string(),
+            )
         } else {
             (current_ns, name.to_string())
         };
@@ -943,7 +973,7 @@ impl BytecodeVm {
         &self,
         callee: Value,
         args: Vec<Value>,
-        program: &CompiledProgram,
+        _program: &CompiledProgram,
         eval: &mut Evaluator,
     ) -> Result<Value, EvalError> {
         match callee {
@@ -976,10 +1006,7 @@ pub enum CompilerError {
 
 /// Compile a list of forms and run them through the VM.
 /// Falls back to tree-walking for unsupported forms.
-pub fn compile_and_run(
-    eval: &mut Evaluator,
-    forms: &[Value],
-) -> Result<Value, EvalError> {
+pub fn compile_and_run(eval: &mut Evaluator, forms: &[Value]) -> Result<Value, EvalError> {
     let mut compiler = BytecodeCompiler::new();
     let main = match compiler.compile_forms(forms) {
         Ok(f) => f,
@@ -1088,7 +1115,10 @@ mod tests {
     #[test]
     fn vm_let_binding() {
         let mut lisp = MoraLisp::new();
-        let forms = lisp.evaluator.read_cached("(let [a 10 b 20] (+ a b))").unwrap();
+        let forms = lisp
+            .evaluator
+            .read_cached("(let [a 10 b 20] (+ a b))")
+            .unwrap();
         let result = compile_and_run(&mut lisp.evaluator, &forms).unwrap();
         assert_eq!(result, Value::Int(30));
     }
@@ -1096,12 +1126,19 @@ mod tests {
     #[test]
     fn vm_defn_registers_fn() {
         let mut lisp = MoraLisp::new();
-        let forms = lisp.evaluator.read_cached("(defn double [x] (+ x x))").unwrap();
+        let forms = lisp
+            .evaluator
+            .read_cached("(defn double [x] (+ x x))")
+            .unwrap();
         compile_and_run(&mut lisp.evaluator, &forms).unwrap();
         // The function should be defined in the current namespace
         let forms = lisp.evaluator.read_cached("double").unwrap();
         let result = compile_and_run(&mut lisp.evaluator, &forms).unwrap();
-        assert!(matches!(result, Value::Fn(_)), "expected Fn, got {}", result.type_name());
+        assert!(
+            matches!(result, Value::Fn(_)),
+            "expected Fn, got {}",
+            result.type_name()
+        );
     }
 
     #[test]

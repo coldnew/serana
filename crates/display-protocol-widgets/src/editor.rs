@@ -1,5 +1,5 @@
-use display_protocol::{StyledLine, Style, Selection, TextAreaNode, UiNode};
 use crate::palette;
+use display_protocol::{Selection, Style, StyledLine, TextAreaNode, UiNode};
 
 /// A multi-line text editor / text area.
 ///
@@ -64,17 +64,30 @@ impl Editor {
         self
     }
 
-    pub fn selection(mut self, sel: Selection) -> Self { self.selection = Some(sel); self }
-    pub fn scroll(mut self, top: u16, left: u16) -> Self { self.scroll_top = top; self.scroll_left = left; self }
-    pub fn height(mut self, h: u16) -> Self { self.height = h; self }
-    pub fn gutter(mut self, show: bool) -> Self { self.gutter = show; self }
-    pub fn focused(mut self, f: bool) -> Self { self.focused = f; self }
+    pub fn selection(mut self, sel: Selection) -> Self {
+        self.selection = Some(sel);
+        self
+    }
+    pub fn scroll(mut self, top: u16, left: u16) -> Self {
+        self.scroll_top = top;
+        self.scroll_left = left;
+        self
+    }
+    pub fn height(mut self, h: u16) -> Self {
+        self.height = h;
+        self
+    }
+    pub fn gutter(mut self, show: bool) -> Self {
+        self.gutter = show;
+        self
+    }
+    pub fn focused(mut self, f: bool) -> Self {
+        self.focused = f;
+        self
+    }
 
     pub fn build(self) -> UiNode {
-        let styled_lines: Vec<StyledLine> = self.lines
-            .into_iter()
-            .map(StyledLine::plain)
-            .collect();
+        let styled_lines: Vec<StyledLine> = self.lines.into_iter().map(StyledLine::plain).collect();
 
         let cursor_style = if self.focused {
             Style::default().reverse()
@@ -100,5 +113,7 @@ impl Editor {
 }
 
 impl From<Editor> for UiNode {
-    fn from(e: Editor) -> Self { e.build() }
+    fn from(e: Editor) -> Self {
+        e.build()
+    }
 }

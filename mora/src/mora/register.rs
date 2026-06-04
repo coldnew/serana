@@ -1,5 +1,5 @@
-use crate::mora::buffer::Cursor;
 use super::display::event::MoraKeyEvent as KeyEvent;
+use crate::mora::buffer::Cursor;
 
 #[derive(Debug, Clone)]
 pub enum RegisterValue {

@@ -88,7 +88,9 @@ impl LspClient {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| format!("Failed to start LSP server: {e}"))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to start LSP server: {e}"))?;
         let stdin = child.stdin.take().ok_or("No stdin")?;
         self.process = Some(child);
         self.stdin = Some(stdin);
@@ -110,7 +112,11 @@ impl LspClient {
         });
         let response = self.send_request("initialize", init_params)?;
 
-        if let Some(name) = response.get("result").and_then(|r| r.get("serverInfo")).and_then(|s| s.get("name")) {
+        if let Some(name) = response
+            .get("result")
+            .and_then(|r| r.get("serverInfo"))
+            .and_then(|s| s.get("name"))
+        {
             self.server_name = name.as_str().unwrap_or("unknown").to_string();
         }
 
@@ -122,62 +128,105 @@ impl LspClient {
     }
 
     /// Notify the server that a document was opened.
-    pub fn did_open(&mut self, uri: &str, language_id: &str, version: i32, text: &str) -> Result<(), String> {
-        self.open_documents.insert(uri.to_string(), text.to_string());
-        self.send_notification("textDocument/didOpen", serde_json::json!({
-            "textDocument": {
-                "uri": uri,
-                "languageId": language_id,
-                "version": version,
-                "text": text
-            }
-        }))
+    pub fn did_open(
+        &mut self,
+        uri: &str,
+        language_id: &str,
+        version: i32,
+        text: &str,
+    ) -> Result<(), String> {
+        self.open_documents
+            .insert(uri.to_string(), text.to_string());
+        self.send_notification(
+            "textDocument/didOpen",
+            serde_json::json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language_id,
+                    "version": version,
+                    "text": text
+                }
+            }),
+        )
     }
 
     /// Notify the server that a document was saved.
     pub fn did_save(&mut self, uri: &str) -> Result<(), String> {
-        self.send_notification("textDocument/didSave", serde_json::json!({
-            "textDocument": { "uri": uri }
-        }))
+        self.send_notification(
+            "textDocument/didSave",
+            serde_json::json!({
+                "textDocument": { "uri": uri }
+            }),
+        )
     }
 
     /// Request go-to-definition.
-    pub fn definition(&mut self, uri: &str, line: u32, character: u32) -> Result<Vec<LspLocation>, String> {
-        let response = self.send_request("textDocument/definition", serde_json::json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": character }
-        }))?;
+    pub fn definition(
+        &mut self,
+        uri: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspLocation>, String> {
+        let response = self.send_request(
+            "textDocument/definition",
+            serde_json::json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": character }
+            }),
+        )?;
         self.parse_locations(&response)
     }
 
     /// Request find-references.
-    pub fn references(&mut self, uri: &str, line: u32, character: u32) -> Result<Vec<LspLocation>, String> {
-        let response = self.send_request("textDocument/references", serde_json::json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": character },
-            "context": { "includeDeclaration": true }
-        }))?;
+    pub fn references(
+        &mut self,
+        uri: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspLocation>, String> {
+        let response = self.send_request(
+            "textDocument/references",
+            serde_json::json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": character },
+                "context": { "includeDeclaration": true }
+            }),
+        )?;
         self.parse_locations(&response)
     }
 
     /// Request hover documentation.
-    pub fn hover(&mut self, uri: &str, line: u32, character: u32) -> Result<Option<LspHoverResult>, String> {
-        let response = self.send_request("textDocument/hover", serde_json::json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": character }
-        }))?;
+    pub fn hover(
+        &mut self,
+        uri: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<Option<LspHoverResult>, String> {
+        let response = self.send_request(
+            "textDocument/hover",
+            serde_json::json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": character }
+            }),
+        )?;
 
         let result = match response.get("result") {
             Some(r) if !r.is_null() => r,
             _ => return Ok(None),
         };
 
-        let contents = result.get("contents")
+        let contents = result
+            .get("contents")
             .and_then(|c| {
                 if let Some(s) = c.as_str() {
                     Some(s.to_string())
                 } else if let Some(arr) = c.as_array() {
-                    Some(arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n"))
+                    Some(
+                        arr.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    )
                 } else if let Some(s) = c.get("value").and_then(|v| v.as_str()) {
                     Some(s.to_string())
                 } else {
@@ -186,17 +235,27 @@ impl LspClient {
             })
             .unwrap_or_default();
 
-        let range = result.get("range").and_then(|r| serde_json::from_value(r.clone()).ok());
+        let range = result
+            .get("range")
+            .and_then(|r| serde_json::from_value(r.clone()).ok());
 
         Ok(Some(LspHoverResult { contents, range }))
     }
 
     /// Request completion.
-    pub fn completion(&mut self, uri: &str, line: u32, character: u32) -> Result<Vec<LspCompletionItem>, String> {
-        let response = self.send_request("textDocument/completion", serde_json::json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": character }
-        }))?;
+    pub fn completion(
+        &mut self,
+        uri: &str,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspCompletionItem>, String> {
+        let response = self.send_request(
+            "textDocument/completion",
+            serde_json::json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": character }
+            }),
+        )?;
 
         let result = match response.get("result") {
             Some(r) if !r.is_null() => r,
@@ -211,14 +270,25 @@ impl LspClient {
             return Ok(vec![]);
         };
 
-        let completions: Vec<LspCompletionItem> = items.iter().map(|item| {
-            LspCompletionItem {
-                label: item.get("label").and_then(|l| l.as_str()).unwrap_or("").to_string(),
+        let completions: Vec<LspCompletionItem> = items
+            .iter()
+            .map(|item| LspCompletionItem {
+                label: item
+                    .get("label")
+                    .and_then(|l| l.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 kind: item.get("kind").and_then(|k| k.as_u64()).map(|k| k as u32),
-                detail: item.get("detail").and_then(|d| d.as_str()).map(|s| s.to_string()),
-                documentation: item.get("documentation").and_then(|d| d.as_str()).map(|s| s.to_string()),
-            }
-        }).collect();
+                detail: item
+                    .get("detail")
+                    .and_then(|d| d.as_str())
+                    .map(|s| s.to_string()),
+                documentation: item
+                    .get("documentation")
+                    .and_then(|d| d.as_str())
+                    .map(|s| s.to_string()),
+            })
+            .collect();
 
         Ok(completions)
     }
@@ -239,7 +309,11 @@ impl LspClient {
 
     // ── JSON-RPC 2.0 protocol ──
 
-    fn send_request(&mut self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    fn send_request(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         self.request_id += 1;
         let id = self.request_id;
 
@@ -276,8 +350,12 @@ impl LspClient {
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
 
         if let Some(ref mut stdin) = self.stdin {
-            stdin.write_all(header.as_bytes()).map_err(|e| e.to_string())?;
-            stdin.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+            stdin
+                .write_all(header.as_bytes())
+                .map_err(|e| e.to_string())?;
+            stdin
+                .write_all(body.as_bytes())
+                .map_err(|e| e.to_string())?;
             stdin.flush().map_err(|e| e.to_string())?;
             Ok(())
         } else {
@@ -285,7 +363,10 @@ impl LspClient {
         }
     }
 
-    fn read_response_impl<R: Read>(reader: R, expected_id: u64) -> Result<serde_json::Value, String> {
+    fn read_response_impl<R: Read>(
+        reader: R,
+        expected_id: u64,
+    ) -> Result<serde_json::Value, String> {
         let mut buf_reader = BufReader::new(reader);
 
         loop {
@@ -317,10 +398,12 @@ impl LspClient {
 
             // Read body
             let mut body = vec![0u8; content_length];
-            buf_reader.read_exact(&mut body).map_err(|e| e.to_string())?;
+            buf_reader
+                .read_exact(&mut body)
+                .map_err(|e| e.to_string())?;
 
-            let response: serde_json::Value = serde_json::from_slice(&body)
-                .map_err(|e| format!("JSON parse error: {e}"))?;
+            let response: serde_json::Value =
+                serde_json::from_slice(&body).map_err(|e| format!("JSON parse error: {e}"))?;
 
             // Check if this is a response (has id) or notification (no id)
             if let Some(id) = response.get("id").and_then(|v| v.as_u64()) {
@@ -339,10 +422,15 @@ impl LspClient {
         };
 
         let locations: Vec<LspLocation> = if let Some(arr) = result.as_array() {
-            arr.iter().filter_map(|loc| serde_json::from_value(loc.clone()).ok()).collect()
+            arr.iter()
+                .filter_map(|loc| serde_json::from_value(loc.clone()).ok())
+                .collect()
         } else if result.get("uri").is_some() {
             // Single location
-            serde_json::from_value(result.clone()).ok().into_iter().collect()
+            serde_json::from_value(result.clone())
+                .ok()
+                .into_iter()
+                .collect()
         } else {
             vec![]
         };
@@ -362,7 +450,9 @@ pub fn detect_language_server(ext: &str) -> Option<(&str, Vec<&str>, &str)> {
     match ext {
         "rs" => Some(("rust-analyzer", vec![], "rust")),
         "py" => Some(("pyright-langserver", vec!["--stdio"], "python")),
-        "ts" | "tsx" | "js" | "jsx" => Some(("typescript-language-server", vec!["--stdio"], "typescript")),
+        "ts" | "tsx" | "js" | "jsx" => {
+            Some(("typescript-language-server", vec!["--stdio"], "typescript"))
+        }
         "go" => Some(("gopls", vec![], "go")),
         "c" | "h" | "cpp" | "hpp" => Some(("clangd", vec![], "cpp")),
         "lua" => Some(("lua-language-server", vec![], "lua")),

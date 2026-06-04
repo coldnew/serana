@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 /// A single snippet definition.
 #[derive(Debug, Clone)]
 pub struct Snippet {
@@ -44,7 +42,9 @@ pub struct SnippetEngine {
 
 impl SnippetEngine {
     pub fn new() -> Self {
-        Self { snippets: Vec::new() }
+        Self {
+            snippets: Vec::new(),
+        }
     }
 
     /// Register a snippet.
@@ -54,14 +54,18 @@ impl SnippetEngine {
 
     /// Find snippets matching the trigger prefix for a file type.
     pub fn find(&self, trigger: &str, file_type: &str) -> Vec<&Snippet> {
-        self.snippets.iter()
-            .filter(|s| s.trigger == trigger && (s.file_type.is_empty() || s.file_type == file_type))
+        self.snippets
+            .iter()
+            .filter(|s| {
+                s.trigger == trigger && (s.file_type.is_empty() || s.file_type == file_type)
+            })
             .collect()
     }
 
     /// Find a snippet by exact trigger match.
     pub fn find_exact(&self, trigger: &str, file_type: &str) -> Option<&Snippet> {
-        self.snippets.iter()
+        self.snippets
+            .iter()
             .find(|s| s.trigger == trigger && (s.file_type.is_empty() || s.file_type == file_type))
     }
 
@@ -139,12 +143,10 @@ impl SnippetEngine {
         }
 
         // Sort: $0 (final) always goes last, others by number
-        placeholders.sort_by(|a, b| {
-            match (a.tab_stop == 0, b.tab_stop == 0) {
-                (true, false) => std::cmp::Ordering::Greater,
-                (false, true) => std::cmp::Ordering::Less,
-                _ => a.tab_stop.cmp(&b.tab_stop),
-            }
+        placeholders.sort_by(|a, b| match (a.tab_stop == 0, b.tab_stop == 0) {
+            (true, false) => std::cmp::Ordering::Greater,
+            (false, true) => std::cmp::Ordering::Less,
+            _ => a.tab_stop.cmp(&b.tab_stop),
         });
 
         SnippetExpansion {
@@ -157,46 +159,196 @@ impl SnippetEngine {
     /// Load built-in snippets for common languages.
     pub fn load_defaults(&mut self) {
         // Rust snippets
-        self.register(Snippet { trigger: "fn".into(), description: "function".into(), body: "fn ${1:name}(${2:args}) {\n\t$0\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "if".into(), description: "if block".into(), body: "if ${1:condition} {\n\t$0\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "for".into(), description: "for loop".into(), body: "for ${1:item} in ${2:iter} {\n\t$0\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "match".into(), description: "match expression".into(), body: "match ${1:expr} {\n\t${2:pattern} => ${3:value},\n\t_ => $0,\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "struct".into(), description: "struct definition".into(), body: "struct ${1:Name} {\n\t${2:field}: ${3:Type},\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "impl".into(), description: "impl block".into(), body: "impl ${1:Type} {\n\t$0\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "test".into(), description: "test function".into(), body: "#[test]\nfn ${1:test_name}() {\n\t$0\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "enum".into(), description: "enum definition".into(), body: "enum ${1:Name} {\n\t${2:Variant},\n}".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "let".into(), description: "let binding".into(), body: "let ${1:name} = ${2:value};".into(), file_type: "rust".into() });
-        self.register(Snippet { trigger: "macro".into(), description: "macro_rules".into(), body: "macro_rules! ${1:name} {\n\t($${2:args}) => {\n\t\t$0\n\t};\n}".into(), file_type: "rust".into() });
+        self.register(Snippet {
+            trigger: "fn".into(),
+            description: "function".into(),
+            body: "fn ${1:name}(${2:args}) {\n\t$0\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "if".into(),
+            description: "if block".into(),
+            body: "if ${1:condition} {\n\t$0\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "for".into(),
+            description: "for loop".into(),
+            body: "for ${1:item} in ${2:iter} {\n\t$0\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "match".into(),
+            description: "match expression".into(),
+            body: "match ${1:expr} {\n\t${2:pattern} => ${3:value},\n\t_ => $0,\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "struct".into(),
+            description: "struct definition".into(),
+            body: "struct ${1:Name} {\n\t${2:field}: ${3:Type},\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "impl".into(),
+            description: "impl block".into(),
+            body: "impl ${1:Type} {\n\t$0\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "test".into(),
+            description: "test function".into(),
+            body: "#[test]\nfn ${1:test_name}() {\n\t$0\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "enum".into(),
+            description: "enum definition".into(),
+            body: "enum ${1:Name} {\n\t${2:Variant},\n}".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "let".into(),
+            description: "let binding".into(),
+            body: "let ${1:name} = ${2:value};".into(),
+            file_type: "rust".into(),
+        });
+        self.register(Snippet {
+            trigger: "macro".into(),
+            description: "macro_rules".into(),
+            body: "macro_rules! ${1:name} {\n\t($${2:args}) => {\n\t\t$0\n\t};\n}".into(),
+            file_type: "rust".into(),
+        });
 
         // Python snippets
-        self.register(Snippet { trigger: "def".into(), description: "function".into(), body: "def ${1:name}(${2:args}):\n\t$0".into(), file_type: "python".into() });
-        self.register(Snippet { trigger: "if".into(), description: "if block".into(), body: "if ${1:condition}:\n\t$0".into(), file_type: "python".into() });
-        self.register(Snippet { trigger: "for".into(), description: "for loop".into(), body: "for ${1:item} in ${2:iter}:\n\t$0".into(), file_type: "python".into() });
-        self.register(Snippet { trigger: "class".into(), description: "class definition".into(), body: "class ${1:Name}:\n\tdef __init__(self${2:, args}):\n\t\t$0".into(), file_type: "python".into() });
-        self.register(Snippet { trigger: "try".into(), description: "try/except".into(), body: "try:\n\t$1\nexcept ${2:Exception} as ${3:e}:\n\t$0".into(), file_type: "python".into() });
-        self.register(Snippet { trigger: "with".into(), description: "with statement".into(), body: "with ${1:expr} as ${2:var}:\n\t$0".into(), file_type: "python".into() });
+        self.register(Snippet {
+            trigger: "def".into(),
+            description: "function".into(),
+            body: "def ${1:name}(${2:args}):\n\t$0".into(),
+            file_type: "python".into(),
+        });
+        self.register(Snippet {
+            trigger: "if".into(),
+            description: "if block".into(),
+            body: "if ${1:condition}:\n\t$0".into(),
+            file_type: "python".into(),
+        });
+        self.register(Snippet {
+            trigger: "for".into(),
+            description: "for loop".into(),
+            body: "for ${1:item} in ${2:iter}:\n\t$0".into(),
+            file_type: "python".into(),
+        });
+        self.register(Snippet {
+            trigger: "class".into(),
+            description: "class definition".into(),
+            body: "class ${1:Name}:\n\tdef __init__(self${2:, args}):\n\t\t$0".into(),
+            file_type: "python".into(),
+        });
+        self.register(Snippet {
+            trigger: "try".into(),
+            description: "try/except".into(),
+            body: "try:\n\t$1\nexcept ${2:Exception} as ${3:e}:\n\t$0".into(),
+            file_type: "python".into(),
+        });
+        self.register(Snippet {
+            trigger: "with".into(),
+            description: "with statement".into(),
+            body: "with ${1:expr} as ${2:var}:\n\t$0".into(),
+            file_type: "python".into(),
+        });
 
         // JavaScript/TypeScript snippets
-        self.register(Snippet { trigger: "fn".into(), description: "function".into(), body: "function ${1:name}(${2:args}) {\n\t$0\n}".into(), file_type: "javascript".into() });
-        self.register(Snippet { trigger: "af".into(), description: "arrow function".into(), body: "(${1:args}) => {\n\t$0\n}".into(), file_type: "javascript".into() });
-        self.register(Snippet { trigger: "if".into(), description: "if block".into(), body: "if (${1:condition}) {\n\t$0\n}".into(), file_type: "javascript".into() });
-        self.register(Snippet { trigger: "for".into(), description: "for loop".into(), body: "for (let ${1:i} = 0; $1 < ${2:length}; $1++) {\n\t$0\n}".into(), file_type: "javascript".into() });
+        self.register(Snippet {
+            trigger: "fn".into(),
+            description: "function".into(),
+            body: "function ${1:name}(${2:args}) {\n\t$0\n}".into(),
+            file_type: "javascript".into(),
+        });
+        self.register(Snippet {
+            trigger: "af".into(),
+            description: "arrow function".into(),
+            body: "(${1:args}) => {\n\t$0\n}".into(),
+            file_type: "javascript".into(),
+        });
+        self.register(Snippet {
+            trigger: "if".into(),
+            description: "if block".into(),
+            body: "if (${1:condition}) {\n\t$0\n}".into(),
+            file_type: "javascript".into(),
+        });
+        self.register(Snippet {
+            trigger: "for".into(),
+            description: "for loop".into(),
+            body: "for (let ${1:i} = 0; $1 < ${2:length}; $1++) {\n\t$0\n}".into(),
+            file_type: "javascript".into(),
+        });
 
         // Go snippets
-        self.register(Snippet { trigger: "func".into(), description: "function".into(), body: "func ${1:name}(${2:args}) {\n\t$0\n}".into(), file_type: "go".into() });
-        self.register(Snippet { trigger: "if".into(), description: "if block".into(), body: "if ${1:condition} {\n\t$0\n}".into(), file_type: "go".into() });
-        self.register(Snippet { trigger: "for".into(), description: "for loop".into(), body: "for ${1:i} := 0; $1 < ${2:n}; $1++ {\n\t$0\n}".into(), file_type: "go".into() });
-        self.register(Snippet { trigger: "err".into(), description: "error check".into(), body: "if err != nil {\n\t$0\n}".into(), file_type: "go".into() });
+        self.register(Snippet {
+            trigger: "func".into(),
+            description: "function".into(),
+            body: "func ${1:name}(${2:args}) {\n\t$0\n}".into(),
+            file_type: "go".into(),
+        });
+        self.register(Snippet {
+            trigger: "if".into(),
+            description: "if block".into(),
+            body: "if ${1:condition} {\n\t$0\n}".into(),
+            file_type: "go".into(),
+        });
+        self.register(Snippet {
+            trigger: "for".into(),
+            description: "for loop".into(),
+            body: "for ${1:i} := 0; $1 < ${2:n}; $1++ {\n\t$0\n}".into(),
+            file_type: "go".into(),
+        });
+        self.register(Snippet {
+            trigger: "err".into(),
+            description: "error check".into(),
+            body: "if err != nil {\n\t$0\n}".into(),
+            file_type: "go".into(),
+        });
 
         // C/C++ snippets
-        self.register(Snippet { trigger: "if".into(), description: "if block".into(), body: "if (${1:condition}) {\n\t$0\n}".into(), file_type: "c".into() });
-        self.register(Snippet { trigger: "for".into(), description: "for loop".into(), body: "for (int ${1:i} = 0; $1 < ${2:n}; $1++) {\n\t$0\n}".into(), file_type: "c".into() });
-        self.register(Snippet { trigger: "while".into(), description: "while loop".into(), body: "while (${1:condition}) {\n\t$0\n}".into(), file_type: "c".into() });
+        self.register(Snippet {
+            trigger: "if".into(),
+            description: "if block".into(),
+            body: "if (${1:condition}) {\n\t$0\n}".into(),
+            file_type: "c".into(),
+        });
+        self.register(Snippet {
+            trigger: "for".into(),
+            description: "for loop".into(),
+            body: "for (int ${1:i} = 0; $1 < ${2:n}; $1++) {\n\t$0\n}".into(),
+            file_type: "c".into(),
+        });
+        self.register(Snippet {
+            trigger: "while".into(),
+            description: "while loop".into(),
+            body: "while (${1:condition}) {\n\t$0\n}".into(),
+            file_type: "c".into(),
+        });
 
         // Common snippets (all languages)
-        self.register(Snippet { trigger: "todo".into(), description: "TODO comment".into(), body: "// TODO: $0".into(), file_type: "".into() });
-        self.register(Snippet { trigger: "fixme".into(), description: "FIXME comment".into(), body: "// FIXME: $0".into(), file_type: "".into() });
-        self.register(Snippet { trigger: "note".into(), description: "NOTE comment".into(), body: "// NOTE: $0".into(), file_type: "".into() });
+        self.register(Snippet {
+            trigger: "todo".into(),
+            description: "TODO comment".into(),
+            body: "// TODO: $0".into(),
+            file_type: "".into(),
+        });
+        self.register(Snippet {
+            trigger: "fixme".into(),
+            description: "FIXME comment".into(),
+            body: "// FIXME: $0".into(),
+            file_type: "".into(),
+        });
+        self.register(Snippet {
+            trigger: "note".into(),
+            description: "NOTE comment".into(),
+            body: "// NOTE: $0".into(),
+            file_type: "".into(),
+        });
     }
 }
 
@@ -252,8 +404,18 @@ mod tests {
     #[test]
     fn test_snippet_find() {
         let mut engine = SnippetEngine::new();
-        engine.register(Snippet { trigger: "fn".into(), description: "function".into(), body: "fn $1()".into(), file_type: "rust".into() });
-        engine.register(Snippet { trigger: "fn".into(), description: "function".into(), body: "def $1():".into(), file_type: "python".into() });
+        engine.register(Snippet {
+            trigger: "fn".into(),
+            description: "function".into(),
+            body: "fn $1()".into(),
+            file_type: "rust".into(),
+        });
+        engine.register(Snippet {
+            trigger: "fn".into(),
+            description: "function".into(),
+            body: "def $1():".into(),
+            file_type: "python".into(),
+        });
 
         assert_eq!(engine.find("fn", "rust").len(), 1);
         assert_eq!(engine.find("fn", "python").len(), 1);

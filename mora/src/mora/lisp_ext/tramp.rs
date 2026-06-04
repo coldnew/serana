@@ -1,6 +1,5 @@
 use crate::lisp::types::Value;
 
-use super::editor_state::*;
 use super::helpers::extract_string;
 
 use super::super::tramp as tramp_mod;
@@ -127,19 +126,79 @@ fn prim_tramp_parse_path(args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("tramp-read-file", Value::Native(prim_tramp_read_file), "Read the remote file at PATH and return its contents as a string.");
-    ns.intern_with_doc("tramp-write-file", Value::Native(prim_tramp_write_file), "Write CONTENT to the remote file at PATH.");
-    ns.intern_with_doc("tramp-shell-command", Value::Native(prim_tramp_shell_command), "Execute COMMAND on the remote host and return output.");
-    ns.intern_with_doc("tramp-shell-capture", Value::Native(prim_tramp_shell_capture), "Execute COMMAND on the remote host and return its stdout.");
-    ns.intern_with_doc("tramp-exists?", Value::Native(prim_tramp_file_exists), "Return t if the remote file at PATH exists.");
-    ns.intern_with_doc("tramp-mtime", Value::Native(prim_tramp_file_mtime), "Return the modification time of the remote file at PATH.");
-    ns.intern_with_doc("tramp-list-dir", Value::Native(prim_tramp_list_dir), "Return a list of file names in the remote directory DIR.");
-    ns.intern_with_doc("tramp-mkdir", Value::Native(prim_tramp_mkdir), "Create the remote directory at PATH.");
-    ns.intern_with_doc("tramp-delete-file", Value::Native(prim_tramp_delete_file), "Delete the remote file at PATH.");
-    ns.intern_with_doc("tramp-rename-file", Value::Native(prim_tramp_rename_file), "Rename the remote file from OLD to NEW.");
-    ns.intern_with_doc("tramp-ping", Value::Native(prim_tramp_ping), "Return t if the remote host is reachable.");
-    ns.intern_with_doc("tramp-connect", Value::Native(prim_tramp_connect), "Establish a connection to the remote host.");
-    ns.intern_with_doc("tramp-disconnect", Value::Native(prim_tramp_disconnect), "Close the connection to the remote host.");
-    ns.intern_with_doc("tramp-connections", Value::Native(prim_tramp_connections), "Return a list of active remote connections.");
-    ns.intern_with_doc("tramp-parse-path", Value::Native(prim_tramp_parse_path), "Parse a tramp PATH and return its components as an alist.");
+    ns.intern_with_doc(
+        "tramp-read-file",
+        Value::Native(prim_tramp_read_file),
+        "Read the remote file at PATH and return its contents as a string.",
+    );
+    ns.intern_with_doc(
+        "tramp-write-file",
+        Value::Native(prim_tramp_write_file),
+        "Write CONTENT to the remote file at PATH.",
+    );
+    ns.intern_with_doc(
+        "tramp-shell-command",
+        Value::Native(prim_tramp_shell_command),
+        "Execute COMMAND on the remote host and return output.",
+    );
+    ns.intern_with_doc(
+        "tramp-shell-capture",
+        Value::Native(prim_tramp_shell_capture),
+        "Execute COMMAND on the remote host and return its stdout.",
+    );
+    ns.intern_with_doc(
+        "tramp-exists?",
+        Value::Native(prim_tramp_file_exists),
+        "Return t if the remote file at PATH exists.",
+    );
+    ns.intern_with_doc(
+        "tramp-mtime",
+        Value::Native(prim_tramp_file_mtime),
+        "Return the modification time of the remote file at PATH.",
+    );
+    ns.intern_with_doc(
+        "tramp-list-dir",
+        Value::Native(prim_tramp_list_dir),
+        "Return a list of file names in the remote directory DIR.",
+    );
+    ns.intern_with_doc(
+        "tramp-mkdir",
+        Value::Native(prim_tramp_mkdir),
+        "Create the remote directory at PATH.",
+    );
+    ns.intern_with_doc(
+        "tramp-delete-file",
+        Value::Native(prim_tramp_delete_file),
+        "Delete the remote file at PATH.",
+    );
+    ns.intern_with_doc(
+        "tramp-rename-file",
+        Value::Native(prim_tramp_rename_file),
+        "Rename the remote file from OLD to NEW.",
+    );
+    ns.intern_with_doc(
+        "tramp-ping",
+        Value::Native(prim_tramp_ping),
+        "Return t if the remote host is reachable.",
+    );
+    ns.intern_with_doc(
+        "tramp-connect",
+        Value::Native(prim_tramp_connect),
+        "Establish a connection to the remote host.",
+    );
+    ns.intern_with_doc(
+        "tramp-disconnect",
+        Value::Native(prim_tramp_disconnect),
+        "Close the connection to the remote host.",
+    );
+    ns.intern_with_doc(
+        "tramp-connections",
+        Value::Native(prim_tramp_connections),
+        "Return a list of active remote connections.",
+    );
+    ns.intern_with_doc(
+        "tramp-parse-path",
+        Value::Native(prim_tramp_parse_path),
+        "Parse a tramp PATH and return its components as an alist.",
+    );
 }

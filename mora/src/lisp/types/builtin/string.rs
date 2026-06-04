@@ -1,6 +1,6 @@
+use super::register_native;
 use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
-use super::register_native;
 
 pub fn register(ns: &mut Namespace) {
     // Core
@@ -17,7 +17,11 @@ pub fn register(ns: &mut Namespace) {
     register_native(ns, "mora.string/join", native_join);
     register_native(ns, "mora.string/last-index-of", native_last_index_of);
     register_native(ns, "mora.string/lower-case", native_lower_case);
-    register_native(ns, "mora.string/re-quote-replacement", super::core::native_identity);
+    register_native(
+        ns,
+        "mora.string/re-quote-replacement",
+        super::core::native_identity,
+    );
     register_native(ns, "mora.string/replace", native_replace_with_regex);
     register_native(ns, "mora.string/replace-first", native_replace_first_regex);
     register_native(ns, "mora.string/reverse", native_str_reverse);
@@ -34,7 +38,11 @@ pub fn register(ns: &mut Namespace) {
     register_native(ns, "mora.string/re-seq", native_re_seq);
 
     // s.el inspired
-    register_native(ns, "mora.string/collapse-whitespace", native_collapse_whitespace);
+    register_native(
+        ns,
+        "mora.string/collapse-whitespace",
+        native_collapse_whitespace,
+    );
     register_native(ns, "mora.string/word-wrap", native_word_wrap);
     register_native(ns, "mora.string/center", native_center);
     register_native(ns, "mora.string/pad-left", native_pad_left);
@@ -76,7 +84,11 @@ pub fn register(ns: &mut Namespace) {
     register_native(ns, "mora.string/upper-camel-case", native_upper_camel_case);
     register_native(ns, "mora.string/snake-case", native_snake_case);
     register_native(ns, "mora.string/dashed-words", native_dashed_words);
-    register_native(ns, "mora.string/capitalized-words", native_capitalized_words);
+    register_native(
+        ns,
+        "mora.string/capitalized-words",
+        native_capitalized_words,
+    );
     register_native(ns, "mora.string/word-initials", native_word_initials);
     register_native(ns, "mora.string/titleize", native_titleize);
     register_native(ns, "mora.string/replace-all", native_replace_all);
@@ -203,19 +215,6 @@ fn native_trimr(args: &[Value]) -> Result<Value, String> {
     }
 }
 
-fn native_split(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 2 {
-        return Err("split requires exactly 2 arguments".to_string());
-    }
-    match (&args[0], &args[1]) {
-        (Value::String(s), Value::String(pattern)) => {
-            let parts: Vec<Value> = s.split(pattern.as_str()).map(Value::string).collect();
-            Ok(Value::vector(parts))
-        }
-        _ => Err("split requires strings".to_string()),
-    }
-}
-
 fn native_join(args: &[Value]) -> Result<Value, String> {
     if args.len() < 1 || args.len() > 2 {
         return Err("join requires 1-2 arguments".to_string());
@@ -241,18 +240,6 @@ fn native_join(args: &[Value]) -> Result<Value, String> {
             Ok(Value::string(parts.join(sep)))
         }
         _ => Err("join requires a sequence".to_string()),
-    }
-}
-
-fn native_replace(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 3 {
-        return Err("replace requires exactly 3 arguments".to_string());
-    }
-    match (&args[0], &args[1], &args[2]) {
-        (Value::String(s), Value::String(from), Value::String(to)) => {
-            Ok(Value::string(s.replace(from.as_str(), to.as_str())))
-        }
-        _ => Err("replace requires strings".to_string()),
     }
 }
 
@@ -426,16 +413,14 @@ fn native_replace_with_regex(args: &[Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(s) => match &args[1] {
             Value::String(pattern) => match &args[2] {
-                Value::String(replacement) => {
-                    match regex::Regex::new(pattern.as_str()) {
-                        Ok(re) => Ok(Value::string(
-                            re.replace_all(s, replacement.as_str()).into_owned(),
-                        )),
-                        Err(_) => Ok(Value::string(
-                            s.replace(pattern.as_str(), replacement.as_str()),
-                        )),
-                    }
-                }
+                Value::String(replacement) => match regex::Regex::new(pattern.as_str()) {
+                    Ok(re) => Ok(Value::string(
+                        re.replace_all(s, replacement.as_str()).into_owned(),
+                    )),
+                    Err(_) => Ok(Value::string(
+                        s.replace(pattern.as_str(), replacement.as_str()),
+                    )),
+                },
                 _ => Err("replace third arg must be a string".to_string()),
             },
             _ => Err("replace second arg must be a string".to_string()),
@@ -450,8 +435,8 @@ fn native_regex_matches(args: &[Value]) -> Result<Value, String> {
     }
     match (&args[0], &args[1]) {
         (Value::String(pattern), Value::String(s)) => {
-            let re = regex::Regex::new(pattern.as_str())
-                .map_err(|e| format!("invalid regex: {}", e))?;
+            let re =
+                regex::Regex::new(pattern.as_str()).map_err(|e| format!("invalid regex: {}", e))?;
             match re.captures(s.as_str()) {
                 Some(caps) => {
                     // Only match if the entire string is covered
@@ -486,8 +471,8 @@ fn native_re_find(args: &[Value]) -> Result<Value, String> {
     }
     match (&args[0], &args[1]) {
         (Value::String(pattern), Value::String(s)) => {
-            let re = regex::Regex::new(pattern.as_str())
-                .map_err(|e| format!("invalid regex: {}", e))?;
+            let re =
+                regex::Regex::new(pattern.as_str()).map_err(|e| format!("invalid regex: {}", e))?;
             match re.find(s.as_str()) {
                 Some(m) => Ok(Value::string(m.as_str())),
                 None => Ok(Value::Nil),
@@ -503,9 +488,12 @@ fn native_re_seq(args: &[Value]) -> Result<Value, String> {
     }
     match (&args[0], &args[1]) {
         (Value::String(pattern), Value::String(s)) => {
-            let re = regex::Regex::new(pattern.as_str())
-                .map_err(|e| format!("invalid regex: {}", e))?;
-            let matches: Vec<Value> = re.find_iter(s.as_str()).map(|m| Value::string(m.as_str())).collect();
+            let re =
+                regex::Regex::new(pattern.as_str()).map_err(|e| format!("invalid regex: {}", e))?;
+            let matches: Vec<Value> = re
+                .find_iter(s.as_str())
+                .map(|m| Value::string(m.as_str()))
+                .collect();
             if matches.is_empty() {
                 Ok(Value::Nil)
             } else {
@@ -515,7 +503,6 @@ fn native_re_seq(args: &[Value]) -> Result<Value, String> {
         _ => Err("re-seq requires strings".to_string()),
     }
 }
-
 
 fn native_replace_first_regex(args: &[Value]) -> Result<Value, String> {
     if args.len() != 3 {
@@ -661,9 +648,13 @@ fn native_center(args: &[Value]) -> Result<Value, String> {
             let left = (extra + 1) / 2;
             let right = extra / 2;
             let mut result = String::with_capacity(width);
-            for _ in 0..left { result.push(' '); }
+            for _ in 0..left {
+                result.push(' ');
+            }
             result.push_str(s);
-            for _ in 0..right { result.push(' '); }
+            for _ in 0..right {
+                result.push(' ');
+            }
             Ok(Value::string(result))
         }
         _ => Err("center second arg must be a string".to_string()),
@@ -690,7 +681,9 @@ fn native_pad_left(args: &[Value]) -> Result<Value, String> {
             let pad_len = width - s.len();
             let pad_char = pad.chars().next().unwrap_or(' ');
             let mut result = String::with_capacity(width);
-            for _ in 0..pad_len { result.push(pad_char); }
+            for _ in 0..pad_len {
+                result.push(pad_char);
+            }
             result.push_str(s);
             Ok(Value::string(result))
         }
@@ -719,7 +712,9 @@ fn native_pad_right(args: &[Value]) -> Result<Value, String> {
             let pad_char = pad.chars().next().unwrap_or(' ');
             let mut result = String::with_capacity(width);
             result.push_str(s);
-            for _ in 0..pad_len { result.push(pad_char); }
+            for _ in 0..pad_len {
+                result.push(pad_char);
+            }
             Ok(Value::string(result))
         }
         _ => Err("pad-right third arg must be a string".to_string()),
@@ -852,7 +847,6 @@ fn native_chop_suffixes(args: &[Value]) -> Result<Value, String> {
                 if let Value::String(sf) = suffix {
                     if result.ends_with(sf.as_str()) {
                         result = result[..result.len() - sf.len()].to_string();
-
                     }
                 }
             }
@@ -889,7 +883,6 @@ fn native_chop_prefixes(args: &[Value]) -> Result<Value, String> {
                 if let Value::String(pf) = prefix {
                     if result.starts_with(pf.as_str()) {
                         result = result[pf.len()..].to_string();
-
                     }
                 }
             }
@@ -907,7 +900,9 @@ fn native_shared_start(args: &[Value]) -> Result<Value, String> {
         (Value::String(a), Value::String(b)) => {
             let mut end = 0;
             for (ca, cb) in a.chars().zip(b.chars()) {
-                if ca != cb { break; }
+                if ca != cb {
+                    break;
+                }
                 end += ca.len_utf8();
             }
             Ok(Value::string(&a[..end]))
@@ -926,13 +921,21 @@ fn native_shared_end(args: &[Value]) -> Result<Value, String> {
             let b_chars: Vec<char> = b.chars().collect();
             let mut count = 0;
             for (ca, cb) in a_chars.iter().rev().zip(b_chars.iter().rev()) {
-                if ca != cb { break; }
+                if ca != cb {
+                    break;
+                }
                 count += 1;
             }
             if count == 0 {
                 Ok(Value::string(""))
             } else {
-                let start = a.len() - a_chars.iter().rev().take(count).map(|c| c.len_utf8()).sum::<usize>();
+                let start = a.len()
+                    - a_chars
+                        .iter()
+                        .rev()
+                        .take(count)
+                        .map(|c| c.len_utf8())
+                        .sum::<usize>();
                 Ok(Value::string(&a[start..]))
             }
         }
@@ -1074,7 +1077,9 @@ fn native_str_lowercase(args: &[Value]) -> Result<Value, String> {
         return Err("lowercase? requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::String(s) => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase()))),
+        Value::String(s) => Ok(Value::Bool(
+            !s.is_empty() && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase()),
+        )),
         _ => Err("lowercase? requires a string".to_string()),
     }
 }
@@ -1084,7 +1089,9 @@ fn native_str_uppercase(args: &[Value]) -> Result<Value, String> {
         return Err("uppercase? requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::String(s) => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()))),
+        Value::String(s) => Ok(Value::Bool(
+            !s.is_empty() && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()),
+        )),
         _ => Err("uppercase? requires a string".to_string()),
     }
 }
@@ -1109,7 +1116,9 @@ fn native_str_capitalized(args: &[Value]) -> Result<Value, String> {
     }
     match &args[0] {
         Value::String(s) => {
-            if s.is_empty() { return Ok(Value::Bool(false)); }
+            if s.is_empty() {
+                return Ok(Value::Bool(false));
+            }
             let mut chars = s.chars();
             let first = chars.next().unwrap();
             let rest_ok = chars.all(|c| !c.is_alphabetic() || c.is_lowercase());
@@ -1124,7 +1133,9 @@ fn native_str_numeric(args: &[Value]) -> Result<Value, String> {
         return Err("numeric? requires exactly 1 argument".to_string());
     }
     match &args[0] {
-        Value::String(s) => Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))),
+        Value::String(s) => Ok(Value::Bool(
+            !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()),
+        )),
         _ => Err("numeric? requires a string".to_string()),
     }
 }
@@ -1327,9 +1338,7 @@ fn native_word_initials(args: &[Value]) -> Result<Value, String> {
     match &args[0] {
         Value::String(s) => {
             let words = split_words_helper(s);
-            let initials: String = words.iter()
-                .filter_map(|w| w.chars().next())
-                .collect();
+            let initials: String = words.iter().filter_map(|w| w.chars().next()).collect();
             Ok(Value::string(initials))
         }
         _ => Err("word-initials requires a string".to_string()),
@@ -1349,10 +1358,14 @@ fn native_titleize(args: &[Value]) -> Result<Value, String> {
                     result.push(ch);
                     capitalize_next = true;
                 } else if capitalize_next {
-                    for uch in ch.to_uppercase() { result.push(uch); }
+                    for uch in ch.to_uppercase() {
+                        result.push(uch);
+                    }
                     capitalize_next = false;
                 } else {
-                    for lch in ch.to_lowercase() { result.push(lch); }
+                    for lch in ch.to_lowercase() {
+                        result.push(lch);
+                    }
                 }
             }
             Ok(Value::string(result))
@@ -1381,7 +1394,6 @@ fn native_replace_all(args: &[Value]) -> Result<Value, String> {
         _ => Err("replace-all first arg must be a map".to_string()),
     }
 }
-
 
 fn native_splice(args: &[Value]) -> Result<Value, String> {
     if args.len() < 2 || args.len() > 3 {

@@ -173,7 +173,12 @@ impl UndoTree {
     fn fmt_node(&self, id: usize, prefix: &str, is_last: bool, buf: &mut String) {
         if let Some(node) = &self.nodes[id] {
             let marker = if id == self.active { "●" } else { "○" };
-            let preview = node.snapshot.lines.first().map(|s| s.as_str()).unwrap_or("");
+            let preview = node
+                .snapshot
+                .lines
+                .first()
+                .map(|s| s.as_str())
+                .unwrap_or("");
             let label = format!(
                 "{} {} [{} lines]",
                 marker,

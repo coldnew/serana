@@ -1,5 +1,5 @@
+use super::{DisplayCmd, FrameUpdate, InputEvent};
 use serde::{Deserialize, Serialize};
-use super::{FrameUpdate, DisplayCmd, InputEvent};
 
 /// Messages sent over the wire between mora server and client.
 ///

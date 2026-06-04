@@ -1,6 +1,5 @@
-use display_protocol::{DividerNode, Style, UiNode};
 use crate::palette;
-
+use display_protocol::{DividerNode, Style, UiNode};
 
 /// Visual style for a separator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,16 +38,31 @@ impl Separator {
         }
     }
 
-    pub fn solid(mut self) -> Self { self.style = SeparatorStyle::Solid; self }
-    pub fn dashed(mut self) -> Self { self.style = SeparatorStyle::Dashed; self }
-    pub fn dotted(mut self) -> Self { self.style = SeparatorStyle::Dotted; self }
+    pub fn solid(mut self) -> Self {
+        self.style = SeparatorStyle::Solid;
+        self
+    }
+    pub fn dashed(mut self) -> Self {
+        self.style = SeparatorStyle::Dashed;
+        self
+    }
+    pub fn dotted(mut self) -> Self {
+        self.style = SeparatorStyle::Dotted;
+        self
+    }
 
     /// Create a blank spacer.
     pub fn spacer() -> Self {
-        Self { style: SeparatorStyle::Spacer, color: None }
+        Self {
+            style: SeparatorStyle::Spacer,
+            color: None,
+        }
     }
 
-    pub fn color(mut self, c: display_protocol::Color) -> Self { self.color = Some(c); self }
+    pub fn color(mut self, c: display_protocol::Color) -> Self {
+        self.color = Some(c);
+        self
+    }
 
     pub fn build(self) -> UiNode {
         if self.style == SeparatorStyle::Spacer {
@@ -80,9 +94,13 @@ impl Separator {
 }
 
 impl Default for Separator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl From<Separator> for UiNode {
-    fn from(s: Separator) -> Self { s.build() }
+    fn from(s: Separator) -> Self {
+        s.build()
+    }
 }

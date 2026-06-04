@@ -5,14 +5,12 @@
 ///
 /// Emacs menu bar: File, Edit, Options, Buffers, Tools, Help —
 /// each with sub-items bound to commands.
-
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::lisp::types::Value;
 
-use super::editor_state::{with_editor_state, with_editor_state_mut};
+use super::editor_state::with_editor_state;
 use super::helpers::extract_string;
 
 // ── Modeline state ───────────────────────────────────────────
@@ -60,7 +58,7 @@ fn with_modeline_state_mut<R>(f: impl FnOnce(&mut ModelineState) -> R) -> R {
 ///   %m — modified flag (** or --)
 ///   %b — buffer name
 ///   %M — major mode name
-///   %m — minor modes indicators
+///   %i — minor modes indicators
 ///   %l — line number
 ///   %c — column number
 ///   %p — percentage
@@ -86,7 +84,7 @@ pub fn build_modeline_string(
                 Some('m') => result.push_str(if modified { "**" } else { "--" }),
                 Some('b') => result.push_str(buffer_name),
                 Some('M') => result.push_str(major_mode),
-                Some('m') => result.push_str(minor_modes),
+                Some('i') => result.push_str(minor_modes),
                 Some('l') => result.push_str(&line.to_string()),
                 Some('c') => result.push_str(&col.to_string()),
                 Some('p') => result.push_str(&format!("{}%", pct)),
@@ -114,44 +112,77 @@ pub fn build_modeline_string(
 
 fn init_default_menu_bar(state: &mut ModelineState) {
     if state.menu_bar.is_empty() {
-        state.menu_bar.insert("File".to_string(), vec![
-            ("Open...".to_string(), "find-file".to_string()),
-            ("Save".to_string(), "save-buffer".to_string()),
-            ("Save As...".to_string(), "write-file".to_string()),
-            ("Close".to_string(), "kill-buffer".to_string()),
-            ("Quit".to_string(), "editor-quit".to_string()),
-        ]);
-        state.menu_bar.insert("Edit".to_string(), vec![
-            ("Undo".to_string(), "undo".to_string()),
-            ("Redo".to_string(), "redo".to_string()),
-            ("Cut".to_string(), "kill-region".to_string()),
-            ("Copy".to_string(), "copy-region".to_string()),
-            ("Paste".to_string(), "yank".to_string()),
-            ("Find...".to_string(), "search-forward".to_string()),
-            ("Replace...".to_string(), "query-replace-pattern".to_string()),
-        ]);
-        state.menu_bar.insert("Buffer".to_string(), vec![
-            ("Next Buffer".to_string(), "next-buffer".to_string()),
-            ("Previous Buffer".to_string(), "prev-buffer".to_string()),
-            ("Kill Buffer".to_string(), "kill-buffer".to_string()),
-            ("List Buffers".to_string(), "buffer-list".to_string()),
-        ]);
-        state.menu_bar.insert("Window".to_string(), vec![
-            ("Split Horizontal".to_string(), "split-window-horizontally".to_string()),
-            ("Split Vertical".to_string(), "split-window-vertically".to_string()),
-            ("Delete Window".to_string(), "delete-window".to_string()),
-            ("Delete Other Windows".to_string(), "delete-other-windows".to_string()),
-            ("Other Window".to_string(), "other-window".to_string()),
-        ]);
-        state.menu_bar.insert("Tools".to_string(), vec![
-            ("Shell Command".to_string(), "shell-command".to_string()),
-            ("Grep".to_string(), "grep".to_string()),
-            ("Project Find".to_string(), "project-find-file".to_string()),
-        ]);
-        state.menu_bar.insert("Help".to_string(), vec![
-            ("Describe Function".to_string(), "describe-function".to_string()),
-            ("Version".to_string(), "editor-status".to_string()),
-        ]);
+        state.menu_bar.insert(
+            "File".to_string(),
+            vec![
+                ("Open...".to_string(), "find-file".to_string()),
+                ("Save".to_string(), "save-buffer".to_string()),
+                ("Save As...".to_string(), "write-file".to_string()),
+                ("Close".to_string(), "kill-buffer".to_string()),
+                ("Quit".to_string(), "editor-quit".to_string()),
+            ],
+        );
+        state.menu_bar.insert(
+            "Edit".to_string(),
+            vec![
+                ("Undo".to_string(), "undo".to_string()),
+                ("Redo".to_string(), "redo".to_string()),
+                ("Cut".to_string(), "kill-region".to_string()),
+                ("Copy".to_string(), "copy-region".to_string()),
+                ("Paste".to_string(), "yank".to_string()),
+                ("Find...".to_string(), "search-forward".to_string()),
+                (
+                    "Replace...".to_string(),
+                    "query-replace-pattern".to_string(),
+                ),
+            ],
+        );
+        state.menu_bar.insert(
+            "Buffer".to_string(),
+            vec![
+                ("Next Buffer".to_string(), "next-buffer".to_string()),
+                ("Previous Buffer".to_string(), "prev-buffer".to_string()),
+                ("Kill Buffer".to_string(), "kill-buffer".to_string()),
+                ("List Buffers".to_string(), "buffer-list".to_string()),
+            ],
+        );
+        state.menu_bar.insert(
+            "Window".to_string(),
+            vec![
+                (
+                    "Split Horizontal".to_string(),
+                    "split-window-horizontally".to_string(),
+                ),
+                (
+                    "Split Vertical".to_string(),
+                    "split-window-vertically".to_string(),
+                ),
+                ("Delete Window".to_string(), "delete-window".to_string()),
+                (
+                    "Delete Other Windows".to_string(),
+                    "delete-other-windows".to_string(),
+                ),
+                ("Other Window".to_string(), "other-window".to_string()),
+            ],
+        );
+        state.menu_bar.insert(
+            "Tools".to_string(),
+            vec![
+                ("Shell Command".to_string(), "shell-command".to_string()),
+                ("Grep".to_string(), "grep".to_string()),
+                ("Project Find".to_string(), "project-find-file".to_string()),
+            ],
+        );
+        state.menu_bar.insert(
+            "Help".to_string(),
+            vec![
+                (
+                    "Describe Function".to_string(),
+                    "describe-function".to_string(),
+                ),
+                ("Version".to_string(), "editor-status".to_string()),
+            ],
+        );
     }
 }
 
@@ -188,11 +219,19 @@ fn prim_modeline_get_format(_args: &[Value]) -> Result<Value, String> {
 fn prim_modeline_add_segment(args: &[Value]) -> Result<Value, String> {
     let name = extract_string(args, 0)?;
     let content = extract_string(args, 1)?;
-    let face = args.get(2)
-        .and_then(|v| match v { Value::String(s) => Some(s.to_string()), _ => None })
+    let face = args
+        .get(2)
+        .and_then(|v| match v {
+            Value::String(s) => Some(s.to_string()),
+            _ => None,
+        })
         .unwrap_or_else(|| "default".to_string());
-    let order = args.get(3)
-        .and_then(|v| match v { Value::Int(n) => Some(*n as i32), _ => None })
+    let order = args
+        .get(3)
+        .and_then(|v| match v {
+            Value::Int(n) => Some(*n as i32),
+            _ => None,
+        })
         .unwrap_or(0);
 
     with_modeline_state_mut(|state| {
@@ -202,7 +241,12 @@ fn prim_modeline_add_segment(args: &[Value]) -> Result<Value, String> {
             seg.face = face;
             seg.order = order;
         } else {
-            state.segments.push(ModelineSegment { name, content, face, order });
+            state.segments.push(ModelineSegment {
+                name,
+                content,
+                face,
+                order,
+            });
         }
         state.segments.sort_by_key(|s| s.order);
         Ok(Value::Nil)
@@ -222,7 +266,11 @@ fn prim_modeline_remove_segment(args: &[Value]) -> Result<Value, String> {
 fn prim_modeline_segments(_args: &[Value]) -> Result<Value, String> {
     with_modeline_state(|state| {
         Ok(Value::vector(
-            state.segments.iter().map(|s| Value::string(&s.name)).collect(),
+            state
+                .segments
+                .iter()
+                .map(|s| Value::string(&s.name))
+                .collect(),
         ))
     })
 }
@@ -236,7 +284,11 @@ fn prim_modeline_render(_args: &[Value]) -> Result<Value, String> {
             let minor_modes_str = ""; // minor mode indicators from editor
 
             let total_lines = state.lines.len().max(1);
-            let pct = if total_lines <= 1 { 100 } else { ((state.cursor_row + 1) * 100) / total_lines };
+            let pct = if total_lines <= 1 {
+                100
+            } else {
+                ((state.cursor_row + 1) * 100) / total_lines
+            };
 
             let mut rendered = build_modeline_string(
                 buffer_name,
@@ -284,11 +336,11 @@ fn prim_menu_bar_items(args: &[Value]) -> Result<Value, String> {
         }
         match state.menu_bar.get(&menu) {
             Some(items) => {
-                let pairs: Vec<Value> = items.iter()
-                    .map(|(label, action)| Value::vector(vec![
-                        Value::string(label),
-                        Value::string(action),
-                    ]))
+                let pairs: Vec<Value> = items
+                    .iter()
+                    .map(|(label, action)| {
+                        Value::vector(vec![Value::string(label), Value::string(action)])
+                    })
                     .collect();
                 Ok(Value::vector(pairs))
             }
@@ -306,7 +358,11 @@ fn prim_menu_bar_add(args: &[Value]) -> Result<Value, String> {
         if state.menu_bar.is_empty() {
             init_default_menu_bar(state);
         }
-        state.menu_bar.entry(menu).or_default().push((label, action));
+        state
+            .menu_bar
+            .entry(menu)
+            .or_default()
+            .push((label, action));
         Ok(Value::Nil)
     })
 }
@@ -350,7 +406,8 @@ fn prim_menu_bar_render(_args: &[Value]) -> Result<Value, String> {
         }
         let mut names: Vec<&String> = state.menu_bar.keys().collect();
         names.sort();
-        let bar = names.iter()
+        let bar = names
+            .iter()
             .map(|n| format!(" {} ", n))
             .collect::<Vec<_>>()
             .join("|");
@@ -360,44 +417,89 @@ fn prim_menu_bar_render(_args: &[Value]) -> Result<Value, String> {
 // ── Registration ─────────────────────────────────────────────
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("modeline-toggle", Value::Native(prim_modeline_toggle),
-        "Toggle modeline visibility on/off.");
-    ns.intern_with_doc("modeline-enabled?", Value::Native(prim_modeline_enabled),
-        "Return t if modeline is enabled.");
-    ns.intern_with_doc("modeline-set-format", Value::Native(prim_modeline_set_format),
-        "Set modeline format string. Tokens: %m %b %M %l %c %p %e %n %%.");
-    ns.intern_with_doc("modeline-get-format", Value::Native(prim_modeline_get_format),
-        "Get current modeline format string.");
-    ns.intern_with_doc("modeline-add-segment", Value::Native(prim_modeline_add_segment),
-        "Add custom segment to modeline: (modeline-add-segment NAME CONTENT FACE ORDER).");
-    ns.intern_with_doc("modeline-remove-segment", Value::Native(prim_modeline_remove_segment),
-        "Remove custom modeline segment by NAME.");
-    ns.intern_with_doc("modeline-segments", Value::Native(prim_modeline_segments),
-        "Return vector of custom modeline segment names.");
-    ns.intern_with_doc("modeline-render", Value::Native(prim_modeline_render),
-        "Render the modeline string for the current buffer.");
-    ns.intern_with_doc("menu-bar-list", Value::Native(prim_menu_bar_list),
-        "Return vector of menu names in the menu bar.");
-    ns.intern_with_doc("menu-bar-items", Value::Native(prim_menu_bar_items),
-        "Return vector of [label action] pairs for MENU.");
-    ns.intern_with_doc("menu-bar-add", Value::Native(prim_menu_bar_add),
-        "Add an item to MENU with LABEL bound to ACTION.");
-    ns.intern_with_doc("menu-bar-remove", Value::Native(prim_menu_bar_remove),
-        "Remove item with LABEL from MENU.");
-    ns.intern_with_doc("menu-bar-toggle", Value::Native(prim_menu_bar_toggle),
-        "Toggle menu bar visibility on/off.");
-    ns.intern_with_doc("menu-bar-enabled?", Value::Native(prim_menu_bar_enabled),
-        "Return t if menu bar is enabled.");
-    ns.intern_with_doc("menu-bar-render", Value::Native(prim_menu_bar_render),
-        "Render the menu bar as a single string line.");
+    ns.intern_with_doc(
+        "modeline-toggle",
+        Value::Native(prim_modeline_toggle),
+        "Toggle modeline visibility on/off.",
+    );
+    ns.intern_with_doc(
+        "modeline-enabled?",
+        Value::Native(prim_modeline_enabled),
+        "Return t if modeline is enabled.",
+    );
+    ns.intern_with_doc(
+        "modeline-set-format",
+        Value::Native(prim_modeline_set_format),
+        "Set modeline format string. Tokens: %m %b %M %i %l %c %p %e %n %%.",
+    );
+    ns.intern_with_doc(
+        "modeline-get-format",
+        Value::Native(prim_modeline_get_format),
+        "Get current modeline format string.",
+    );
+    ns.intern_with_doc(
+        "modeline-add-segment",
+        Value::Native(prim_modeline_add_segment),
+        "Add custom segment to modeline: (modeline-add-segment NAME CONTENT FACE ORDER).",
+    );
+    ns.intern_with_doc(
+        "modeline-remove-segment",
+        Value::Native(prim_modeline_remove_segment),
+        "Remove custom modeline segment by NAME.",
+    );
+    ns.intern_with_doc(
+        "modeline-segments",
+        Value::Native(prim_modeline_segments),
+        "Return vector of custom modeline segment names.",
+    );
+    ns.intern_with_doc(
+        "modeline-render",
+        Value::Native(prim_modeline_render),
+        "Render the modeline string for the current buffer.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-list",
+        Value::Native(prim_menu_bar_list),
+        "Return vector of menu names in the menu bar.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-items",
+        Value::Native(prim_menu_bar_items),
+        "Return vector of [label action] pairs for MENU.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-add",
+        Value::Native(prim_menu_bar_add),
+        "Add an item to MENU with LABEL bound to ACTION.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-remove",
+        Value::Native(prim_menu_bar_remove),
+        "Remove item with LABEL from MENU.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-toggle",
+        Value::Native(prim_menu_bar_toggle),
+        "Toggle menu bar visibility on/off.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-enabled?",
+        Value::Native(prim_menu_bar_enabled),
+        "Return t if menu bar is enabled.",
+    );
+    ns.intern_with_doc(
+        "menu-bar-render",
+        Value::Native(prim_menu_bar_render),
+        "Render the menu bar as a single string line.",
+    );
 }
 
 // ── Tests ────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::editor_state::*;
+    use super::*;
 
     fn setup() {
         set_editor_state(EditorState::new());
@@ -443,7 +545,15 @@ mod tests {
     #[test]
     fn test_modeline_format_tokens() {
         let result = build_modeline_string(
-            "main.rs", "rust", "AI", 42, 10, 75, true, false, "[%m] %b (%M) %l:%c %p"
+            "main.rs",
+            "rust",
+            "AI",
+            42,
+            10,
+            75,
+            true,
+            false,
+            "[%m] %b (%M) %l:%c %p",
         );
         assert_eq!(result, "[**] main.rs (rust) 42:10 75%");
     }
@@ -453,11 +563,20 @@ mod tests {
         setup();
         let mut bridge = super::super::core::MoraLispBridge::new();
 
-        assert_eq!(bridge.eval("(modeline-enabled?)").unwrap(), Value::Bool(true));
+        assert_eq!(
+            bridge.eval("(modeline-enabled?)").unwrap(),
+            Value::Bool(true)
+        );
         bridge.eval("(modeline-toggle)").unwrap();
-        assert_eq!(bridge.eval("(modeline-enabled?)").unwrap(), Value::Bool(false));
+        assert_eq!(
+            bridge.eval("(modeline-enabled?)").unwrap(),
+            Value::Bool(false)
+        );
         bridge.eval("(modeline-toggle)").unwrap();
-        assert_eq!(bridge.eval("(modeline-enabled?)").unwrap(), Value::Bool(true));
+        assert_eq!(
+            bridge.eval("(modeline-enabled?)").unwrap(),
+            Value::Bool(true)
+        );
         teardown();
     }
 
@@ -487,7 +606,9 @@ mod tests {
         setup();
         let mut bridge = super::super::core::MoraLispBridge::new();
 
-        bridge.eval("(modeline-add-segment \"vcs\" \"[main]\" \"bold\" 10)").unwrap();
+        bridge
+            .eval("(modeline-add-segment \"vcs\" \"[main]\" \"bold\" 10)")
+            .unwrap();
         let segments = bridge.eval("(modeline-segments)").unwrap();
         match segments {
             Value::Vector(v) => assert_eq!(v.len(), 1),
@@ -549,7 +670,9 @@ mod tests {
         setup();
         let mut bridge = super::super::core::MoraLispBridge::new();
 
-        bridge.eval(r#"(menu-bar-add "Tools" "Compile" "compile-command")"#).unwrap();
+        bridge
+            .eval(r#"(menu-bar-add "Tools" "Compile" "compile-command")"#)
+            .unwrap();
         let items = bridge.eval("(menu-bar-items \"Tools\")").unwrap();
         match items {
             Value::Vector(v) => {
@@ -558,7 +681,9 @@ mod tests {
             _ => panic!("expected vector"),
         }
 
-        bridge.eval(r#"(menu-bar-remove "Tools" "Compile")"#).unwrap();
+        bridge
+            .eval(r#"(menu-bar-remove "Tools" "Compile")"#)
+            .unwrap();
         teardown();
     }
 
@@ -577,7 +702,10 @@ mod tests {
         }
 
         bridge.eval("(menu-bar-toggle)").unwrap();
-        assert_eq!(bridge.eval("(menu-bar-enabled?)").unwrap(), Value::Bool(false));
+        assert_eq!(
+            bridge.eval("(menu-bar-enabled?)").unwrap(),
+            Value::Bool(false)
+        );
 
         let bar = bridge.eval("(menu-bar-render)").unwrap();
         match bar {
@@ -592,9 +720,13 @@ mod tests {
         setup();
         let mut bridge = super::super::core::MoraLispBridge::new();
 
-        bridge.eval(r#"(buffer-set-content "line0\nline1\nline2")"#).unwrap();
+        bridge
+            .eval(r#"(buffer-set-content "line0\nline1\nline2")"#)
+            .unwrap();
         bridge.eval(r#"(narrow-to-region 1 2)"#).unwrap();
-        bridge.eval(r#"(modeline-set-format "%m %b %M %l:%c %p%n")"#).unwrap();
+        bridge
+            .eval(r#"(modeline-set-format "%m %b %M %l:%c %p%n")"#)
+            .unwrap();
         let rendered = bridge.eval(r#"(modeline-render)"#).unwrap();
         match rendered {
             Value::String(s) => assert!(s.contains("Narrow"), "should show narrowing: {}", s),

@@ -267,11 +267,19 @@ impl Selection {
 
     /// Create a selection between two points.
     pub fn range(
-        anchor_line: u32, anchor_col: u32,
-        head_line: u32, head_col: u32,
+        anchor_line: u32,
+        anchor_col: u32,
+        head_line: u32,
+        head_col: u32,
         mode: SelectionMode,
     ) -> Self {
-        Self { anchor_line, anchor_col, head_line, head_col, mode }
+        Self {
+            anchor_line,
+            anchor_col,
+            head_line,
+            head_col,
+            mode,
+        }
     }
 
     /// Whether the selection is collapsed (just a cursor, no range).
@@ -281,25 +289,33 @@ impl Selection {
 
     /// Whether a given line is covered by this selection.
     pub fn contains_line(&self, line: u32) -> bool {
-        if self.is_collapsed() { return false; }
+        if self.is_collapsed() {
+            return false;
+        }
         let (start, end) = self.line_range();
         line >= start && line <= end
     }
 
     /// Whether a given (line, col) position is within the selection.
     pub fn contains(&self, line: u32, col: u32) -> bool {
-        if self.is_collapsed() { return false; }
+        if self.is_collapsed() {
+            return false;
+        }
         let (start_line, start_col, end_line, end_col) = self.normalized_range();
         match self.mode {
             SelectionMode::Char => {
-                if line < start_line || line > end_line { return false; }
-                if line == start_line && col < start_col { return false; }
-                if line == end_line && col >= end_col { return false; }
+                if line < start_line || line > end_line {
+                    return false;
+                }
+                if line == start_line && col < start_col {
+                    return false;
+                }
+                if line == end_line && col >= end_col {
+                    return false;
+                }
                 true
             }
-            SelectionMode::Line => {
-                line >= start_line && line <= end_line
-            }
+            SelectionMode::Line => line >= start_line && line <= end_line,
             SelectionMode::Block => {
                 let min_col = start_col.min(end_col);
                 let max_col = start_col.max(end_col);
@@ -322,9 +338,19 @@ impl Selection {
         if self.anchor_line < self.head_line
             || (self.anchor_line == self.head_line && self.anchor_col <= self.head_col)
         {
-            (self.anchor_line, self.anchor_col, self.head_line, self.head_col)
+            (
+                self.anchor_line,
+                self.anchor_col,
+                self.head_line,
+                self.head_col,
+            )
         } else {
-            (self.head_line, self.head_col, self.anchor_line, self.anchor_col)
+            (
+                self.head_line,
+                self.head_col,
+                self.anchor_line,
+                self.anchor_col,
+            )
         }
     }
 }
@@ -361,9 +387,9 @@ mod tests {
         // Select from (1,3) to (2,5)
         let sel = Selection::range(1, 3, 2, 5, SelectionMode::Char);
         assert!(!sel.is_collapsed());
-        assert!(sel.contains(1, 3));  // start inclusive
+        assert!(sel.contains(1, 3)); // start inclusive
         assert!(sel.contains(1, 10)); // within first line
-        assert!(sel.contains(2, 4));  // within last line
+        assert!(sel.contains(2, 4)); // within last line
         assert!(!sel.contains(2, 5)); // end exclusive
         assert!(!sel.contains(0, 0)); // before
         assert!(!sel.contains(3, 0)); // after
@@ -393,8 +419,8 @@ mod tests {
     fn test_selection_block_mode() {
         // Block select columns 2-5 on lines 1-3
         let sel = Selection::range(1, 2, 3, 5, SelectionMode::Block);
-        assert!(sel.contains(1, 3));  // in block
-        assert!(sel.contains(2, 4));  // in block
+        assert!(sel.contains(1, 3)); // in block
+        assert!(sel.contains(2, 4)); // in block
         assert!(!sel.contains(1, 1)); // left of block
         assert!(!sel.contains(1, 5)); // right of block (end exclusive)
     }

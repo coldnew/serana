@@ -1,4 +1,4 @@
-use display_protocol::{Color, Style, StyledLine, KeyEvent, KeyCode, KeyModifiers};
+use display_protocol::{Color, KeyCode, KeyEvent, KeyModifiers, Style, StyledLine};
 
 // ── Color ──
 
@@ -40,13 +40,27 @@ pub fn style_to_ratatui(s: Style) -> ratatui::style::Style {
         style = style.bg(color_to_ratatui(bg));
     }
     let mut mods = ratatui::style::Modifier::empty();
-    if s.bold { mods |= ratatui::style::Modifier::BOLD; }
-    if s.italic { mods |= ratatui::style::Modifier::ITALIC; }
-    if s.underline { mods |= ratatui::style::Modifier::UNDERLINED; }
-    if s.dim { mods |= ratatui::style::Modifier::DIM; }
-    if s.reverse { mods |= ratatui::style::Modifier::REVERSED; }
-    if s.blink { mods |= ratatui::style::Modifier::SLOW_BLINK; }
-    if s.strikethrough { mods |= ratatui::style::Modifier::CROSSED_OUT; }
+    if s.bold {
+        mods |= ratatui::style::Modifier::BOLD;
+    }
+    if s.italic {
+        mods |= ratatui::style::Modifier::ITALIC;
+    }
+    if s.underline {
+        mods |= ratatui::style::Modifier::UNDERLINED;
+    }
+    if s.dim {
+        mods |= ratatui::style::Modifier::DIM;
+    }
+    if s.reverse {
+        mods |= ratatui::style::Modifier::REVERSED;
+    }
+    if s.blink {
+        mods |= ratatui::style::Modifier::SLOW_BLINK;
+    }
+    if s.strikethrough {
+        mods |= ratatui::style::Modifier::CROSSED_OUT;
+    }
     if !mods.is_empty() {
         style = style.add_modifier(mods);
     }
@@ -59,11 +73,17 @@ pub fn style_from_ratatui(s: ratatui::style::Style) -> Style {
         bg: s.bg.map(color_from_ratatui),
         bold: s.add_modifier.contains(ratatui::style::Modifier::BOLD),
         italic: s.add_modifier.contains(ratatui::style::Modifier::ITALIC),
-        underline: s.add_modifier.contains(ratatui::style::Modifier::UNDERLINED),
-        strikethrough: s.add_modifier.contains(ratatui::style::Modifier::CROSSED_OUT),
+        underline: s
+            .add_modifier
+            .contains(ratatui::style::Modifier::UNDERLINED),
+        strikethrough: s
+            .add_modifier
+            .contains(ratatui::style::Modifier::CROSSED_OUT),
         dim: s.add_modifier.contains(ratatui::style::Modifier::DIM),
         reverse: s.add_modifier.contains(ratatui::style::Modifier::REVERSED),
-        blink: s.add_modifier.contains(ratatui::style::Modifier::SLOW_BLINK),
+        blink: s
+            .add_modifier
+            .contains(ratatui::style::Modifier::SLOW_BLINK),
         underline_color: None,
     }
 }
@@ -103,10 +123,16 @@ pub fn key_event_from_crossterm(key: crossterm::event::KeyEvent) -> KeyEvent {
         _ => KeyCode::Char('?'),
     };
     let modifiers = KeyModifiers {
-        ctrl: key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL),
+        ctrl: key
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::CONTROL),
         alt: key.modifiers.contains(crossterm::event::KeyModifiers::ALT),
-        shift: key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT),
-        super_key: key.modifiers.contains(crossterm::event::KeyModifiers::SUPER),
+        shift: key
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::SHIFT),
+        super_key: key
+            .modifiers
+            .contains(crossterm::event::KeyModifiers::SUPER),
     };
     KeyEvent { code, modifiers }
 }
@@ -132,9 +158,17 @@ pub fn key_event_to_crossterm(key: KeyEvent) -> crossterm::event::KeyEvent {
         KeyCode::BackTab => crossterm::event::KeyCode::BackTab,
     };
     let mut mods = crossterm::event::KeyModifiers::NONE;
-    if key.modifiers.ctrl { mods |= crossterm::event::KeyModifiers::CONTROL; }
-    if key.modifiers.alt { mods |= crossterm::event::KeyModifiers::ALT; }
-    if key.modifiers.shift { mods |= crossterm::event::KeyModifiers::SHIFT; }
-    if key.modifiers.super_key { mods |= crossterm::event::KeyModifiers::SUPER; }
+    if key.modifiers.ctrl {
+        mods |= crossterm::event::KeyModifiers::CONTROL;
+    }
+    if key.modifiers.alt {
+        mods |= crossterm::event::KeyModifiers::ALT;
+    }
+    if key.modifiers.shift {
+        mods |= crossterm::event::KeyModifiers::SHIFT;
+    }
+    if key.modifiers.super_key {
+        mods |= crossterm::event::KeyModifiers::SUPER;
+    }
     crossterm::event::KeyEvent::new(code, mods)
 }

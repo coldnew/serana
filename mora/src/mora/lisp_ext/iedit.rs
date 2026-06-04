@@ -1,6 +1,6 @@
-use crate::lisp::types::Value;
-use super::helpers::extract_string;
 use super::editor_state::with_editor_state_mut;
+use super::helpers::extract_string;
+use crate::lisp::types::Value;
 
 fn prim_iedit(_args: &[Value]) -> Result<Value, String> {
     // Start iedit mode on word under cursor
@@ -20,6 +20,14 @@ fn prim_iedit_regex(args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut crate::lisp::ns::Namespace) {
-    ns.intern_with_doc("start", Value::Native(prim_iedit), "Start iedit mode on word under cursor.");
-    ns.intern_with_doc("regex", Value::Native(prim_iedit_regex), "Start iedit with regex pattern.");
+    ns.intern_with_doc(
+        "start",
+        Value::Native(prim_iedit),
+        "Start iedit mode on word under cursor.",
+    );
+    ns.intern_with_doc(
+        "regex",
+        Value::Native(prim_iedit_regex),
+        "Start iedit with regex pattern.",
+    );
 }

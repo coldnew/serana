@@ -124,8 +124,8 @@ impl MacroState {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::display::event::{MoraKeyCode as KeyCode, MoraKeyModifiers as KeyModifiers};
+    use super::*;
 
     fn fake_key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)

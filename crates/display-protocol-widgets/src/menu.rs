@@ -1,6 +1,5 @@
 use display_protocol::{MenuAnchor, MenuItem, MenuNode};
 
-
 /// A dropdown or context menu.
 ///
 /// The menu itself is not a `UiNode` — it's used with `DisplayCmd::ShowPopup`
@@ -33,7 +32,10 @@ impl Menu {
     }
 
     /// Add a menu item.
-    pub fn item(mut self, item: MenuItem) -> Self { self.items.push(item); self }
+    pub fn item(mut self, item: MenuItem) -> Self {
+        self.items.push(item);
+        self
+    }
 
     /// Add a separator line (disabled empty item).
     pub fn separator(mut self) -> Self {
@@ -41,7 +43,10 @@ impl Menu {
         self
     }
 
-    pub fn anchor(mut self, anchor: MenuAnchor) -> Self { self.anchor = anchor; self }
+    pub fn anchor(mut self, anchor: MenuAnchor) -> Self {
+        self.anchor = anchor;
+        self
+    }
 
     /// Position the menu below a specific point.
     pub fn at(mut self, x: u16, y: u16) -> Self {
@@ -65,7 +70,9 @@ impl Menu {
 }
 
 impl Default for Menu {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Convenience: build a simple context menu from label strings.

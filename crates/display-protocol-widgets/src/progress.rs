@@ -1,5 +1,5 @@
-use display_protocol::{ProgressNode, Style, UiNode};
 use crate::palette;
+use display_protocol::{ProgressNode, Style, UiNode};
 
 /// A progress bar.
 ///
@@ -45,10 +45,22 @@ impl ProgressBar {
         }
     }
 
-    pub fn width(mut self, w: u16) -> Self { self.width = w; self }
-    pub fn filled_color(mut self, c: display_protocol::Color) -> Self { self.filled_color = Some(c); self }
-    pub fn empty_color(mut self, c: display_protocol::Color) -> Self { self.empty_color = Some(c); self }
-    pub fn show_percent(mut self, show: bool) -> Self { self.show_percent = show; self }
+    pub fn width(mut self, w: u16) -> Self {
+        self.width = w;
+        self
+    }
+    pub fn filled_color(mut self, c: display_protocol::Color) -> Self {
+        self.filled_color = Some(c);
+        self
+    }
+    pub fn empty_color(mut self, c: display_protocol::Color) -> Self {
+        self.empty_color = Some(c);
+        self
+    }
+    pub fn show_percent(mut self, show: bool) -> Self {
+        self.show_percent = show;
+        self
+    }
 
     pub fn build(self) -> UiNode {
         let filled_fg = self.filled_color.unwrap_or(palette::PRIMARY);
@@ -66,5 +78,7 @@ impl ProgressBar {
 }
 
 impl From<ProgressBar> for UiNode {
-    fn from(pb: ProgressBar) -> Self { pb.build() }
+    fn from(pb: ProgressBar) -> Self {
+        pb.build()
+    }
 }

@@ -2,7 +2,7 @@ use crate::lisp::ns::Namespace;
 use crate::lisp::types::Value;
 
 use super::editor_state::{with_editor_state, with_editor_state_mut};
-use super::helpers::{extract_int, extract_string};
+use super::helpers::extract_string;
 
 fn prim_add_hook(args: &[Value]) -> Result<Value, String> {
     let hook_name = extract_string(args, 0)?;
@@ -42,7 +42,10 @@ fn prim_remove_hook(args: &[Value]) -> Result<Value, String> {
             let handler_str = format!("{:?}", handler);
             with_editor_state_mut(|state| {
                 if let Some(handlers) = state.hooks.get_mut(&hook_name) {
-                    if let Some(pos) = handlers.iter().rposition(|h| format!("{:?}", h) == handler_str) {
+                    if let Some(pos) = handlers
+                        .iter()
+                        .rposition(|h| format!("{:?}", h) == handler_str)
+                    {
                         handlers.remove(pos);
                     }
                 }
@@ -86,16 +89,64 @@ fn prim_hooks_for(args: &[Value]) -> Result<Value, String> {
 }
 
 pub fn register(ns: &mut Namespace) {
-    ns.intern_with_doc("add-hook", Value::Native(prim_add_hook), "Add HANDLER to the named HOOK.");
-    ns.intern_private_with_doc("add", Value::Native(prim_add_hook), "Add HANDLER to the named HOOK.");
-    ns.intern_with_doc("define-key", Value::Native(prim_define_key), "Bind KEY to ACTION in the current keymap.");
-    ns.intern_private_with_doc("define", Value::Native(prim_define_key), "Bind KEY to ACTION in the current keymap.");
-    ns.intern_with_doc("remove-hook", Value::Native(prim_remove_hook), "Remove HANDLER from the named HOOK.");
-    ns.intern_private_with_doc("remove", Value::Native(prim_remove_hook), "Remove HANDLER from the named HOOK.");
-    ns.intern_with_doc("run-hook", Value::Native(prim_run_hook), "Run all handlers for the named HOOK.");
-    ns.intern_private_with_doc("run", Value::Native(prim_run_hook), "Run all handlers for the named HOOK.");
-    ns.intern_with_doc("hook-bound?", Value::Native(prim_hook_bound), "Return t if the named HOOK has handlers.");
-    ns.intern_private_with_doc("bound?", Value::Native(prim_hook_bound), "Return t if the named HOOK has handlers.");
-    ns.intern_with_doc("hooks-for", Value::Native(prim_hooks_for), "Return the number of handlers for the named HOOK.");
-    ns.intern_private_with_doc("for", Value::Native(prim_hooks_for), "Return the number of handlers for the named HOOK.");
+    ns.intern_with_doc(
+        "add-hook",
+        Value::Native(prim_add_hook),
+        "Add HANDLER to the named HOOK.",
+    );
+    ns.intern_private_with_doc(
+        "add",
+        Value::Native(prim_add_hook),
+        "Add HANDLER to the named HOOK.",
+    );
+    ns.intern_with_doc(
+        "define-key",
+        Value::Native(prim_define_key),
+        "Bind KEY to ACTION in the current keymap.",
+    );
+    ns.intern_private_with_doc(
+        "define",
+        Value::Native(prim_define_key),
+        "Bind KEY to ACTION in the current keymap.",
+    );
+    ns.intern_with_doc(
+        "remove-hook",
+        Value::Native(prim_remove_hook),
+        "Remove HANDLER from the named HOOK.",
+    );
+    ns.intern_private_with_doc(
+        "remove",
+        Value::Native(prim_remove_hook),
+        "Remove HANDLER from the named HOOK.",
+    );
+    ns.intern_with_doc(
+        "run-hook",
+        Value::Native(prim_run_hook),
+        "Run all handlers for the named HOOK.",
+    );
+    ns.intern_private_with_doc(
+        "run",
+        Value::Native(prim_run_hook),
+        "Run all handlers for the named HOOK.",
+    );
+    ns.intern_with_doc(
+        "hook-bound?",
+        Value::Native(prim_hook_bound),
+        "Return t if the named HOOK has handlers.",
+    );
+    ns.intern_private_with_doc(
+        "bound?",
+        Value::Native(prim_hook_bound),
+        "Return t if the named HOOK has handlers.",
+    );
+    ns.intern_with_doc(
+        "hooks-for",
+        Value::Native(prim_hooks_for),
+        "Return the number of handlers for the named HOOK.",
+    );
+    ns.intern_private_with_doc(
+        "for",
+        Value::Native(prim_hooks_for),
+        "Return the number of handlers for the named HOOK.",
+    );
 }
