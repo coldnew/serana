@@ -41,6 +41,9 @@ component needs to render, not how a concrete backend paints it.
   explicit `Kind` enums for related variants. Keep application runtime behavior
   outside `display-protocol-widgets`; backends should receive titles, rows,
   body widgets, selected indices, status text, and preview lines.
+- Animation protocols carry named frame sequences plus the current frame index.
+  Timing belongs to the app/backend event loop, not to
+  `display-protocol-widgets`.
 
 ---
 

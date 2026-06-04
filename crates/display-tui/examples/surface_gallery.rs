@@ -1,10 +1,10 @@
 use display_protocol::{InputEvent, KeyCode};
 use display_protocol_widgets::{
-    AppLinkSuggestionTypeSpec, AppLinkViewSpec, ApprovalKindSpec, ApprovalOverlaySpec,
-    ChatComposerSpec, FeedbackViewSpec, FooterSurfaceSpec, FormFieldSpec, HistoryCellKindSpec,
-    HistoryCellSpec, HookCellSpec, IntegrationViewKindSpec, IntegrationViewSpec,
-    MarkdownStreamSpec, McpElicitationOverlaySpec, McpToolCallSpec, MenuSurfaceSpec,
-    MultiSelectPickerSpec, NavigationOverlaySpec, OverlayKindSpec, PatchCellSpec,
+    AnimationSpec, AppLinkSuggestionTypeSpec, AppLinkViewSpec, ApprovalKindSpec,
+    ApprovalOverlaySpec, ChatComposerSpec, FeedbackViewSpec, FooterSurfaceSpec, FormFieldSpec,
+    HistoryCellKindSpec, HistoryCellSpec, HookCellSpec, IntegrationViewKindSpec,
+    IntegrationViewSpec, MarkdownStreamSpec, McpElicitationOverlaySpec, McpToolCallSpec,
+    MenuSurfaceSpec, MultiSelectPickerSpec, NavigationOverlaySpec, OverlayKindSpec, PatchCellSpec,
     PendingInputPreviewSpec, PendingThreadApprovalsSpec, PlanCellKindSpec, PlanCellSpec,
     RequestUserInputOverlaySpec, SelectionPopupKindSpec, SelectionPopupSpec, SelectionRowSpec,
     SessionInfoCellSpec, SessionPickerSpec, SetupScreenKindSpec, SetupScreenSpec,
@@ -461,6 +461,23 @@ fn gallery_sections() -> Vec<GallerySection> {
                 "# Streaming\n- committed row\n",
                 "- tail row still arriving",
             )
+            .into(),
+        ),
+        section(
+            "Animation",
+            "Named frame sequence rendered by backend/app timing.",
+            AnimationSpec {
+                frame: 2,
+                ..AnimationSpec::new(
+                    "Thinking",
+                    vec![
+                        ".".to_string(),
+                        "..".to_string(),
+                        "...".to_string(),
+                        "....".to_string(),
+                    ],
+                )
+            }
             .into(),
         ),
         section(
