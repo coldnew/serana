@@ -79,6 +79,14 @@ pub use menu::{Menu, context_menu};
 
 mod canvas;
 pub use canvas::Canvas;
+
+pub mod components;
+pub use components::{
+    editor as editor_component, input as input_component, BoxComponent, CancellableLoader,
+    EditorComponent, Image, Input, Loader, Markdown, SelectItem, SelectList, SettingItem,
+    SettingsList, Spacer, Text, TruncatedText,
+};
+
 /// Renders text as a keyboard shortcut key (e.g. `Ctrl+K`).
 pub fn kbd(text: impl Into<String>) -> UiNode {
     use display_protocol::{Border, Padding, Style, BoxNode};
