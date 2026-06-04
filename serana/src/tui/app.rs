@@ -214,6 +214,7 @@ pub struct App {
     pub skill_store: Option<crate::tools::skill::SkillStore>,
     // Task queue for /queue command
     pub task_queue: VecDeque<String>,
+    pub last_bash_command: Option<String>,
 }
 
 /// Todo item for task tracking.
@@ -274,6 +275,7 @@ impl App {
             recent_sessions: Vec::new(),
             skill_store: None,
             task_queue: VecDeque::new(),
+            last_bash_command: None,
         }
     }
 
@@ -692,9 +694,78 @@ impl App {
         result
     }
 
+    fn execute_bash_command(&self, command: &str) -> String {
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .current_dir(&self.workspace)
+            .output()
+        {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let mut result = String::new();
+                if !stdout.is_empty() {
+                    result.push_str(&stdout);
+                }
+                if !stderr.is_empty() {
+                    if !result.is_empty() {
+                        result.push('\n');
+                    }
+                    result.push_str(&stderr);
+                }
+                if result.is_empty() {
+                    "(no output)".to_string()
+                } else {
+                    if result.len() > 8000 {
+                        result.truncate(8000);
+                        result.push_str("\n... (truncated)");
+                    }
+                    result
+                }
+            }
+            Err(error) => format!("Failed to execute: {}", error),
+        }
+    }
+
     fn submit_message(&mut self) {
         let content = self.editor.content();
         self.editor.clear();
+        let trimmed = content.trim();
+
+        if trimmed == "!!" {
+            if let Some(ref command) = self.last_bash_command.clone() {
+                let output = self.execute_bash_command(command);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("$ {}\n{}", command, output),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            } else {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: "No previous command to re-execute.".to_string(),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            return;
+        }
+
+        if let Some(command) = trimmed.strip_prefix('!') {
+            if !command.is_empty() {
+                self.last_bash_command = Some(command.to_string());
+                let output = self.execute_bash_command(command);
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    content: format!("$ {}\n{}", command, output),
+                    tool_calls: Vec::new(),
+                    thinking: None,
+                });
+            }
+            return;
+        }
 
         if let Some(result) = self.slash_commands.dispatch(&content) {
             self.handle_slash_result(result);
@@ -1799,5 +1870,16 @@ mod tests {
 
         assert!(expanded.contains("<file path=\"note.txt\">"));
         assert!(expanded.contains("hello"));
+    }
+
+    #[test]
+    fn bang_bang_without_previous_command_shows_message() {
+        let mut app = App::new(PathBuf::from("."));
+        app.editor.set_content("!!");
+
+        app.submit_message();
+
+        assert_eq!(app.messages.len(), 1);
+        assert_eq!(app.messages[0].content, "No previous command to re-execute.");
     }
 }
