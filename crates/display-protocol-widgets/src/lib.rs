@@ -9,9 +9,14 @@ use display_protocol::UiNode;
 pub mod palette;
 pub mod protocol;
 pub use protocol::{
-    BoxSpec, CancellableLoaderSpec, InputSpec, LoaderSpec, MarkdownSpec, SelectItemSpec,
-    SelectListSpec, SettingItemSpec, SettingsListSpec, SpacerSpec, TextSpec, TruncatedTextSpec,
-    WidgetSpec,
+    AssistantMessageSpec, BashExecutionSpec, BorderedLoaderSpec, BoxSpec, CancellableLoaderSpec,
+    CountdownTimerSpec, DiffLineKindSpec, DiffLineSpec, DiffSpec, DynamicBorderSpec, EditorSpec,
+    ExecutionStatusSpec, FooterSpec, HistorySearchSpec, ImageSpec, InputSpec, KeybindingHintSpec,
+    KeybindingHintsSpec, LoaderSpec, LoginDialogSpec, MarkdownSpec, MessageFrameSpec,
+    MessageRoleSpec, SelectItemSpec, SelectListSpec, SelectorOptionSpec, SelectorSpec,
+    SettingItemSpec, SettingsListSpec, SpacerSpec, StatusLineSpec, StatusSegmentSpec, TabBarSpec,
+    TabItemSpec, TextSpec, TodoReminderSpec, ToolExecutionSpec, TreeNodeSpec, TreeSelectorSpec,
+    TruncatedTextSpec, UserMessageSpec, VisualTruncateSpec, WelcomeSpec, WidgetSpec,
 };
 
 mod button;
@@ -63,7 +68,7 @@ mod editor;
 pub use editor::Editor;
 
 mod tree_view;
-pub use tree_view::{TreeView, TreeBranch};
+pub use tree_view::{TreeBranch, TreeView};
 
 mod split_pane;
 pub use split_pane::SplitPane;
@@ -81,7 +86,7 @@ mod span;
 pub use span::Span;
 
 mod menu;
-pub use menu::{Menu, context_menu};
+pub use menu::{context_menu, Menu};
 
 mod canvas;
 pub use canvas::Canvas;
@@ -92,14 +97,15 @@ pub use components::{
     EditorComponent, Image, Input, Loader, Markdown, SelectItem, SelectList, SettingItem,
     SettingsList, Spacer, Text, TruncatedText,
 };
-
 /// Renders text as a keyboard shortcut key (e.g. `Ctrl+K`).
 pub fn kbd(text: impl Into<String>) -> UiNode {
-    use display_protocol::{Border, Padding, Style, BoxNode};
+    use display_protocol::{Border, BoxNode, Padding, Style};
     let label = text.into();
     UiNode::Box(BoxNode {
         children: vec![UiNode::text(&label).color(palette::MUTED)],
-        style: Style::default().bg(palette::Color::new(40, 40, 40)).fg(palette::MUTED),
+        style: Style::default()
+            .bg(palette::Color::new(40, 40, 40))
+            .fg(palette::MUTED),
         padding: Padding::new(0, 1, 0, 1),
         border: Border::all(Some(Style::default().fg(palette::Color::new(60, 60, 60)))),
         title: None,
@@ -126,7 +132,7 @@ pub fn spinner(frame: usize) -> UiNode {
 
 /// Renders a breadcrumb navigation trail.
 pub fn breadcrumb(items: Vec<UiNode>) -> UiNode {
-    use display_protocol::{FlexNode, Align, Justify};
+    use display_protocol::{Align, FlexNode, Justify};
     let mut children = Vec::new();
     for (i, item) in items.into_iter().enumerate() {
         if i > 0 {

@@ -1,8 +1,13 @@
 use display_protocol::{InputEvent, KeyCode};
 use display_protocol_widgets::{
-    BoxSpec, CancellableLoaderSpec, InputSpec, LoaderSpec, MarkdownSpec, SelectItemSpec,
-    SelectListSpec, SettingItemSpec, SettingsListSpec, SpacerSpec, TextSpec, TruncatedTextSpec,
-    WidgetSpec,
+    AssistantMessageSpec, BashExecutionSpec, BorderedLoaderSpec, BoxSpec, CancellableLoaderSpec,
+    CountdownTimerSpec, DiffLineKindSpec, DiffLineSpec, DiffSpec, DynamicBorderSpec, EditorSpec,
+    ExecutionStatusSpec, FooterSpec, HistorySearchSpec, ImageSpec, InputSpec, KeybindingHintSpec,
+    KeybindingHintsSpec, LoaderSpec, LoginDialogSpec, MarkdownSpec, MessageFrameSpec,
+    MessageRoleSpec, SelectItemSpec, SelectListSpec, SelectorOptionSpec, SelectorSpec,
+    SettingItemSpec, SettingsListSpec, SpacerSpec, StatusLineSpec, StatusSegmentSpec, TabBarSpec,
+    TabItemSpec, TextSpec, TodoReminderSpec, ToolExecutionSpec, TreeNodeSpec, TreeSelectorSpec,
+    TruncatedTextSpec, UserMessageSpec, VisualTruncateSpec, WelcomeSpec, WidgetSpec,
 };
 use display_tui::{render_widget_spec_to_lines, TuiTerminal};
 use ratatui::{
@@ -211,5 +216,241 @@ fn gallery_sections() -> Vec<GallerySection> {
             .padding(1, 1)
             .into(),
         },
+        GallerySection {
+            title: "Editor",
+            summary: "Editor carries buffer lines, cursor, viewport, gutter, and focus state.",
+            spec: EditorSpec::new(vec![
+                "fn main() {".to_string(),
+                "    println!(\"serana\");".to_string(),
+                "}".to_string(),
+            ])
+            .cursor(1, 12)
+            .height(5)
+            .focused(true)
+            .into(),
+        },
+        GallerySection {
+            title: "Image",
+            summary: "Image reserves a frame for backends that can draw pixels while TUI shows useful metadata.",
+            spec: ImageSpec::new("session-preview", 44, 6)
+                .alt("terminal preview image")
+                .into(),
+        },
+        GallerySection {
+            title: "Tab Bar",
+            summary: "TabBar mirrors editor/session tabs with active and modified state.",
+            spec: TabBarSpec::new(vec![
+                TabItemSpec::new("chat", "Chat"),
+                TabItemSpec::new("files", "Files"),
+                TabItemSpec::new("git", "Git").modified(true),
+            ])
+            .active(1)
+            .into(),
+        },
+        GallerySection {
+            title: "Message Frame",
+            summary: "MessageFrame is the generic role-aware container for conversation rows.",
+            spec: MessageFrameSpec::new(
+                "System",
+                MessageRoleSpec::System,
+                vec![TextSpec::new("Follow project coding rules.").padding(0, 0).into()],
+            )
+            .into(),
+        },
+        GallerySection {
+            title: "Assistant Message",
+            summary: "AssistantMessage carries assistant markdown and optional model metadata.",
+            spec: AssistantMessageSpec::new("Implemented shared widget specs.\n- protocol first\n- backend renderers own visuals")
+                .model("gpt-5")
+                .into(),
+        },
+        GallerySection {
+            title: "User Message",
+            summary: "UserMessage carries the prompt content separately from assistant/tool frames.",
+            spec: UserMessageSpec::new("implement all missing TUI components").into(),
+        },
+        GallerySection {
+            title: "Tool Execution",
+            summary: "ToolExecution covers non-shell tool calls with status, command label, and output.",
+            spec: ToolExecutionSpec::new("apply_patch", ExecutionStatusSpec::Success)
+                .command("update display-tui renderer")
+                .output(vec!["2 files changed".to_string()])
+                .into(),
+        },
+        GallerySection {
+            title: "Bash Execution",
+            summary: "BashExecution covers terminal commands with status, exit code, and output lines.",
+            spec: BashExecutionSpec::new("cargo check -p display-tui --examples", ExecutionStatusSpec::Running)
+                .output(vec!["checking display-tui".to_string()])
+                .into(),
+        },
+        GallerySection {
+            title: "Diff",
+            summary: "Diff carries semantic diff lines for TUI, WGPU, and log backends.",
+            spec: DiffSpec::new(
+                "protocol_widgets.rs",
+                vec![
+                    DiffLineSpec::new(DiffLineKindSpec::Hunk, "@@ renderer @@"),
+                    DiffLineSpec::new(DiffLineKindSpec::Removed, "WidgetSpec::Markdown only"),
+                    DiffLineSpec::new(DiffLineKindSpec::Added, "WidgetSpec::Editor"),
+                ],
+            )
+            .into(),
+        },
+        GallerySection {
+            title: "Status Line",
+            summary: "StatusLine stores left and right status segments for terminal chrome.",
+            spec: StatusLineSpec::new(
+                vec![
+                    StatusSegmentSpec::new("NORMAL"),
+                    StatusSegmentSpec::new("model").value("gpt-5"),
+                ],
+                vec![StatusSegmentSpec::new("Rust"), StatusSegmentSpec::new("UTF-8")],
+            )
+            .into(),
+        },
+        GallerySection {
+            title: "Footer",
+            summary: "Footer is compact command/help text for the bottom of an app surface.",
+            spec: FooterSpec::new(vec![
+                "q quit".to_string(),
+                "Enter select".to_string(),
+                "Esc cancel".to_string(),
+            ])
+            .into(),
+        },
+        GallerySection {
+            title: "Keybinding Hints",
+            summary: "KeybindingHints carries structured key-label pairs instead of preformatted text.",
+            spec: KeybindingHintsSpec::new(vec![
+                KeybindingHintSpec::new("Ctrl+K", "commands"),
+                KeybindingHintSpec::new("Ctrl+L", "login"),
+                KeybindingHintSpec::new("?", "help"),
+            ])
+            .into(),
+        },
+        GallerySection {
+            title: "Model Selector",
+            summary: "ModelSelector is the typed selector used by model switching UI.",
+            spec: selector("Model", &["gpt-5", "gpt-5-mini", "local/qwen"])
+                .selected(1)
+                .into_model_selector(),
+        },
+        GallerySection {
+            title: "Session Selector",
+            summary: "SessionSelector uses the same selector protocol with a distinct semantic variant.",
+            spec: selector("Session", &["current", "refactor-serana", "display-protocol"])
+                .selected(2)
+                .into_session_selector(),
+        },
+        GallerySection {
+            title: "Settings Selector",
+            summary: "SettingsSelector represents focused setting choices.",
+            spec: selector("Approval Mode", &["never", "on-request", "always"])
+                .selected(1)
+                .into_settings_selector(),
+        },
+        GallerySection {
+            title: "Theme Selector",
+            summary: "ThemeSelector represents terminal theme choices.",
+            spec: selector("Theme", &["system", "light", "dark"])
+                .selected(2)
+                .into_theme_selector(),
+        },
+        GallerySection {
+            title: "Tree Selector",
+            summary: "TreeSelector carries hierarchical choices and expanded state.",
+            spec: TreeSelectorSpec::new(
+                "Files",
+                vec![
+                    TreeNodeSpec::new("src", "src")
+                        .expanded(true)
+                        .children(vec![
+                            TreeNodeSpec::new("app", "app.rs"),
+                            TreeNodeSpec::new("tui", "tui").expanded(true).children(vec![
+                                TreeNodeSpec::new("widgets", "protocol_widgets.rs"),
+                            ]),
+                        ]),
+                    TreeNodeSpec::new("cargo", "Cargo.toml"),
+                ],
+            )
+            .selected_path(vec![0, 1, 0])
+            .into(),
+        },
+        GallerySection {
+            title: "Login Dialog",
+            summary: "LoginDialog covers the /login device flow state.",
+            spec: LoginDialogSpec::new("Codex", "https://auth.openai.com/device", "ABCD-EFGH")
+                .status("Waiting for confirmation")
+                .into(),
+        },
+        GallerySection {
+            title: "History Search",
+            summary: "HistorySearch carries query, results, and selected result.",
+            spec: HistorySearchSpec::new(
+                "display",
+                vec![
+                    "refactor display protocol widgets".to_string(),
+                    "render widget gallery in tui".to_string(),
+                    "fix model persistence".to_string(),
+                ],
+            )
+            .selected(1)
+            .into(),
+        },
+        GallerySection {
+            title: "Countdown Timer",
+            summary: "CountdownTimer is for time-bounded confirmation or retry UI.",
+            spec: CountdownTimerSpec::new("Retry in", 12).into(),
+        },
+        GallerySection {
+            title: "Todo Reminder",
+            summary: "TodoReminder renders compact pending task state.",
+            spec: TodoReminderSpec::new(vec![
+                "finish protocol coverage".to_string(),
+                "run cargo checks".to_string(),
+                "commit focused diff".to_string(),
+            ])
+            .into(),
+        },
+        GallerySection {
+            title: "Welcome",
+            summary: "Welcome is the first-run/start screen protocol from oh-my-pi style surfaces.",
+            spec: WelcomeSpec::new("Serana", "Shared terminal interface")
+                .actions(vec!["/login authenticate".to_string(), "/model select model".to_string()])
+                .into(),
+        },
+        GallerySection {
+            title: "Bordered Loader",
+            summary: "BorderedLoader combines loader state with a titled terminal frame.",
+            spec: BorderedLoaderSpec::new("Thinking", LoaderSpec::new("reasoning").frame(4)).into(),
+        },
+        GallerySection {
+            title: "Dynamic Border",
+            summary: "DynamicBorder carries active/inactive frame state around any child widget.",
+            spec: DynamicBorderSpec::new(
+                "Focused",
+                TextSpec::new("Active input area").padding(0, 0).into(),
+            )
+            .active(true)
+            .into(),
+        },
+        GallerySection {
+            title: "Visual Truncate",
+            summary: "VisualTruncate uses a suffix-aware truncation contract for paths and labels.",
+            spec: VisualTruncateSpec::new("ref/pi/packages/tui/src/components/cancellable-loader.ts")
+                .suffix("…")
+                .into(),
+        },
     ]
+}
+
+fn selector(title: &'static str, labels: &[&'static str]) -> SelectorSpec {
+    SelectorSpec::new(
+        title,
+        labels
+            .iter()
+            .map(|label| SelectorOptionSpec::new(*label, *label).description("available"))
+            .collect(),
+    )
 }
